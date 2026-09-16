@@ -127,3 +127,32 @@ being measured.
 **Do not fill in labels the report did not state.** It is the single easiest way
 to make a weak record look like a strong one, and nothing downstream can detect
 it afterwards.
+
+## The one case curation is asked to settle, for now
+
+After a harvest, look for **records of the same class whose spans overlap but
+whose functions differ**. Typically a wrapper and the function it calls, each
+written up by a different reviewer, describing one defect at two levels. Two of
+the first ten harvested records are such a pair.
+
+`normalize` folds duplicates that share a function (§6.7) and deliberately does
+not fold these, because the key that would — span overlap — also merges a caller
+and a callee that genuinely have separate defects, and nothing in the records
+distinguishes those two situations.
+
+For each pair, read both functions and decide:
+
+- **One defect described twice.** Keep the record whose function *contains* the
+  defect rather than the one that reaches it, and delete the other. Note the
+  deletion and the reason in the kept record's `notes`.
+- **Two defects.** Keep both, and say in each record's `notes` that the overlap
+  was checked and is not a duplicate. Without that note the next curator repeats
+  the work.
+
+This is deferred to hand curation rather than automated because the question it
+actually asks is a **scoring** one — whether one finding may satisfy more than
+one record, and whether a file-level match counts toward recall — and answering
+it by choosing a dedup key would bury a scoring policy inside a normalisation
+rule. When the scorer settles that policy, the repair is to record the *relation*
+between the two records and let the scorer apply the policy to it; this section
+goes away then.

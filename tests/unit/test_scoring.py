@@ -347,3 +347,38 @@ class TestTheStatementNamesWhatIsThin:
         )
         report = score([a_run([(5, 6)])], [negative], resolver())
         assert report.by_class == {}
+
+
+class TestOneFindingSatisfiesOneRecord:
+    """Matching is one-to-one, and the direction that fact moves a score.
+
+    Recorded as tests because the design once asserted the opposite -- that a
+    duplicated ground-truth record would inflate recall, on the assumption that
+    one finding matches every copy. Nothing failed when that was written, which
+    is the problem: a claim about the scorer with no test behind it is a claim
+    about what somebody believed the scorer did.
+    """
+
+    def _score(self, records: int):  # type: ignore[no-untyped-def]
+        truths = [a_record(record_id=f"dup-record-{i}") for i in range(records)]
+        return score([a_run([(4, 7)])], truths, resolver()).by_class[CLS]
+
+    def test_one_finding_cannot_satisfy_two_records(self) -> None:
+        assert sum(self._score(2).by_strength.values()) == 1
+
+    def test_the_unmatched_copies_are_counted_as_misses(self) -> None:
+        assert self._score(4).false_negatives == 3
+
+    def test_duplication_understates_recall(self) -> None:
+        # Not overstates. The factor is the number of reviewers who submitted
+        # the same defect, which is why `normalize` folds them (§6.7).
+        assert self._score(1).recall(MatchStrength.EXACT) == 1.0
+        assert self._score(2).recall(MatchStrength.EXACT) == 0.5
+        assert self._score(4).recall(MatchStrength.EXACT) == 0.25
+
+    def test_duplication_leaves_precision_alone(self) -> None:
+        # The prediction is matched either way, so only the recall denominator
+        # moves. Stated because "duplicates distort the score" is too vague to
+        # act on -- it distorts one side of it.
+        for records in (1, 2, 4):
+            assert self._score(records).precision(MatchStrength.EXACT) == 1.0

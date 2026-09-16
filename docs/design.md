@@ -998,19 +998,36 @@ Some platforms publish one document per *submission* rather than one per
 *issue*. A competition of any size therefore ships the same defect several
 times, and one observed archive had four submissions pointing at one function.
 
-Kept as separate records, duplicates do not merely pad a count. They inflate
-recall directly: a detector that finds that defect once matches every copy of
-it, and the output says nothing about the corpus having counted it four times.
-The inflation is proportional to how popular a defect was with reviewers, which
-is to say it is largest exactly where a benchmark is least informative — the
-findings everybody saw.
+Kept as separate records, duplicates do not merely pad a count. Matching is
+one-to-one within each strength tier (§7.1), so one finding satisfies exactly
+one record and the remaining copies are counted as misses. Measured against the
+scorer:
+
+| ground-truth records for one defect | matches | misses | recall | precision |
+| --- | --- | --- | --- | --- |
+| 1 | 1 | 0 | 100% | 100% |
+| 2 | 1 | 1 | 50% | 100% |
+| 4 | 1 | 3 | 25% | 100% |
+
+So duplication **understates** recall, by a factor equal to how many reviewers
+submitted the defect, and it leaves precision untouched. The understatement is
+largest exactly where a benchmark is least informative — the findings everybody
+saw — so a detector is penalised most for missing the most-reported defect and
+the penalty is applied more than once.
+
+An earlier version of this section had the sign backwards, claiming duplicates
+inflate recall because one finding would match every copy. That describes
+many-to-one matching, which §7.1 does not do. The correction is recorded rather
+than quietly applied because the error was not in the rule -- folding is right
+either way -- it was in the *reason*, and a rule kept for a reason that does not
+hold is a rule nobody can reason about later.
 
 So `normalize` folds records describing one defect and reports the count of
 folds. Two records are one defect when they share the pinned commit, the file,
 the function and the class. The rule merges two genuinely distinct defects
 sitting in one function under one class, and that trade is taken deliberately:
-an under-counted corpus understates recall, a duplicated one overstates it, and
-only the second is invisible in the output.
+scoring is at function granularity, so two defects in one function are not
+separately scoreable anyway.
 
 Which of the duplicates survives is decided by what the *reports* asserted, not
 by how the spans were obtained: confirmation first (§6.6), then the number of
@@ -1021,6 +1038,26 @@ other.
 
 A fold is not a loss and is counted apart from losses. Nothing was lost; a
 denominator was corrected.
+
+**Where the rule deliberately stops.** Two records can describe one defect at
+two levels — a wrapper and the function it calls, same class, overlapping spans,
+different function names. Two of the first ten harvested records are such a
+pair. Folding them would need a key based on span overlap, and that same key
+merges a caller and a callee that genuinely have separate defects.
+
+That question does not belong here at all. What it actually asks is whether one
+finding may satisfy more than one ground-truth record, and whether a file-level
+match counts toward recall — both of which are *scoring* policy (§7.1). Deciding
+it by choosing a dedup key would answer a scoring question inside a
+normalisation rule, where nobody reading the score can see it.
+
+So the pair is left as two records and flagged for hand curation
+(`docs/curation.md`), recorded as deferred to the scorer rather than as too hard
+to automate. When the scorer forces the question, the repair is to **record the
+relation** — that one record's function calls the other's, same class,
+overlapping spans, which a call-site scan can establish — and let the scorer
+apply a stated policy to it. Folding on overlap destroys the fact in order to
+encode the policy, and a policy encoded in lost data cannot be changed later.
 
 ### 6.8 A location can be right and still unscoreable
 
