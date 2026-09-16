@@ -1,0 +1,37 @@
+{
+  "record_id": "beanstalk-flashloan-manipulation-bafa8b6a",
+  "population": "exploited_incident",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/BeanstalkFarms/Beanstalk",
+    "commit": "e9f49910e287e7a7afaa6db8f536b7194728b0af",
+    "path": "protocol/contracts/farm/facets/GovernanceFacet/GovernanceFacet.sol",
+    "sha256": "27938091a8fd181e62246d9f365e3d5523d8b825b1c562243ffa9d6db908efad"
+  },
+  "locator": {
+    "file": "protocol/contracts/farm/facets/GovernanceFacet/GovernanceFacet.sol",
+    "contract": "GovernanceFacet",
+    "function": "emergencyCommit",
+    "start_line": 180,
+    "end_line": 191
+  },
+  "classes": [
+    "flashloan_manipulation"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "derived",
+  "asserted_labels": [
+    "function"
+  ],
+  "anchor_line": null,
+  "negative_kind": null,
+  "derived_from": null,
+  "provenance": {
+    "platform": "immunefi-hack-analysis",
+    "report_url": "https://rekt.news/beanstalk-rekt/",
+    "reported_severity": "critical",
+    "fix_commit": null
+  },
+  "notes": ""
+}

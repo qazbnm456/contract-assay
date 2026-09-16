@@ -449,12 +449,31 @@ review* should be expected to map onto it poorly, and a population made of
 rationalisation, and it is why `Population` is recorded per record.
 
 The prediction is now measured, and it holds. Seven curated post-mortems of
-exploited incidents map to the nine classes six times — flash-loaned governance,
-oracle manipulation, reentrancy during liquidation, an unprotected callback, a
-trusted root left at zero — against 19% over 911 findings pooled from four
-review sources. The intervals do not overlap even at n=7. So the class list is
+exploited incidents map to the nine classes five times — flash-loaned governance
+twice, oracle manipulation, reentrancy during liquidation, an unprotected
+callback — against 19% over 911 findings pooled from four review sources. The
+intervals do not overlap even at n=7.
+
+Two do not map, and both are the same thing: a merkle proof accepted when it
+should not have been. One bridge initialised its committed root to zero and
+pre-approved it, so any all-zero proof verified; another had a flaw in its proof
+library. Neither is access control, though the first reads like it — the
+functions that accept a proof are permissionless by design, and what failed was
+the verification rather than an authorisation. Improper proof verification is not
+among the nine and is not being added; it is recorded here because the first of
+the two was initially classified as access control from the post-mortem's
+phrasing, and only reading the function showed otherwise. Which is the argument
+for curating against source rather than against a summary. So the class list is
 not a poor taxonomy; it is a taxonomy of exploited patterns being applied to
 pre-deployment review output.
+
+Usable yield from the population is nonetheless *one* of those seven, and the
+reason is a second filter the class rate does not show. Only two of the seven
+have a canonical public repository at all: one protocol shut down, one keeps no
+core-contract repository, one org no longer exists, and one victim was a bespoke
+trading bot. Of the two that remain, one is among the two that do not map. So
+pinnable-and-in-scope is 1 in 7, against roughly 2% for a review platform — far
+better per candidate, out of a candidate pool of seven.
 
 That does not make the incident population harvestable, and the obstacle is
 structural rather than incidental. A curated incident proof of concept forks a
