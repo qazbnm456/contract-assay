@@ -50,10 +50,10 @@ from contract_assay.corpus.verify import SourceResolver
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
     CitationStatus,
+    DeclaredLimit,
     DetectorRun,
     DifficultyLevel,
     EvidenceTier,
-    KnownBlindness,
     Locator,
     Outcome,
     VulnerabilityClass,
@@ -149,7 +149,7 @@ class ClassScore:
     """
 
     missed_record_ids: tuple[str, ...] = ()
-    """Which records nothing matched, so a miss can be told from a blindness."""
+    """Which records nothing matched, so a miss can be told from a declared limit."""
 
     exact_unavailable: int = 0
     function_unavailable: int = 0
@@ -229,21 +229,23 @@ class ScoreReport:
     unscoreable_runs: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     """Measured runs in classes the corpus holds no record for."""
 
-    blindness: Mapping[VulnerabilityClass, tuple[KnownBlindness, ...]] = field(default_factory=dict)
-    """Declared blindnesses of the detectors scored, by class.
+    declared_limits: Mapping[VulnerabilityClass, tuple[DeclaredLimit, ...]] = field(
+        default_factory=dict
+    )
+    """Declared limits of the detectors scored, by class.
 
     Reported on their own line rather than as a caveat beside a score, because a
-    score is an estimate that moves with the sample and a demonstrated blindness
+    score is an estimate that moves with the sample and a demonstrated limit
     is a fact about the instrument that does not. Burying the certain claim
     inside the uncertain one loses the certain half and makes both read as
-    provisional. See `models.KnownBlindness`.
+    provisional. See `models.DeclaredLimit`.
     """
 
     @property
-    def blindness_by_record(self) -> Mapping[str, tuple[KnownBlindness, ...]]:
+    def limits_by_record(self) -> Mapping[str, tuple[DeclaredLimit, ...]]:
         """Which open entries name each record, because entries do not add up.
 
-        A record can trip several independently sufficient blindnesses. Closing
+        A record can trip several independently sufficient limits. Closing
         any one of them leaves it invisible, so a count of open entries is not a
         count of remaining work, and printing one hands a reader a number whose
         arithmetic does not hold. The relation is recorded and the consumer
@@ -254,8 +256,8 @@ class ScoreReport:
         A figure for work remaining, if a report ever wants one, is computed
         over **records made visible** and never over entries closed.
         """
-        out: dict[str, list[KnownBlindness]] = {}
-        for entries in self.blindness.values():
+        out: dict[str, list[DeclaredLimit]] = {}
+        for entries in self.declared_limits.values():
             for entry in entries:
                 if not entry.closed_by:
                     out.setdefault(entry.demonstrated_by, []).append(entry)
@@ -263,13 +265,13 @@ class ScoreReport:
 
     @property
     def unexplained_misses(self) -> Mapping[VulnerabilityClass, int]:
-        """Records missed with no declared blindness naming them.
+        """Records missed with no declared limit naming them.
 
         The closest available answer to the one thing self-declaration cannot
-        provide. A claimed blindness is checkable -- it names a record the
+        provide. A claimed limit is checkable -- it names a record the
         detector is silent on -- but nothing can force a detector to declare one
         it would rather not. So the report says how many misses are accounted
-        for by a declared blindness and how many are not, and an undeclared miss
+        for by a declared limit and how many are not, and an undeclared miss
         costs visibility rather than nothing (§7.2).
         """
         out: dict[VulnerabilityClass, int] = {}
@@ -281,7 +283,9 @@ class ScoreReport:
             # is built to avoid.
             if not score.false_negatives or not score.measured_runs:
                 continue
-            explained = {b.demonstrated_by for b in self.blindness.get(cls, ()) if not b.closed_by}
+            explained = {
+                b.demonstrated_by for b in self.declared_limits.get(cls, ()) if not b.closed_by
+            }
             missed = {r for r in score.missed_record_ids if r not in explained}
             out[cls] = len(missed)
         return out
@@ -336,21 +340,22 @@ class ScoreReport:
 
         open_entries = [
             (cls, entry)
-            for cls, entries in sorted(self.blindness.items())
+            for cls, entries in sorted(self.declared_limits.items())
             for entry in entries
             if not entry.closed_by
         ]
         if open_entries:
             named = "; ".join(
-                f"{cls.value}: {entry.shape} (shown by {entry.demonstrated_by}"
-                + ("" if entry.isolated else ", jointly with another blindness")
-                + ")"
+                f"{cls.value} [{entry.kind.value}]: {entry.shape} (shown by "
+                f"{entry.demonstrated_by}"
+                + ("" if entry.isolated else ", jointly with another limit")
+                + f"; closed when {entry.closed_when})"
                 for cls, entry in open_entries
             )
             unexplained = sum(self.unexplained_misses.values())
-            shared = sum(1 for entries in self.blindness_by_record.values() if len(entries) > 1)
+            shared = sum(1 for entries in self.limits_by_record.values() if len(entries) > 1)
             # Deliberately no count of open entries. A record can trip several
-            # independently sufficient blindnesses, so entries are not units of
+            # independently sufficient limits, so entries are not units of
             # work and a total would be a number whose arithmetic fails. It
             # would also invert the incentive below by giving a submission a
             # figure that grows when it declares.
@@ -363,14 +368,17 @@ class ScoreReport:
                 else ""
             )
             parts.append(
-                f"Declared and unpatched blindnesses -- {named}. These are facts about "
-                "the detectors rather than estimates from this sample: a score moves as "
-                f"records are added and a blindness does not.{arithmetic} Among classes "
-                f"something ran against, {_plural(unexplained, 'miss', 'misses')} "
+                f"Declared and open limits -- {named}. These are facts about the "
+                "detectors rather than estimates from this sample: a score moves as "
+                "records are added and a declared limit does not. A blindness is "
+                "something the instrument should see and does not; an indeterminacy is "
+                "the instrument correctly reporting that something is unknowable at this "
+                f"scope, which is it working.{arithmetic} Among classes something ran "
+                f"against, {_plural(unexplained, 'miss', 'misses')} "
                 f"{'is' if unexplained == 1 else 'are'} accounted for by no declared "
-                "blindness -- which is the figure to read as a weakness. Declaring a "
-                "blindness moves a miss out of it and adds no count that grows, so a "
-                "submission reports its own limits by preferring to."
+                "limit -- which is the figure to read as a weakness. Declaring a limit "
+                "moves a miss out of it and adds no count that grows, so a submission "
+                "reports its own limits by preferring to."
             )
 
         qualified = sum(s.qualified_negatives for s in self.by_class.values())
@@ -530,12 +538,12 @@ def score(
         if run.evidence_tier is not None:
             by_tier[run.evidence_tier] += 1
 
-    # Declared blindnesses travel with the runs, so they are collected from the
+    # Declared limits travel with the runs, so they are collected from the
     # runs rather than asked of the detectors -- which the scorer never sees.
-    blindness: dict[VulnerabilityClass, list[KnownBlindness]] = {}
+    limits: dict[VulnerabilityClass, list[DeclaredLimit]] = {}
     for run in runs:
-        for entry in run.known_blindness:
-            bucket = blindness.setdefault(run.class_id, [])
+        for entry in run.declared_limits:
+            bucket = limits.setdefault(run.class_id, [])
             if entry not in bucket:
                 bucket.append(entry)
 
@@ -628,5 +636,5 @@ def score(
         matches=tuple(all_matches),
         unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},
         unscoreable_runs=dict(sorted(unscoreable_runs.items())),
-        blindness={c: tuple(v) for c, v in sorted(blindness.items())},
+        declared_limits={c: tuple(v) for c, v in sorted(limits.items())},
     )

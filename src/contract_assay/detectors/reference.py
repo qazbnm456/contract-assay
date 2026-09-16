@@ -48,10 +48,11 @@ from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSp
 from contract_assay.evidence.predicates import run_all
 from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, Syntax
 from contract_assay.models import (
+    DeclaredLimit,
     EvidenceRef,
     FailedCheck,
     Finding,
-    KnownBlindness,
+    LimitKind,
     RejectionKind,
     VulnerabilityClass,
 )
@@ -309,8 +310,9 @@ class AccessControlDetector(_SyntacticDetector):
     # guard does not. Each condition is independently sufficient to silence the
     # predicate, so recording only the first would tell a reader that removing
     # the guard reference would make the record visible, and it would not.
-    known_blindness = (
-        KnownBlindness(
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
             shape=(
                 "a guard that is present and unsound: an authorisation check whose "
                 "compared value is read from a caller-supplied address, so the "
@@ -326,8 +328,13 @@ class AccessControlDetector(_SyntacticDetector):
                 "from syntax would fire on sound guards too, and trading a silent miss "
                 "for a confident false positive is not an improvement."
             ),
+            closed_when=(
+                "the semantic tier lands and caller-taint becomes available, so the "
+                "other side of the comparison can be traced to a parameter"
+            ),
         ),
-        KnownBlindness(
+        DeclaredLimit(
+            kind=LimitKind.INDETERMINACY,
             shape=(
                 "a state change effected through an external call rather than by "
                 "writing storage: the function mints, transfers or delegates, so "
@@ -347,6 +354,12 @@ class AccessControlDetector(_SyntacticDetector):
                 "source is fetchable and the indeterminacy is closeable there in a way "
                 "it is not for a commit pin -- recorded, deliberately not built, and "
                 "waiting for something that needs it."
+            ),
+            closed_when=(
+                "the callee's bytes come into scope -- recursive resolution of an "
+                "address-pinned callee's verified source. NOT the semantic tier, which "
+                "cannot read code the analysed unit does not contain, and which is why "
+                "this is stated rather than derived from the kind"
             ),
         ),
     )

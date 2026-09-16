@@ -54,12 +54,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from contract_assay.evidence.solidity import index_source
 from contract_assay.models import (
     MAX_DESCRIPTION_CHARS,
+    DeclaredLimit,
     DifficultyLevel,
     EvidenceRef,
     EvidenceTier,
     FailedCheck,
     Finding,
-    KnownBlindness,
     RejectionKind,
     SkipReason,
     VulnerabilityClass,
@@ -454,14 +454,20 @@ class Detector(ABC):
     class_id: ClassVar[VulnerabilityClass]
     api_version: ClassVar[str]
 
-    known_blindness: ClassVar[tuple[KnownBlindness, ...]] = ()
-    """Defect shapes this detector cannot see, each proved by a corpus record.
+    declared_limits: ClassVar[tuple[DeclaredLimit, ...]] = ()
+    """What this detector states it cannot establish, each proved by a corpus record.
+
+    Two kinds, kept apart rather than merged (`models.LimitKind`): a
+    **blindness** is a shape the instrument should see and does not, and an
+    **indeterminacy** is the instrument correctly reporting that something is
+    unknowable at this scope -- which is it working, and must not read as a
+    defect.
 
     Empty by default, and not one of the three required declarations: a detector
     with nothing demonstrated against it has nothing to declare, and demanding
-    an entry would produce invented ones. It is populated when a record shows a
-    shape the detector is silent on -- see `models.KnownBlindness` for why that
-    is reported apart from a score rather than beside it.
+    an entry would produce invented ones. It is populated when a record shows
+    something the detector cannot establish -- see `models.DeclaredLimit` for
+    why that is reported apart from a score rather than beside it.
     """
 
     def __init_subclass__(cls, **kwargs: object) -> None:

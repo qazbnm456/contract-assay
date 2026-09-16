@@ -73,7 +73,7 @@ def run_detector(
             source_id=ctx.source_id,
             outcome=Outcome.SKIPPED,
             skip_reason=skip_reason,
-            known_blindness=list(detector.known_blindness),
+            declared_limits=list(detector.declared_limits),
         )
 
     try:
@@ -93,7 +93,7 @@ def run_detector(
             source_id=ctx.source_id,
             outcome=Outcome.INVALID,
             invalid_reason=fault.invalid_reason,
-            known_blindness=list(detector.known_blindness),
+            declared_limits=list(detector.declared_limits),
             evidence_tier=ctx.tier,
             trace_path=None,
         )
@@ -120,7 +120,7 @@ def run_detector(
         # Copied by the harness, not asserted by the submission at report time:
         # a detector cannot have its score printed without its declared
         # blindnesses travelling beside it.
-        known_blindness=list(detector.known_blindness),
+        declared_limits=list(detector.declared_limits),
     )
 
 

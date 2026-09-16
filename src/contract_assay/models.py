@@ -30,6 +30,7 @@ __all__ = [
     "MAX_QUOTE_CHARS",
     "MAX_REASONING_CHARS",
     "CitationStatus",
+    "DeclaredLimit",
     "DetectorRun",
     "Determination",
     "DifficultyLevel",
@@ -39,7 +40,7 @@ __all__ = [
     "FailedCheck",
     "Finding",
     "InvalidReason",
-    "KnownBlindness",
+    "LimitKind",
     "Locator",
     "Outcome",
     "RejectionKind",
@@ -275,59 +276,107 @@ class Determination(StrEnum):
     """
 
 
-class KnownBlindness(_Frozen):
-    """A defect shape a detector cannot see, and the record that proves it.
+class LimitKind(StrEnum):
+    """What kind of statement a declared limit makes about the world.
 
-    A score and a blindness are not a strong and a weak version of one claim. A
-    score is an estimate from a sample and it moves with the sample: add a
-    hundred records of a class and its recall becomes some other number. A
-    demonstrated blindness is a fact about the instrument and it does not move
-    -- one counterexample settles "this predicate cannot see this shape"
-    permanently, which is why it is certain at a single record where no score
-    ever is.
-
-    That asymmetry is why it is reported on its own line rather than as a
-    caveat beside the score. Burying a certain fact inside an uncertain one
-    loses the certain half, and the caveat reads as though both were provisional.
-
-    Declared on the detector and carried on every run, so a submission's score
-    cannot be reported without its declared blindnesses travelling beside it.
-    Self-declaration is the obvious weakness and it is bounded in one direction
-    only: `demonstrated_by` names a corpus record, which makes a *claimed*
-    blindness checkable -- run the detector and confirm the silence. Nothing can
-    force a detector to declare a blindness it would rather not, so the score
-    reports how many misses no declared blindness accounts for, which is the
-    closest available thing to making omission visible.
+    Two, and they are not a strong and a weak version of one thing. They close
+    differently, they say different things about the instrument, and one of them
+    is the instrument working correctly.
     """
 
+    BLINDNESS = "blindness"
+    """The instrument cannot see a shape it should be able to see.
+
+    A defect in the instrument. Better analysis closes it.
+    """
+
+    INDETERMINACY = "indeterminacy"
+    """The instrument correctly reports that something is unknowable at this scope.
+
+    Not a lesser blindness -- a different kind of statement, and a true one. A
+    submission reporting "I cannot determine this here" has done the right
+    thing, and counting that against it would make an honest limit read as a
+    defect and make silently guessing the better-looking strategy. More *scope*
+    closes it: more bytes, not better analysis.
+    """
+
+
+class DeclaredLimit(_Frozen):
+    """Something a detector states it cannot establish, and the record that proves it.
+
+    Named for the set rather than for half of it. An earlier name -- known
+    blindness -- described only one of the two kinds this holds, and a container
+    named wrongly attracts the wrong contents, which is this project's own rule
+    about causes (§1.3) applied to a type.
+
+    A score and a declared limit are not a strong and a weak version of one
+    claim. A score is an estimate from a sample and it moves with the sample:
+    add a hundred records of a class and its recall becomes some other number. A
+    demonstrated limit is a fact about the instrument and it does not move --
+    one counterexample settles "this cannot be established here" permanently,
+    which is why it is certain at a single record where no score ever is.
+
+    That asymmetry is why limits are reported on their own line rather than as a
+    caveat beside the score. Burying a certain claim inside an uncertain one
+    loses the certain half and makes both read as provisional.
+
+    Declared on the detector and carried on every run, so a submission's score
+    cannot be reported without its declared limits travelling beside it.
+    Self-declaration is the obvious weakness and it is bounded in one direction
+    only: `demonstrated_by` names a corpus record, which makes a *claimed* limit
+    checkable -- run the detector and confirm it. Nothing can force a detector to
+    declare a limit it would rather not, so the score reports how many misses no
+    declared limit accounts for, which is the closest available thing to making
+    omission visible.
+    """
+
+    kind: LimitKind = Field(
+        description=(
+            "Whether the instrument cannot see this, or correctly reports it as "
+            "unknowable at this scope. Required with no default: the two close "
+            "differently and a reader deciding where to spend effort needs to know "
+            "which they are looking at, so it is a value somebody can review rather "
+            "than a choice made silently by whoever filed the entry."
+        )
+    )
     shape: str = Field(
         min_length=1,
         description=(
-            "The defect shape that is invisible, as a property rather than as one "
-            "instance of it -- 'a guard that references msg.sender inside the broken "
-            "comparison', not 'the Visor bug'."
+            "What cannot be established, as a property rather than as one instance of "
+            "it -- 'a guard that references msg.sender inside the broken comparison', "
+            "not 'the Visor bug'."
         ),
     )
     demonstrated_by: str = Field(
         min_length=1,
         description=(
-            "Record id of a corpus record this detector is silent on. What makes the "
-            "entry a proof rather than an opinion, and what makes it checkable."
+            "Record id of a corpus record this limit applies to. What makes the entry "
+            "a proof rather than an opinion, and what makes it checkable."
         ),
     )
     unpatched_because: str = Field(
         min_length=1,
         description=(
-            "Why it is a stated gap rather than a fix. A blindness with no reason is a "
+            "Why it is a stated limit rather than a fix. A limit with no reason is a "
             "bug report filed against oneself and left open."
+        ),
+    )
+    closed_when: str = Field(
+        min_length=1,
+        description=(
+            "What would close this entry, stated rather than inferred from `kind`. The "
+            "reader's actual question is whether a planned change will absorb it, and "
+            "deriving the answer from the kind would encode a general claim -- better "
+            "analysis closes blindnesses, more scope closes indeterminacies -- of "
+            "exactly the sort that has already been wrong here once."
         ),
     )
     isolated: bool = Field(
         default=True,
         description=(
-            "Whether `demonstrated_by` shows this shape alone. False when the record "
-            "trips several independently sufficient blindnesses at once, so closing "
-            "this one will not make the detector see that record."
+            "Whether `demonstrated_by` shows this limit alone. False when the record "
+            "trips several independently sufficient limits at once, so closing this one "
+            "will not make that record visible."
         ),
     )
     closed_by: str | None = Field(
@@ -637,11 +686,11 @@ class DetectorRun(_Frozen):
         description="Everything the deterministic phase observed, reported whatever the verdict.",
     )
 
-    known_blindness: list[KnownBlindness] = Field(
+    declared_limits: list[DeclaredLimit] = Field(
         default_factory=list,
         description=(
-            "Defect shapes this detector declares it cannot see, copied from the "
-            "detector by the runner so that a score cannot be reported without them."
+            "What this detector declares it cannot establish, copied from the detector "
+            "by the runner so that a score cannot be reported without them."
         ),
     )
 

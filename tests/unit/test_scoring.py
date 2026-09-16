@@ -8,6 +8,7 @@ looks exactly like a figure that does not have the problem.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from contract_assay.corpus.records import (
     CommitPin,
@@ -21,12 +22,13 @@ from contract_assay.corpus.records import (
 )
 from contract_assay.models import (
     CitationStatus,
+    DeclaredLimit,
     DetectorRun,
     EvidenceTier,
     FailedCheck,
     Finding,
     InvalidReason,
-    KnownBlindness,
+    LimitKind,
     Locator,
     Outcome,
     RejectionKind,
@@ -435,7 +437,7 @@ class TestAClassTheCorpusDoesNotCover:
         assert report.unscoreable_runs == {self.OTHER: 1}
 
 
-class TestADeclaredBlindness:
+class TestADeclaredLimit:
     """A fact about the instrument, reported apart from an estimate from a sample.
 
     A score moves as records are added; a demonstrated blindness does not, which
@@ -444,15 +446,17 @@ class TestADeclaredBlindness:
     as provisional.
     """
 
-    ENTRY = KnownBlindness(
+    ENTRY = DeclaredLimit(
+        kind=LimitKind.BLINDNESS,
         shape="a guard that is present and unsound",
         demonstrated_by="vault-reentrancy-1",
         unpatched_because="soundness needs caller-taint, which is the semantic tier",
+        closed_when="the semantic tier lands",
     )
 
     def _report(self, *, closed: bool = False, extra_record: bool = False):  # type: ignore[no-untyped-def]
         entry = self.ENTRY.model_copy(update={"closed_by": "abc1234"}) if closed else self.ENTRY
-        run = a_run([]).model_copy(update={"known_blindness": [entry]})
+        run = a_run([]).model_copy(update={"declared_limits": [entry]})
         records = [a_record()]
         if extra_record:
             records.append(
@@ -461,14 +465,14 @@ class TestADeclaredBlindness:
         return score([run], records, resolver())
 
     def test_it_travels_on_the_report(self) -> None:
-        assert self._report().blindness == {CLS: (self.ENTRY,)}
+        assert self._report().declared_limits == {CLS: (self.ENTRY,)}
 
     def test_it_gets_its_own_sentence(self) -> None:
         statement = self._report().statement()
-        assert "Declared and unpatched blindnesses" in statement
+        assert "Declared and open limits" in statement
         assert "a guard that is present and unsound" in statement
         assert "vault-reentrancy-1" in statement
-        assert "a score moves as records are added and a blindness does not" in statement
+        assert "a score moves as records are added and a declared limit does not" in statement
 
     def test_a_miss_it_names_is_accounted_for(self) -> None:
         assert self._report().unexplained_misses == {CLS: 0}
@@ -505,16 +509,18 @@ class TestDeclaringReadsBetterThanNotDeclaring:
     stops being correct the first time somebody reformats the output.
     """
 
-    ENTRY = KnownBlindness(
+    ENTRY = DeclaredLimit(
+        kind=LimitKind.BLINDNESS,
         shape="a guard that is present and unsound",
         demonstrated_by="vault-reentrancy-1",
         unpatched_because="soundness needs caller-taint",
+        closed_when="the semantic tier lands",
     )
 
     def _report(self, *, declaring: bool):  # type: ignore[no-untyped-def]
         run = a_run([])
         if declaring:
-            run = run.model_copy(update={"known_blindness": [self.ENTRY]})
+            run = run.model_copy(update={"declared_limits": [self.ENTRY]})
         return score([run], [a_record()], resolver())
 
     def test_declaring_reduces_the_unaccounted_misses(self) -> None:
@@ -526,9 +532,9 @@ class TestDeclaringReadsBetterThanNotDeclaring:
         # submission is punished for, and it would also be arithmetic that does
         # not hold, since entries are not units of work.
         statement = self._report(declaring=True).statement()
-        assert "1 known blindness" not in statement
-        assert "blindnesses declared" not in statement
-        assert "Declared and unpatched blindnesses" in statement
+        assert "1 declared limit" not in statement
+        assert "limits declared" not in statement
+        assert "Declared and open limits" in statement
 
     def test_the_statement_says_which_figure_is_the_weakness(self) -> None:
         # In the report's own text, so a later reader does not have to infer the
@@ -556,20 +562,22 @@ class TestTheRegisterCannotBeSummed:
     def _two_entries(self):  # type: ignore[no-untyped-def]
         shapes = ("a guard that is present and unsound", "a state change through a call")
         entries = [
-            KnownBlindness(
+            DeclaredLimit(
+                kind=LimitKind.BLINDNESS,
                 shape=shape,
                 demonstrated_by="vault-reentrancy-1",
                 unpatched_because="needs the semantic tier",
+                closed_when="the semantic tier lands",
                 isolated=False,
             )
             for shape in shapes
         ]
-        run = a_run([]).model_copy(update={"known_blindness": entries})
+        run = a_run([]).model_copy(update={"declared_limits": entries})
         return score([run], [a_record()], resolver())
 
     def test_the_relation_is_recorded(self) -> None:
         report = self._two_entries()
-        assert len(report.blindness_by_record["vault-reentrancy-1"]) == 2
+        assert len(report.limits_by_record["vault-reentrancy-1"]) == 2
 
     def test_the_statement_says_the_entries_do_not_add_up(self) -> None:
         statement = self._two_entries().statement()
@@ -585,21 +593,87 @@ class TestTheRegisterCannotBeSummed:
         # appearing, so a record whose other entry is still open is not silently
         # promoted to visible.
         entries = [
-            KnownBlindness(
+            DeclaredLimit(
+                kind=LimitKind.BLINDNESS,
                 shape="a",
                 demonstrated_by="vault-reentrancy-1",
                 unpatched_because="r",
+                closed_when="the semantic tier lands",
                 isolated=False,
                 closed_by="abc1234",
             ),
-            KnownBlindness(
+            DeclaredLimit(
+                kind=LimitKind.BLINDNESS,
                 shape="b",
                 demonstrated_by="vault-reentrancy-1",
                 unpatched_because="r",
+                closed_when="the semantic tier lands",
                 isolated=False,
             ),
         ]
-        run = a_run([]).model_copy(update={"known_blindness": entries})
+        run = a_run([]).model_copy(update={"declared_limits": entries})
         report = score([run], [a_record()], resolver())
-        assert len(report.blindness_by_record["vault-reentrancy-1"]) == 1
+        assert len(report.limits_by_record["vault-reentrancy-1"]) == 1
         assert report.unexplained_misses == {CLS: 0}
+
+
+class TestTheTwoKindsOfLimitStayApart:
+    """An indeterminacy correctly reported is the instrument working.
+
+    So it must not read as a defect. Merging the kinds would make an honest
+    submission look worse than one that silently guessed, which is the same
+    incentive the missing total fixed, one level in -- between two kinds of
+    declaration rather than between declaring and not.
+    """
+
+    def _report(self, kind: LimitKind):  # type: ignore[no-untyped-def]
+        limit = DeclaredLimit(
+            kind=kind,
+            shape="a state change through an external call",
+            demonstrated_by="vault-reentrancy-1",
+            unpatched_because="the callee is not in the unit",
+            closed_when="the callee's bytes come into scope",
+        )
+        run = a_run([]).model_copy(update={"declared_limits": [limit]})
+        return score([run], [a_record()], resolver())
+
+    def test_the_kind_is_named_in_the_statement(self) -> None:
+        assert "[indeterminacy]" in self._report(LimitKind.INDETERMINACY).statement()
+        assert "[blindness]" in self._report(LimitKind.BLINDNESS).statement()
+
+    def test_the_statement_says_what_each_kind_means(self) -> None:
+        statement = self._report(LimitKind.INDETERMINACY).statement()
+        assert "the instrument correctly reporting that something is unknowable" in statement
+        assert "something the instrument should see and does not" in statement
+
+    def test_both_kinds_account_for_a_miss_equally(self) -> None:
+        # Declaring either is the honest act, so neither is punished relative to
+        # the other. What is punished is silence.
+        for kind in (LimitKind.BLINDNESS, LimitKind.INDETERMINACY):
+            assert self._report(kind).unexplained_misses == {CLS: 0}
+
+    def test_what_closes_it_is_stated_not_derived(self) -> None:
+        # Deriving it from the kind would encode a general claim -- better
+        # analysis closes blindnesses, more scope closes indeterminacies -- of
+        # exactly the sort that has already been wrong here once.
+        assert "closed when the callee's bytes come into scope" in (
+            self._report(LimitKind.INDETERMINACY).statement()
+        )
+
+    def test_a_limit_must_state_its_kind(self) -> None:
+        with pytest.raises(ValidationError):
+            DeclaredLimit(  # type: ignore[call-arg]
+                shape="x",
+                demonstrated_by="vault-reentrancy-1",
+                unpatched_because="y",
+                closed_when="z",
+            )
+
+    def test_a_limit_must_say_what_would_close_it(self) -> None:
+        with pytest.raises(ValidationError):
+            DeclaredLimit(  # type: ignore[call-arg]
+                kind=LimitKind.BLINDNESS,
+                shape="x",
+                demonstrated_by="vault-reentrancy-1",
+                unpatched_because="y",
+            )

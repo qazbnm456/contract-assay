@@ -938,7 +938,7 @@ class TestTheBlindnessRegisterIsCheckable:
         assert all(not e.is_established for e in self._evidence(guard=True, external=True))
 
     def test_both_shapes_are_declared(self) -> None:
-        shapes = [b.shape for b in AccessControlDetector().known_blindness]
+        shapes = [b.shape for b in AccessControlDetector().declared_limits]
         assert len(shapes) == 2
         assert any("present and unsound" in s for s in shapes)
         assert any("external call" in s for s in shapes)
@@ -946,12 +946,12 @@ class TestTheBlindnessRegisterIsCheckable:
     def test_neither_is_isolated_by_its_record(self) -> None:
         # The record trips both, so closing one will not make it visible, and
         # the entry says so rather than leaving a reader to assume otherwise.
-        for entry in AccessControlDetector().known_blindness:
+        for entry in AccessControlDetector().declared_limits:
             assert entry.isolated is False
 
     def test_each_entry_names_a_reason(self) -> None:
         # A blindness with no reason is a bug report filed against oneself and
         # left open.
-        for entry in AccessControlDetector().known_blindness:
+        for entry in AccessControlDetector().declared_limits:
             assert entry.unpatched_because.strip()
             assert entry.demonstrated_by.strip()
