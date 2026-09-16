@@ -18,6 +18,12 @@ from contract_assay.corpus.adapters.code4rena import (
     Code4renaEnumerator,
     EnumeratedFinding,
 )
+from contract_assay.corpus.adapters.immunefi import (
+    CommitResolver,
+    ImmunefiAdapter,
+    ImmunefiEnumerator,
+    ImmunefiReport,
+)
 from contract_assay.corpus.adapters.markdown import (
     SourceCitation,
     contest_snapshot,
@@ -35,7 +41,11 @@ __all__ = [
     "CLASS_KEYWORDS",
     "Code4renaAdapter",
     "Code4renaEnumerator",
+    "CommitResolver",
     "EnumeratedFinding",
+    "ImmunefiAdapter",
+    "ImmunefiEnumerator",
+    "ImmunefiReport",
     "SherlockAdapter",
     "SherlockEnumerator",
     "SherlockIssue",

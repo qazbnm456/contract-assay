@@ -487,6 +487,7 @@ def normalize(
                     # is the only real check that remains, and it exists only if
                     # the digest witnesses the bytes the derivation ran against.
                     sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                    commit_resolved_from=draft.commit_resolved_from,
                 ),
                 locator=located.locator,
                 locator_provenance=located.provenance,

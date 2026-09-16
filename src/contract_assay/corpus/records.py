@@ -234,6 +234,13 @@ class SourcePin(BaseModel):
         default=None,
         description="Digest of the file's bytes at `commit`, recorded by verify.",
     )
+    commit_resolved_from: str | None = Field(
+        default=None,
+        description=(
+            "How the commit was obtained when the source did not state it, in prose. "
+            "None means the source stated it outright."
+        ),
+    )
 
     @model_validator(mode="after")
     def _commit_is_a_full_sha(self) -> SourcePin:
@@ -243,6 +250,23 @@ class SourcePin(BaseModel):
                 "branch names and short SHAs are not reproducible"
             )
         return self
+
+    @property
+    def is_commit_stated(self) -> bool:
+        """Whether the source named this commit, rather than it being inferred.
+
+        A resolved commit is reproducible -- it is a full SHA like any other, and
+        the digest still witnesses the bytes -- but it rests on an assumption the
+        source did not make. Reports frequently cite a *branch*, which names
+        whatever it currently points at and cannot be pinned; recovering one by
+        resolving the repository as it stood at the report's own date is a bounded
+        inference, where resolving it as it stands today is unbounded drift.
+
+        Bounded is not free, so the assumption travels with the record and
+        reports can stratify on it. `commit_resolved_from` states which
+        assumption in prose, because "resolved" alone does not say from what.
+        """
+        return self.commit_resolved_from is None
 
     @property
     def source_id(self) -> str:

@@ -148,6 +148,13 @@ class DraftRecord(BaseModel):
     repo_url: str = Field(min_length=1)
     commit: str = Field(description="Full 40-hex SHA. Refs and short SHAs move.")
     path: str = Field(min_length=1)
+    commit_resolved_from: str | None = Field(
+        default=None,
+        description=(
+            "Set when the adapter inferred the commit rather than reading it, stating "
+            "how. Carried onto the pin so the assumption is visible on the record."
+        ),
+    )
     contract: str | None = None
     function: str | None = None
     start_line: int | None = Field(default=None, ge=1)

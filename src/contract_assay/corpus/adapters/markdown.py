@@ -26,7 +26,12 @@ __all__ = [
 
 _PERMALINK = re.compile(
     r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)"
-    r"/blob/(?P<ref>[^/\s]+)/(?P<path>[^\s>)#]+?)"
+    r"/blob/(?P<ref>[^/\s]+)/(?P<path>[^\s>)#?]+?)"
+    # A permalink often carries a query string -- `?plain=1` is the common one --
+    # between the path and the line anchor. Left in the path it makes the file
+    # look like it has an unrecognised extension, so a Solidity file stops being
+    # one for a reason that has nothing to do with the file.
+    r"(?:\?[^\s>)#]*)?"
     r"(?:#L(?P<start>\d+)(?:-L?(?P<end>\d+))?)?(?=[\s>)\]]|$)"
 )
 _SHA = re.compile(r"^[0-9a-f]{40}$")

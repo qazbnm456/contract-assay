@@ -71,7 +71,7 @@ draft = DraftRecord(
     repo_url="https://github.com/BeanstalkFarms/Beanstalk",
     commit="e9f49910e287e7a7afaa6db8f536b7194728b0af",
     path="protocol/contracts/farm/facets/GovernanceFacet/GovernanceFacet.sol",
-    function="emergencyCommit",          # what the report named
+    function="emergencyCommit",  # what the report named
     classes=(VulnerabilityClass.FLASHLOAN_MANIPULATION,),
     provenance=Provenance(
         platform="immunefi-hack-analysis",
@@ -80,7 +80,9 @@ draft = DraftRecord(
     ),
 )
 report = normalize(
-    [draft], resolver, split=CorpusSplit.PUBLIC,
+    [draft],
+    resolver,
+    split=CorpusSplit.PUBLIC,
     population=Population.EXPLOITED_INCIDENT,
 )
 ```
