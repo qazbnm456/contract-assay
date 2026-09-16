@@ -105,10 +105,27 @@ cannot, measure the shortfall and report it. What is never acceptable is leaving
 it unstated, because the number it produces looks exactly like a number that
 does not have the problem.
 
-Note also how the fourth instance was found. Three of these were discovered by
-asking, of a mechanism that had just been built, what it shares a source of truth
-with. That question is cheap and belongs in a review of anything that measures
-anything.
+Note also how these were found. Most were discovered by asking, of a mechanism
+that had just been built, what it shares a source of truth with. That question is
+cheap and belongs in a review of anything that measures anything. It also catches
+cases that do not look like this section at first: `verify` both wrote the digest
+onto a record and checked the digest, so for any record arriving without one the
+comparison was against itself — the same shape as a derived locator, arriving in
+a different field.
+
+A second question belongs beside it, because it catches a different failure:
+
+> **What test fails if this guarantee is absent?**
+
+If the answer is none, the guarantee is prose no matter how precisely it is
+worded — and a precisely worded one is more dangerous than a vague one, because
+precision invites sign-off. The digest guarantee above was stated correctly in
+this document and implemented nowhere, and nothing in the wording could have
+revealed that. What revealed it was writing the test: change the file after the
+derivation ran, and assert the rejection.
+
+The two questions are complementary. The first asks whether a mechanism can see
+past itself. The second asks whether it exists.
 
 ## 2. Detector anatomy
 
@@ -458,9 +475,9 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
 ```
 
 - **harvest** — pull findings from public audit platforms into draft records.
-  Two obligations, both from §1.3. A harvester parsing only certain report shapes
-  yields a corpus skewed toward those platforms, so it tallies what it skipped
-  and why. And it tallies those skips **by class**, not only by platform and
+  Two obligations, both from §1.3, and a third that turned out to have a better
+  answer than disclosure. A harvester parsing only certain report shapes yields a
+  corpus skewed toward those platforms, so it tallies what it skipped and why. And it tallies those skips **by class**, not only by platform and
   cause: a skipped finding has no record — that is why it was skipped — so a
   per-platform count gives magnitude while leaving the confound intact, unable to
   separate "we skipped 40% of this platform" from "this platform has a different
@@ -478,6 +495,27 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   matures. The bias therefore arrives wearing the appearance of a class
   distribution, which is worse than the platform skew: that one looks like an
   artefact and invites suspicion, this one looks like a finding about the world.
+
+  The third obligation is the enumeration denominator, and it is the one place
+  where measurement was the wrong answer. An adapter's enumeration sets the
+  denominator of every rate the harvest report quotes, so an enumerator that
+  quietly skipped awkward sections would flatter its own yield with nothing able
+  to contradict it — the component's own judgement fixing its own score. Where a
+  platform publishes its own finding counts, that number is independent of the
+  enumerator and the gap becomes a measured quantity instead of an unmeasured
+  judgement; the adjustment that has to be stated is that the accepted categories
+  are a subset, since low-risk, QA and informational sections are out of scope
+  here. Where a platform publishes nothing, an adapter says so, and a reader can
+  tell a confirmed denominator from a declared one. The enumerator is a separate
+  component rather than the opening of an adapter so that it is runnable on its
+  own: countable against declared totals, comparable across platforms, and
+  regression-tested, so a later change that narrows it fails a test rather than
+  improving a yield.
+
+  The general form, which recurs: where a component's own judgement sets the
+  denominator of its own score, take the denominator from somewhere else if you
+  can, make the judgement runnable if you cannot, and disclose only when neither
+  is available.
 
   Part of it is recoverable rather than merely measurable. A report naming a file
   and a function but no span can have the span looked up in the declaration
@@ -768,7 +806,8 @@ work in the present tense reports intentions as capabilities.
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
-| `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **partly built** |
+| `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **built** |
+| `corpus/adapters/` | one module per platform; Code4rena only | **partly built** |
 | `corpus/normalize.py` | location resolution, span derivation, digest pinning (§6.3) | **built** |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
