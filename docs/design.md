@@ -532,12 +532,30 @@ work in the present tense reports intentions as capabilities.
 | `cli.py` | `verify`, `declarations` | **built** |
 | `detectors/base.py` | the public detector interface (§2.4) | **built** |
 | `detectors/loading.py` | manifest loading, the untrusted boundary (§2.4) | **built** |
-| `evidence/` predicates | the shape-level predicate library (§2.3) | not started |
+| `evidence/predicates.py` | the shape-level predicate library (§2.3) | **partly built** |
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | not started |
 | `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
+
+The predicate library is marked *partly* built rather than built, and the gap
+is worth naming precisely. Six predicates cover five of the nine classes;
+`oracle_integrity`, `flashloan_manipulation`, `denial_of_service` and
+`arithmetic_rounding` have none. Two of the five are covered by a predicate that
+establishes a **weaker property than the class**: reentrancy needs control flow,
+and slippage needs to recognise a callee through aliasing, so
+`state_write_after_raw_external_call` establishes only an ordering and
+`call_argument_is_zero_literal` reports every literal zero and leaves the
+scoping to a verdict. `predicates.coverage_by_class()` reports the count per
+class including the zeroes, because "this class has a predicate" and "this class
+is covered" are different claims and a table that hid the zeroes would imply the
+second.
+
+Recognising a callee across aliasing needs a 4-byte selector rather than a name,
+and computing one needs ABI canonicalisation that `Declaration.signature`
+deliberately does not do (§6.3). That canonicalisation is therefore a
+prerequisite for the oracle and slippage classes, not a later tidy-up.
 
 Consequences worth stating plainly: §2.2's gate is code, but its verdict
 predicates remain a rule for writing them rather than a library; §3's tier

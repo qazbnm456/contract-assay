@@ -603,6 +603,21 @@ class Syntax:
             )
         return tuple(found)
 
+    def callable_at(self, line: int) -> Declaration | None:
+        """The innermost function-like declaration containing `line`.
+
+        Predicates need it to ask function-scoped questions -- whether a bound
+        name is read again, whether a write follows a call -- and resolving it
+        here keeps one definition of "which function is this in", shared with
+        host resolution.
+        """
+        containing = [
+            d
+            for d in self.index.declarations
+            if not d.kind.is_type and d.start_line <= line <= d.end_line
+        ]
+        return min(containing, key=lambda d: d.end_line - d.start_line, default=None)
+
     def within(self, declaration: Declaration, sites: tuple[Site, ...]) -> list[Site]:
         """Sites whose line falls inside a declaration's span."""
         return [s for s in sites if declaration.start_line <= s.start_line <= declaration.end_line]
