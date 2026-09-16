@@ -28,6 +28,7 @@ from contract_assay.detectors.loading import (
     call_verdict,
     load_detector,
 )
+from contract_assay.detectors.runner import run_detector
 
 __all__ = [
     "API_VERSION",
@@ -49,5 +50,6 @@ __all__ = [
     "gate",
     "is_compatible",
     "load_detector",
+    "run_detector",
     "validate_claim",
 ]

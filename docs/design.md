@@ -576,6 +576,7 @@ work in the present tense reports intentions as capabilities.
 | `evidence/predicates.py` | the shape-level predicate library (§2.3) | **partly built** |
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
+| `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
 | `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
@@ -585,6 +586,13 @@ Three of the nine detectors exist — `unchecked_external_call`,
 at the syntactic tier. They also serve as the worked examples a submission author
 reads. The remaining six need the semantic backend, so `detectors/` is *partly*
 built and will stay that way until it exists.
+
+`detectors/runner.py` is the deterministic half of a run: gate, evidence, plan,
+citation re-verification, verdict, and the outcome derivation. The model's
+findings are passed in rather than fetched, which is the same injection
+`corpus.verify` uses for source resolution and for the same reason — the whole
+path stays exercisable with no model, no network and no toolchain. For a
+detector whose `plan()` returns `None` it is not half a run but the entire one.
 
 The predicate library is marked *partly* built rather than built, and the gap
 is worth naming precisely. Six predicates cover five of the nine classes;
@@ -640,7 +648,7 @@ disk but not that those bytes belong to the pinned commit.
 ```
 tests/
 ├── unit/              data contract, record invariants, declaration indexing
-├── offline/           whole pipeline, no model, no network, no toolchain   (planned)
+├── offline/           whole pipeline, no model, no network, no toolchain
 └── incidents/         pinned cases that must alert regardless of verdict   (planned)
 ```
 
