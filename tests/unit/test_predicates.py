@@ -558,10 +558,16 @@ contract Vault {
 """
 
     def test_moving_the_call_into_a_helper_silences_it(self) -> None:
-        # The defect survives intact as cross-function reentrancy; this tier
-        # cannot see it, because there is no external call left in the function.
-        # Pinned as a tier limitation, not a bug to fix in the predicate:
-        # following a call across a boundary is what the semantic tier is for.
+        # First and foremost a RECALL GAP against ordinary Solidity: extracting a
+        # payment into a helper is a normal thing to write, and the reentrancy is
+        # fully intact. This tier sees no external call in `withdraw` and reports
+        # nothing, so every real record of this shape scores zero evidence.
+        #
+        # It follows that a mutation which moves the call across the boundary
+        # also changes whether the predicate fires. That is the cheaper of the
+        # two costs: a wrongly rejected variant loses one test item, while an
+        # invisible shape loses every record that has it, silently, and looks
+        # like the predicate working.
         assert fired(self.EXTRACTED, self.NAME) == []
 
     INLINED_WRITE = """\
@@ -580,8 +586,64 @@ contract Vault {
 """
 
     def test_a_write_behind_a_helper_is_equally_invisible(self) -> None:
-        # The mirror image of the case above, and the reason neither is a payload
-        # problem: inlining `_debit` here would make the predicate start firing
-        # on code whose behaviour never changed. Both directions are presence
-        # changes, so no spelling of `detail` repairs them.
+        # The mirror image, and just as ordinary: extracting a balance update
+        # into `_debit` is routine. Neither direction is a payload problem --
+        # inlining the helper would make the predicate start firing on code whose
+        # behaviour never changed, and a payload does not exist at all when the
+        # predicate is silent. Following a call across a boundary is what the
+        # semantic tier is for.
         assert fired(self.INLINED_WRITE, self.NAME) == []
+
+
+class TestWhatAMemberNameCannotEstablish:
+    """A name match is a fact about the text, not about the call.
+
+    `send`, `transfer` and `call` are address members at the language level, and
+    also legal function names on a contract. At this tier `helper.send(x)` and
+    `payableAddress.send(x)` are one shape, so the name bounds both precision and
+    recall. Each case below is pinned so that a later fix -- which needs the
+    receiver's type, and therefore the semantic tier -- breaks a test rather than
+    passing one silently.
+    """
+
+    def test_a_local_helper_named_send_manufactures_evidence(self) -> None:
+        # Nothing here is wrong: `send` is an internal function of this contract.
+        # The predicate fires anyway, because the name is all it has. The general
+        # form is worth remembering -- any rule keyed on a name can be made to
+        # fire by picking that name.
+        source = contract("""\
+    function send(uint256 a) internal { emit Paid(a); }
+    function f(uint256 a) external {
+        helper.send(a);
+    }
+""")
+        assert fired(source, "low_level_call_result_discarded") != []
+
+    def test_a_discarded_token_transfer_return_is_invisible(self) -> None:
+        # `IERC20.transfer` returns a bool that is very commonly discarded, and
+        # that is a real and common defect. It is absent here because
+        # `address.transfer` reverts instead of returning a flag, so `transfer`
+        # is excluded from the flag-returning set -- correct for one meaning of
+        # the name and wrong for the other, with no syntactic rule between them.
+        source = contract("""\
+    IERC20 token;
+    function f(address to, uint256 a) external {
+        token.transfer(to, a);
+    }
+""")
+        assert fired(source, "low_level_call_result_discarded") == []
+        assert fired(source, "low_level_call_result_bound_but_unread") == []
+
+    def test_an_address_transfer_is_still_treated_as_an_external_call(self) -> None:
+        # The other direction of the same ambiguity, and here the coarse reading
+        # is the right one: whichever `transfer` this is, it hands control to the
+        # recipient, so the ordering predicate should see it.
+        source = contract("""\
+    uint256 total;
+    function f(address payable to, uint256 a) external {
+        to.transfer(a);
+        total -= a;
+    }
+""")
+        [ref] = fired(source, "state_write_after_raw_external_call")
+        assert ref.detail["call_member"] == "transfer"

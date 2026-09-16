@@ -126,6 +126,11 @@ Corollaries:
 
 - Do not case-fold Solidity identifiers. The language is case-sensitive and
   `owner` and `Owner` are different symbols; folding manufactures false matches.
+- Remember that a name match is a fact about the text, not about the thing.
+  **Any rule keyed on a name can be made to fire by choosing that name**, so a
+  name is evidence that can be manufactured. `send` and `transfer` are address
+  members, and also perfectly legal function names on a contract; at the
+  syntactic tier `helper.send(x)` and `payableAddress.send(x)` are one shape.
 - Prefer 4-byte selectors over name matching for known primitives. The selector
   is the keccak prefix of the canonical signature: exact, free to compute, and
   immune to renaming.
@@ -575,6 +580,17 @@ Recognising a callee across aliasing needs a 4-byte selector rather than a name,
 and computing one needs ABI canonicalisation that `Declaration.signature`
 deliberately does not do (§6.3). That canonicalisation is therefore a
 prerequisite for the oracle and slippage classes, not a later tidy-up.
+
+A third has the same shape, and it is the most expensive of the three because
+it costs recall rather than test items. Several predicates key on a call's member
+name because a parser has no receiver type to consult, which leaves them unable
+to separate `address.transfer`, which reverts, from `IERC20.transfer`, which
+returns a discardable bool — so the very common unchecked-token-return defect is
+invisible — and unable to reject a local helper named `send`, which makes
+evidence appear where nothing is wrong. Both directions need types. Until they
+are available the predicate library's precision and its recall are both bounded
+by what a name can mean, and `predicates` documents each case with a test
+pinning it.
 
 A second dependency has the same shape and is worth stating beside it. An edit
 that moves an external call across a function boundary — extracting it into an

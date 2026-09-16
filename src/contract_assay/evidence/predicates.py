@@ -25,6 +25,39 @@ labour is clear:
     records the class as partly covered. A predicate named for a class it cannot
     establish is how a project comes to believe it has coverage it does not.
 
+What a member name cannot establish
+-----------------------------------
+Several predicates here key on a call's member name -- `call`, `send`,
+`transfer`. Those are address members at the language level, but nothing stops a
+contract declaring a function with the same name, and at this tier
+`helper.send(x)` and `payableAddress.send(x)` are the same shape. Telling them
+apart needs the receiver's type, which is what the semantic tier is for. Three
+consequences, all pinned by tests rather than described here only:
+
+*   **Evidence can be manufactured by choosing a name.** A local helper called
+    `send` makes `low_level_call_result_discarded` fire where nothing is wrong.
+    The general form is worth holding on to: any rule keyed on a name can be
+    made to fire by picking that name, so a name match is a fact about the text
+    and not about the call.
+
+*   **`transfer` is two different members.** `address.transfer` reverts on
+    failure, so discarding its result is not a defect and it is absent from
+    `FLAG_RETURNING_MEMBERS`. `IERC20.transfer` returns a bool that is very
+    commonly discarded, which is a real and common defect -- and that exclusion
+    makes it invisible. The exclusion is right for one meaning and wrong for the
+    other, and no syntactic rule separates them.
+
+*   **A defect split across functions is invisible.** An external call extracted
+    into an internal helper, or a state write moved behind one, leaves the
+    reentrancy intact while `state_write_after_raw_external_call` finds nothing
+    in either function. Extracting a balance update into a helper is ordinary
+    Solidity, so this is a recall gap against the natural corpus rather than an
+    artefact of anything.
+
+The third is the most costly of the three. A false fact is loud once someone
+looks at it, whereas a shape the predicate cannot see costs every record of that
+shape, silently, and looks exactly like the predicate working.
+
 Naming
 ------
 A predicate is named for the **property** it establishes, never for the form it
