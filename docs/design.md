@@ -952,6 +952,49 @@ which classes they belonged to rather than whether the derivations were sound �
 and would be read as a quality measure. There is nothing available to contradict
 the prose, and that is the accurate statement.
 
+### 6.7 One defect reported many times
+
+Some platforms publish one document per *submission* rather than one per
+*issue*. A competition of any size therefore ships the same defect several
+times, and one observed archive had four submissions pointing at one function.
+
+Kept as separate records, duplicates do not merely pad a count. They inflate
+recall directly: a detector that finds that defect once matches every copy of
+it, and the output says nothing about the corpus having counted it four times.
+The inflation is proportional to how popular a defect was with reviewers, which
+is to say it is largest exactly where a benchmark is least informative — the
+findings everybody saw.
+
+So `normalize` folds records describing one defect and reports the count of
+folds. Two records are one defect when they share the pinned commit, the file,
+the function and the class. The rule merges two genuinely distinct defects
+sitting in one function under one class, and that trade is taken deliberately:
+an under-counted corpus understates recall, a duplicated one overstates it, and
+only the second is invisible in the output.
+
+Which of the duplicates survives is decided by what the *reports* asserted, not
+by how the spans were obtained: confirmation first (§6.6), then the number of
+claims the report made, then the narrower span, then the record id so the choice
+is deterministic. Deliberately not a ranking of provenances against each other —
+`stated` and `quoted` fail in different directions and neither outranks the
+other.
+
+A fold is not a loss and is counted apart from losses. Nothing was lost; a
+denominator was corrected.
+
+### 6.8 A location can be right and still unscoreable
+
+Scoring is at function granularity (§1.1), so a span covering a state variable
+block, a `modifier` or a whole contract has nothing to be scored against, even
+when it is exactly where the defect is. Such a draft is a counted loss under its
+own cause rather than a record with an empty function field, because a record
+without a function weakens every comparison made with it and does so silently.
+
+This is distinguished in the accounting from a *single line* that landed in no
+declaration. That one is about a line the report pointed at; this one is about a
+span the report gave outright. The two suggest different fixes, and a loss filed
+under the wrong cause points investigation away from the fix.
+
 ## 7. Scoring
 
 The scorer is a separate component and does not run inside the harness. Trace

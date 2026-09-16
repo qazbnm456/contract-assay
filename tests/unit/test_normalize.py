@@ -115,7 +115,9 @@ class TestSpanDerivation:
         assert record.locator.contract == "Vault"
 
     def test_derived_records_are_counted_as_such(self) -> None:
-        report = run(a_draft(), a_draft(candidate_id="H-02", start_line=7, end_line=9))
+        report = run(
+            a_draft(), a_draft(candidate_id="H-02", function="withdraw", start_line=11, end_line=13)
+        )
         assert report.records_by_provenance == {
             LocatorProvenance.DERIVED: 1,
             LocatorProvenance.STATED: 1,
@@ -181,13 +183,58 @@ class TestTheDigestWitnessesTheDerivation:
         assert len(verify_all([record], resolver()).admitted) == 1
 
 
+class TestOneDefectReportedTwice:
+    """Some platforms publish every submission, so one defect arrives repeatedly.
+
+    Kept apart they inflate recall silently: a detector finding the defect once
+    matches every copy. Folded, the count is right and the fold is disclosed.
+    """
+
+    def test_two_reports_of_one_defect_become_one_record(self) -> None:
+        report = run(a_draft(), a_draft(candidate_id="H-02"))
+        assert len(report.records) == 1
+        assert report.duplicates == 1
+        assert report.drafts == 2
+
+    def test_a_fold_is_not_a_loss(self) -> None:
+        report = run(a_draft(), a_draft(candidate_id="H-02"))
+        assert report.skipped == ()
+        assert report.loss_rate == 0.0
+        assert "described a defect already recorded" in report.statement()
+
+    def test_the_better_supported_record_survives(self) -> None:
+        confirmed_id = run(a_draft(candidate_id="H-01", function="withdraw")).records[0].record_id
+        # The confirmed one, whatever order the drafts arrive in.
+        # Both name `withdraw`; only one also named the contract, so only one
+        # made a second claim for the index to adjudicate.
+        confirmed = a_draft(candidate_id="H-01", function="withdraw")
+        alone = a_draft(candidate_id="H-02", function="withdraw", contract=None)
+        for drafts in ((alone, confirmed), (confirmed, alone)):
+            [record] = run(*drafts).records
+            assert record.is_cross_checked
+            assert record.record_id == confirmed_id
+
+    def test_a_different_class_in_one_function_is_a_different_defect(self) -> None:
+        report = run(
+            a_draft(),
+            a_draft(candidate_id="H-02", classes=(VulnerabilityClass.REENTRANCY,)),
+        )
+        assert len(report.records) == 2
+        assert report.duplicates == 0
+
+    def test_the_same_function_in_another_file_is_a_different_defect(self) -> None:
+        report = run(a_draft(), a_draft(candidate_id="H-02", path="src/Other.sol"))
+        assert len(report.records) == 2
+        assert report.duplicates == 0
+
+
 class TestRecordIdentity:
     def test_ids_are_stable_across_runs(self) -> None:
         # Derived from the draft rather than from position, so a record's
         # identity does not depend on how many other reports were in the batch.
         first = run(a_draft()).records[0].record_id
-        second = run(a_draft(), a_draft(candidate_id="H-99")).records[0].record_id
-        assert first == second
+        batch = run(a_draft(), a_draft(candidate_id="H-99", function="withdraw"))
+        assert first in {record.record_id for record in batch.records}
 
     def test_ids_differ_for_different_findings_in_one_file(self) -> None:
         report = run(a_draft(), a_draft(candidate_id="H-02", function="withdraw"))
@@ -315,8 +362,8 @@ class TestAnchoring:
     def test_the_three_provenances_are_counted_apart(self) -> None:
         report = run(
             a_draft(candidate_id="A", start_line=7, end_line=9),
-            a_draft(candidate_id="B", anchor_line=8, contract=None, function=None),
-            a_draft(candidate_id="C"),
+            a_draft(candidate_id="B", anchor_line=12, contract=None, function=None),
+            a_draft(candidate_id="C", classes=(VulnerabilityClass.REENTRANCY,)),
         )
         assert report.records_by_provenance == {
             LocatorProvenance.STATED: 1,
@@ -326,7 +373,7 @@ class TestAnchoring:
 
     def test_the_statement_distinguishes_anchored_from_inferred(self) -> None:
         report = run(
-            a_draft(candidate_id="B", anchor_line=8, contract=None, function=None),
+            a_draft(candidate_id="B", anchor_line=12, contract=None, function=None),
             a_draft(candidate_id="C"),
         )
         statement = report.statement()
@@ -563,3 +610,52 @@ class TestWhatTheReportActuallyAsserted:
         [record] = run(a_draft(contract=None, function="withdraw")).records
         assert record.asserted_labels == [LocatorLabel.FUNCTION]
         assert not record.is_cross_checked
+
+
+STATE_BLOCK = """\
+contract Bank {
+    address owner;
+    uint256 total;
+    mapping(address => uint256) balances;
+
+    function deposit() external {
+        total += 1;
+    }
+}
+"""
+
+
+class TestASpanInNoFunction:
+    """A location that may well be right, and still cannot be scored.
+
+    Scoring is at function granularity, so a span covering a state variable
+    block or a whole contract has nothing to be scored against. It is counted
+    apart from an anchor that hit no declaration, because that is about a line
+    the report pointed at and this is about a span the report gave outright.
+    """
+
+    def test_a_stated_span_outside_any_function_is_lost(self) -> None:
+        report = run(a_draft(contract=None, function=None, start_line=5, end_line=5))
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.NO_ENCLOSING_FUNCTION: 1}
+
+    def test_a_quoted_span_outside_any_function_is_lost(self) -> None:
+        report = run(
+            a_draft(
+                contract=None,
+                function=None,
+                quoted_source=(
+                    "    address owner;\n    uint256 total;\n"
+                    "    mapping(address => uint256) balances;"
+                ),
+            ),
+            source=STATE_BLOCK,
+        )
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.NO_ENCLOSING_FUNCTION: 1}
+
+    def test_a_function_the_report_named_rescues_the_span(self) -> None:
+        # The span is unscoreable only when nothing names a function -- a report
+        # that named one is scored against that.
+        [record] = run(a_draft(function="setOwner", start_line=5, end_line=5)).records
+        assert record.locator.function == "setOwner"

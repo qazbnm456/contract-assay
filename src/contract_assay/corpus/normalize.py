@@ -164,6 +164,16 @@ class NormalizeCause(StrEnum):
     NO_DECLARATION_AT_ANCHOR = "no_declaration_at_anchor"
     """The line the report pointed at is not inside any function-like declaration."""
 
+    NO_ENCLOSING_FUNCTION = "no_enclosing_function"
+    """The located span is in no function, and the report named none either.
+
+    A span covering a whole contract, a state variable block or a modifier. The
+    location may well be right; it is not a location this benchmark can score,
+    because scoring is at function granularity. Counted apart from
+    `no_declaration_at_anchor` because that one is about a line the report
+    pointed at, and this one is about a span the report gave outright.
+    """
+
     ANCHOR_CONTRADICTS_CONTRACT = "anchor_contradicts_contract"
     """The report named a contract, and the line it pointed at is in a different one."""
 
@@ -201,10 +211,21 @@ class NormalizeReport:
     skipped_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     records_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     records_by_provenance: Mapping[LocatorProvenance, int] = field(default_factory=dict)
+    duplicates: int = 0
+    """Records folded into an earlier one describing the same defect.
+
+    Not a loss, and counted apart from losses for that reason. Some platforms
+    deduplicate submissions before publishing and some do not, so the same
+    defect can arrive several times -- one observed competition had four
+    submissions pointing at one function. Kept as separate records they would
+    inflate recall directly: a detector finding that defect once would match all
+    four, and nothing in the output would say the corpus had counted it four
+    times.
+    """
 
     @property
     def drafts(self) -> int:
-        return len(self.records) + len(self.skipped)
+        return len(self.records) + len(self.skipped) + self.duplicates
 
     @property
     def loss_rate(self) -> float:
@@ -247,8 +268,14 @@ class NormalizeReport:
                 ),
             )
         )
+        folded = (
+            f" {_plural(self.duplicates, 'further draft')} described a defect already "
+            "recorded and were folded in."
+            if self.duplicates
+            else ""
+        )
         if not self.skipped:
-            return f"{produced}; none were lost.{derivation}"
+            return f"{produced}; none were lost.{folded}{derivation}"
 
         causes = ", ".join(
             f"{cause.value} {count}"
@@ -269,8 +296,12 @@ class NormalizeReport:
         )
         return (
             f"{produced} ({1 - self.loss_rate:.1%}); {len(self.skipped)} lost -- "
-            f"{causes}.{concentration}{derivation}"
+            f"{causes}.{concentration}{folded}{derivation}"
         )
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def _record_id(draft: DraftRecord) -> str:
@@ -332,6 +363,8 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
         # scored at function granularity -- so it would be lost for the sake of a
         # name the index can read off the span it was already given.
         enclosing = parsed_contract_of(source, draft.start_line)
+        if not (draft.function or enclosing[1]):
+            return NormalizeCause.NO_ENCLOSING_FUNCTION
         return Located(
             Locator(
                 file=draft.path,
@@ -347,6 +380,8 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     if isinstance(quoted, tuple):
         start, end = quoted
         enclosing = parsed_contract_of(source, start)
+        if not (draft.function or enclosing[1]):
+            return NormalizeCause.NO_ENCLOSING_FUNCTION
         return Located(
             Locator(
                 file=draft.path,
@@ -431,6 +466,44 @@ def parsed_contract_of(source: str, line: int) -> tuple[str | None, str | None]:
     return host.contract, host.function
 
 
+def _defect_key(record: CorpusRecord) -> tuple[str, ...]:
+    """What makes two records the same defect.
+
+    The pinned bytes, the function, and the class. Two reports naming the same
+    function of the same commit for the same class are describing one defect in
+    all but pathological cases; two *different* defects in one function would be
+    merged, which is the error this trade accepts, and it is the smaller one --
+    an under-counted corpus understates recall where a duplicated one overstates
+    it, and only the second is invisible.
+    """
+    assert record.locator is not None
+    return (
+        record.pin.commit,
+        record.pin.path,
+        record.locator.function or "",
+        ",".join(sorted(c.value for c in record.classes)),
+    )
+
+
+def _preference(record: CorpusRecord) -> tuple[int, int, int, str]:
+    """Which of two records describing one defect to keep.
+
+    Confirmation first, then how many claims the report made, then the narrower
+    span, then the id so the choice is deterministic. Deliberately not a ranking
+    of provenances against each other: `stated` and `quoted` fail differently
+    and neither outranks the other (§6.6), so the tie is broken on what the
+    report asserted rather than on how the span was obtained.
+    """
+    assert record.locator is not None
+    width = record.locator.end_line - record.locator.start_line
+    return (
+        -int(record.is_cross_checked),
+        -record.report_assertion_count,
+        width,
+        record.record_id,
+    )
+
+
 def normalize(
     drafts: Iterable[DraftRecord],
     resolve: SourceResolver,
@@ -500,11 +573,31 @@ def normalize(
         records_by_class.update(draft.classes)
         records_by_provenance[located.provenance] += 1
 
+    # Fold records describing one defect, keeping the best-supported of each.
+    best: dict[tuple[str, ...], CorpusRecord] = {}
+    duplicates = 0
+    for record in records:
+        key = _defect_key(record)
+        existing = best.get(key)
+        if existing is None:
+            best[key] = record
+            continue
+        duplicates += 1
+        if _preference(record) < _preference(existing):
+            best[key] = record
+
+    kept = sorted(best.values(), key=lambda r: r.record_id)
+    records_by_class = Counter(c for r in kept for c in r.classes)
+    records_by_provenance = Counter(
+        r.locator_provenance for r in kept if r.locator_provenance is not None
+    )
+
     return NormalizeReport(
-        records=tuple(records),
+        records=tuple(kept),
         skipped=tuple(skipped),
         by_cause=dict(by_cause),
         skipped_by_class=dict(skipped_by_class),
         records_by_class=dict(records_by_class),
         records_by_provenance=dict(records_by_provenance),
+        duplicates=duplicates,
     )
