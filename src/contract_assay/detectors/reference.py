@@ -51,6 +51,7 @@ from contract_assay.models import (
     EvidenceRef,
     FailedCheck,
     Finding,
+    KnownBlindness,
     RejectionKind,
     VulnerabilityClass,
 )
@@ -302,6 +303,46 @@ class AccessControlDetector(_SyntacticDetector):
     class_id = VulnerabilityClass.ACCESS_CONTROL
     api_version = "1.1"
     predicate_ids = frozenset({"state_change_reachable_without_modifier_or_sender_reference"})
+    # Two entries rather than one, and the corpus record trips both. Isolating
+    # them took four minimal cases: a storage write with no guard fires; the
+    # same write with an unsound guard does not; an external effect with no
+    # guard does not. Each condition is independently sufficient to silence the
+    # predicate, so recording only the first would tell a reader that removing
+    # the guard reference would make the record visible, and it would not.
+    known_blindness = (
+        KnownBlindness(
+            shape=(
+                "a guard that is present and unsound: an authorisation check whose "
+                "compared value is read from a caller-supplied address, so the "
+                "function references msg.sender and the predicate reads that "
+                "reference as a check"
+            ),
+            demonstrated_by="rewardshypervisor-access-control-13849006",
+            isolated=False,
+            unpatched_because=(
+                "deciding soundness means knowing whether the other side of the "
+                "comparison is caller-controlled, which is def-use through an external "
+                "call and needs the semantic tier. A predicate guessing at soundness "
+                "from syntax would fire on sound guards too, and trading a silent miss "
+                "for a confident false positive is not an improvement."
+            ),
+        ),
+        KnownBlindness(
+            shape=(
+                "a state change effected through an external call rather than by "
+                "writing storage: the function mints, transfers or delegates, and the "
+                "predicate sees no state change to ask about access to"
+            ),
+            demonstrated_by="rewardshypervisor-access-control-13849006",
+            isolated=False,
+            unpatched_because=(
+                "knowing that a call changes state means knowing what the callee does, "
+                "which is interprocedural and across a contract boundary. Treating "
+                "every external call as a state change would make the predicate fire "
+                "on every function that calls anything."
+            ),
+        ),
+    )
     instruction = (
         "Find functions an outside caller can reach that change contract state with "
         "nothing restricting who may call them. Report the function declaration. A "

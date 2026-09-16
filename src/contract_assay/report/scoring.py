@@ -53,6 +53,7 @@ from contract_assay.models import (
     DetectorRun,
     DifficultyLevel,
     EvidenceTier,
+    KnownBlindness,
     Locator,
     Outcome,
     VulnerabilityClass,
@@ -135,6 +136,9 @@ class ClassScore:
     invalid_runs: int = 0
     skipped_runs: int = 0
     measured_runs: int = 0
+    missed_record_ids: tuple[str, ...] = ()
+    """Which records nothing matched, so a miss can be told from a blindness."""
+
     exact_unavailable: int = 0
     function_unavailable: int = 0
 
@@ -213,6 +217,41 @@ class ScoreReport:
     unscoreable_runs: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     """Measured runs in classes the corpus holds no record for."""
 
+    blindness: Mapping[VulnerabilityClass, tuple[KnownBlindness, ...]] = field(default_factory=dict)
+    """Declared blindnesses of the detectors scored, by class.
+
+    Reported on their own line rather than as a caveat beside a score, because a
+    score is an estimate that moves with the sample and a demonstrated blindness
+    is a fact about the instrument that does not. Burying the certain claim
+    inside the uncertain one loses the certain half and makes both read as
+    provisional. See `models.KnownBlindness`.
+    """
+
+    @property
+    def unexplained_misses(self) -> Mapping[VulnerabilityClass, int]:
+        """Records missed with no declared blindness naming them.
+
+        The closest available answer to the one thing self-declaration cannot
+        provide. A claimed blindness is checkable -- it names a record the
+        detector is silent on -- but nothing can force a detector to declare one
+        it would rather not. So the report says how many misses are accounted
+        for by a declared blindness and how many are not, and an undeclared miss
+        costs visibility rather than nothing (§7.2).
+        """
+        out: dict[VulnerabilityClass, int] = {}
+        for cls, score in self.by_class.items():
+            # A class nothing ran against has no detector to have declared
+            # anything, so its records are unmeasured rather than missed.
+            # Counting them here would merge "the detector did not see it" with
+            # "there is no detector", which is the conflation this whole report
+            # is built to avoid.
+            if not score.false_negatives or not score.measured_runs:
+                continue
+            explained = {b.demonstrated_by for b in self.blindness.get(cls, ()) if not b.closed_by}
+            missed = {r for r in score.missed_record_ids if r not in explained}
+            out[cls] = len(missed)
+        return out
+
     @property
     def thin_classes(self) -> tuple[VulnerabilityClass, ...]:
         return tuple(cls for cls, score in sorted(self.by_class.items()) if score.below_minimum)
@@ -259,6 +298,30 @@ class ScoreReport:
                 f"because the corpus holds no record of their class: {named}. Counted "
                 "here and in no confusion matrix -- the corpus cannot call them wrong, "
                 "only unscored."
+            )
+
+        open_entries = [
+            (cls, entry)
+            for cls, entries in sorted(self.blindness.items())
+            for entry in entries
+            if not entry.closed_by
+        ]
+        if open_entries:
+            named = "; ".join(
+                f"{cls.value}: {entry.shape} (shown by {entry.demonstrated_by}"
+                + ("" if entry.isolated else ", jointly with another blindness")
+                + ")"
+                for cls, entry in open_entries
+            )
+            unexplained = sum(self.unexplained_misses.values())
+            parts.append(
+                f"{_plural(len(open_entries), 'known blindness', 'known blindnesses')} "
+                f"declared and unpatched -- {named}. These are facts about the detectors "
+                "rather than estimates from this sample: a score moves as records are "
+                f"added and a blindness does not. Among classes something ran against, "
+                f"{_plural(unexplained, 'miss', 'misses')} "
+                f"{'is' if unexplained == 1 else 'are'} accounted for by no declared "
+                "blindness."
             )
 
         invalid = sum(s.invalid_runs for s in self.by_class.values())
@@ -409,6 +472,15 @@ def score(
         if run.evidence_tier is not None:
             by_tier[run.evidence_tier] += 1
 
+    # Declared blindnesses travel with the runs, so they are collected from the
+    # runs rather than asked of the detectors -- which the scorer never sees.
+    blindness: dict[VulnerabilityClass, list[KnownBlindness]] = {}
+    for run in runs:
+        for entry in run.known_blindness:
+            bucket = blindness.setdefault(run.class_id, [])
+            if entry not in bucket:
+                bucket.append(entry)
+
     scoreable = {c for record in truths for c in record.classes}
     unscoreable_claims: Counter[VulnerabilityClass] = Counter()
     unscoreable_runs: Counter[VulnerabilityClass] = Counter()
@@ -471,6 +543,11 @@ def score(
             by_strength=dict(strengths),
             unverifiable_claims=uncheckable,
             false_negatives=len(class_records) - len(used_records),
+            missed_record_ids=tuple(
+                record.record_id
+                for index, record in enumerate(class_records)
+                if index not in used_records
+            ),
             invalid_runs=sum(1 for r in class_runs if r.outcome is Outcome.INVALID),
             skipped_runs=sum(1 for r in class_runs if r.outcome is Outcome.SKIPPED),
             measured_runs=sum(1 for r in class_runs if r.outcome.is_measurement),
@@ -492,4 +569,5 @@ def score(
         matches=tuple(all_matches),
         unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},
         unscoreable_runs=dict(sorted(unscoreable_runs.items())),
+        blindness={c: tuple(v) for c, v in sorted(blindness.items())},
     )

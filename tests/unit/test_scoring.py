@@ -26,6 +26,7 @@ from contract_assay.models import (
     FailedCheck,
     Finding,
     InvalidReason,
+    KnownBlindness,
     Locator,
     Outcome,
     RejectionKind,
@@ -432,3 +433,61 @@ class TestAClassTheCorpusDoesNotCover:
         report = score([a_run([], cls=self.OTHER)], [a_record()], resolver())
         assert report.unscoreable_claims == {}
         assert report.unscoreable_runs == {self.OTHER: 1}
+
+
+class TestADeclaredBlindness:
+    """A fact about the instrument, reported apart from an estimate from a sample.
+
+    A score moves as records are added; a demonstrated blindness does not, which
+    is why it is certain at one record where no score ever is. Reporting it
+    beside the score as a caveat would lose the certain half and make both read
+    as provisional.
+    """
+
+    ENTRY = KnownBlindness(
+        shape="a guard that is present and unsound",
+        demonstrated_by="vault-reentrancy-1",
+        unpatched_because="soundness needs caller-taint, which is the semantic tier",
+    )
+
+    def _report(self, *, closed: bool = False, extra_record: bool = False):  # type: ignore[no-untyped-def]
+        entry = self.ENTRY.model_copy(update={"closed_by": "abc1234"}) if closed else self.ENTRY
+        run = a_run([]).model_copy(update={"known_blindness": [entry]})
+        records = [a_record()]
+        if extra_record:
+            records.append(
+                a_record(record_id="vault-reentrancy-2", start=10, end=13, function="withdraw")
+            )
+        return score([run], records, resolver())
+
+    def test_it_travels_on_the_report(self) -> None:
+        assert self._report().blindness == {CLS: (self.ENTRY,)}
+
+    def test_it_gets_its_own_sentence(self) -> None:
+        statement = self._report().statement()
+        assert "1 known blindness declared and unpatched" in statement
+        assert "a guard that is present and unsound" in statement
+        assert "vault-reentrancy-1" in statement
+        assert "a score moves as records are added and a blindness does not" in statement
+
+    def test_a_miss_it_names_is_accounted_for(self) -> None:
+        assert self._report().unexplained_misses == {CLS: 0}
+
+    def test_a_miss_it_does_not_name_is_not(self) -> None:
+        # The one thing self-declaration cannot supply: nothing forces a
+        # detector to declare a blindness it would rather not, so an undeclared
+        # miss costs visibility rather than nothing.
+        assert self._report(extra_record=True).unexplained_misses == {CLS: 1}
+
+    def test_a_closed_entry_stops_accounting_for_anything(self) -> None:
+        # The register is a work list, not a graveyard: a closed entry no longer
+        # excuses a miss, so a regression shows up as an unexplained one.
+        assert self._report(closed=True).unexplained_misses == {CLS: 1}
+        assert "known blindness declared and unpatched" not in self._report(closed=True).statement()
+
+    def test_a_class_nothing_ran_against_has_no_unexplained_misses(self) -> None:
+        # Its records are unmeasured rather than missed. Counting them would
+        # merge "the detector did not see it" with "there is no detector".
+        report = score([], [a_record()], resolver())
+        assert report.by_class[CLS].false_negatives == 1
+        assert report.unexplained_misses == {}

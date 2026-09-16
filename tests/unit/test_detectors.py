@@ -41,6 +41,7 @@ from contract_assay.detectors.loading import (
     call_verdict,
     load_detector,
 )
+from contract_assay.detectors.reference import AccessControlDetector
 from contract_assay.models import (
     DifficultyLevel,
     EvidenceRef,
@@ -865,3 +866,75 @@ contract Vault {
         # Same reasoning as the gate: a submission that could skip it would have
         # its unverifiable claims accepted.
         assert not hasattr(Ok(), "check_citation")
+
+
+class TestTheBlindnessRegisterIsCheckable:
+    """Each claimed blindness is isolated, not inferred from one silent record.
+
+    The first attempt declared one entry and attributed the silence to it. Four
+    minimal cases showed two independently sufficient conditions, and the record
+    trips both -- so the single entry was true and not sufficient, and a reader
+    would have concluded that removing the guard reference would make the record
+    visible. It would not. A cause recorded wrongly points at the wrong fix,
+    whether it is a harvest loss or a detector's own limits.
+
+    Fixtures are hand-written and reproduce the *shape*: no third-party source
+    is vendored here.
+    """
+
+    BASE = """contract R {{
+    address public owner;
+    mapping(address => uint256) public shares;
+
+    function deposit(uint256 amount, address from, address to) external {{
+{guard}
+{effect}
+    }}
+}}
+"""
+    GUARD = "        require(IVisor(from).owner() == msg.sender);"
+    WRITE = "        shares[to] += amount;"
+    EXTERNAL = "        v.mint(to, amount);"
+
+    def _fires(self, *, guard: bool, external: bool) -> list[str]:
+        source = self.BASE.format(
+            guard=self.GUARD if guard else "",
+            effect=self.EXTERNAL if external else self.WRITE,
+        )
+        evidence = AccessControlDetector().evidence(a_context(source=source, path="src/R.sol"))
+        return [e.locator.function for e in evidence]
+
+    def test_the_predicate_works_when_neither_condition_holds(self) -> None:
+        # The control. Without it, "silent" would not distinguish a blindness
+        # from a predicate that never fires.
+        assert self._fires(guard=False, external=False) == ["deposit"]
+
+    def test_an_unsound_guard_silences_it(self) -> None:
+        assert self._fires(guard=True, external=False) == []
+
+    def test_an_external_effect_silences_it(self) -> None:
+        # Independently of the guard, which is what makes it a second entry
+        # rather than a restatement of the first.
+        assert self._fires(guard=False, external=True) == []
+
+    def test_both_together_silence_it(self) -> None:
+        assert self._fires(guard=True, external=True) == []
+
+    def test_both_shapes_are_declared(self) -> None:
+        shapes = [b.shape for b in AccessControlDetector().known_blindness]
+        assert len(shapes) == 2
+        assert any("present and unsound" in s for s in shapes)
+        assert any("external call" in s for s in shapes)
+
+    def test_neither_is_isolated_by_its_record(self) -> None:
+        # The record trips both, so closing one will not make it visible, and
+        # the entry says so rather than leaving a reader to assume otherwise.
+        for entry in AccessControlDetector().known_blindness:
+            assert entry.isolated is False
+
+    def test_each_entry_names_a_reason(self) -> None:
+        # A blindness with no reason is a bug report filed against oneself and
+        # left open.
+        for entry in AccessControlDetector().known_blindness:
+            assert entry.unpatched_because.strip()
+            assert entry.demonstrated_by.strip()

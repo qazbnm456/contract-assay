@@ -59,6 +59,7 @@ from contract_assay.models import (
     EvidenceTier,
     FailedCheck,
     Finding,
+    KnownBlindness,
     RejectionKind,
     SkipReason,
     VulnerabilityClass,
@@ -452,6 +453,16 @@ class Detector(ABC):
     detector_id: ClassVar[str]
     class_id: ClassVar[VulnerabilityClass]
     api_version: ClassVar[str]
+
+    known_blindness: ClassVar[tuple[KnownBlindness, ...]] = ()
+    """Defect shapes this detector cannot see, each proved by a corpus record.
+
+    Empty by default, and not one of the three required declarations: a detector
+    with nothing demonstrated against it has nothing to declare, and demanding
+    an entry would produce invented ones. It is populated when a record shows a
+    shape the detector is silent on -- see `models.KnownBlindness` for why that
+    is reported apart from a score rather than beside it.
+    """
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Check the declaration at class-definition time.

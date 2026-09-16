@@ -427,11 +427,29 @@ blindness is systematic — every defective guard that mentions `msg.sender` is
 invisible — and closing it means deciding whether the other side of the
 comparison is caller-controlled, which is def-use through an external call.
 
-Two things follow. It is the first defect the incident population has shown that
-no review record in the corpus did, which is the complementarity §6.6 predicts
-being observed rather than argued. And it is a recall gap now *measurable*
-rather than asserted: the record exists, the detector is silent on it, and the
-score says 33% where it would otherwise have said nothing.
+What this establishes, and what it does not, are worth separating because the
+second is tempting.
+
+It establishes a **demonstrated blindness**, and that is certain at one record
+because it is a proof rather than a statistic. One counterexample settles "this
+predicate cannot see this shape" permanently, and adding records cannot unsettle
+it.
+
+It does **not** bear on §6.6's complementarity prediction, though it arrived
+from the population that prediction is about. §6.6 predicts complementarity *by
+class* — that the classes one population is thin in are the ones the other is
+thick in. This is a new defect *shape* inside `access_control`, which both
+populations already cover. That exploited defects differ in shape from reviewed
+ones within a shared class is a different claim, quite possibly true, and one
+§6.6 does not make. Separately, novelty is cheap in a corpus this thin: eleven
+records across five classes have seen almost nothing, so any twelfth record has
+a high prior of showing something unseen whatever population it came from. The
+observation would carry weight only once enough had been seen that novelty were
+surprising.
+
+Recorded this way because the failure mode is specific and was nearly walked
+into here: an observation feels like confirmation because it arrived from the
+population the prediction concerns, while testing something else entirely.
 
 ### 4.3 What nine classes means for the claim
 
@@ -1377,6 +1395,15 @@ must not rank alongside one that does not.
 The common shape: wherever the harness tidies away output a detector should not
 have produced, it also removes the incentive not to produce it.
 
+The same rule applies to what a detector *omits*, and that took a separate
+mechanism. A declared blindness (§7.3) names a record the detector is silent on,
+which makes a claimed blindness checkable by running it. Nothing can force a
+detector to declare one it would rather not, so the report states how many
+misses no declared blindness accounts for — an undeclared miss then costs
+visibility rather than nothing. A class nothing ran against is excluded from
+that count, because its records are unmeasured rather than missed and merging
+the two would be the conflation this report exists to prevent.
+
 A fourth instance was found by running three detectors against eleven records
 rather than by reading the code, and it was the one this rule missed. 90
 verified findings went in and 2 came out: the per-class loop visited only the
@@ -1403,6 +1430,47 @@ records was present in the runs.
 Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.
+
+### 7.3 A score and a blindness are different kinds of claim
+
+A score is an estimate from a sample and it moves with the sample: add a hundred
+records of a class and its recall becomes some other number. A **demonstrated
+blindness** is a fact about the instrument and it does not move — one
+counterexample settles "this predicate cannot see this shape" permanently, which
+is why it is certain at a single record where no score ever is.
+
+That asymmetry decides how it is reported. A blindness gets **its own line**,
+not a caveat beside the score, because burying a certain claim inside an
+uncertain one loses the certain half and makes both read as provisional. It is
+the same separation that keeps `invalid` out of the confusion matrix: different
+things must not share a number, and here two different kinds of claim must not
+share a sentence.
+
+So each detector declares a register of shapes it cannot see, carried on every
+run by the harness rather than asserted at report time. Each entry names the
+shape as a *property* rather than an instance, the corpus record that
+demonstrates it, why it is unpatched, whether that record **isolates** it, and
+what closed it once something has. The last field makes the register a work list
+rather than a graveyard: when a tier lands and an entry closes, the entry names
+the change that closed it and stops excusing a miss, so a regression resurfaces
+as an unexplained one.
+
+The `isolated` field earned its place immediately. The first register entry
+written here attributed a detector's silence to one shape. Four minimal cases
+then showed **two** independently sufficient conditions — a storage write with
+no guard fires; the same write with an unsound guard does not; an external
+effect with no guard does not — and the record trips both. The single entry was
+true and insufficient, and would have told a reader that fixing the guard
+recognition made the record visible. It does not. Which is §6.3's rule about
+causes, arriving from the detector's side: a cause recorded wrongly points at
+the wrong fix, and that holds for an instrument's account of its own limits as
+much as for a harvest loss.
+
+What a reader gets from the pair that neither gives alone: seeing
+"`access_control` 33%" beside "known blindness: a guard that is present and
+unsound" tells them which way the number moves on a corpus containing more of
+that shape. A score alone cannot say that, and it is what a reader most needs to
+know.
 
 ## 8. Layout and status
 

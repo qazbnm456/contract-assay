@@ -38,6 +38,7 @@ __all__ = [
     "FailedCheck",
     "Finding",
     "InvalidReason",
+    "KnownBlindness",
     "Locator",
     "Outcome",
     "RejectionKind",
@@ -236,6 +237,71 @@ class EvidenceTier(StrEnum):
 
     SYNTACTIC = "syntactic"
     """Parsed only: syntax tree, no types, no data flow."""
+
+
+class KnownBlindness(_Frozen):
+    """A defect shape a detector cannot see, and the record that proves it.
+
+    A score and a blindness are not a strong and a weak version of one claim. A
+    score is an estimate from a sample and it moves with the sample: add a
+    hundred records of a class and its recall becomes some other number. A
+    demonstrated blindness is a fact about the instrument and it does not move
+    -- one counterexample settles "this predicate cannot see this shape"
+    permanently, which is why it is certain at a single record where no score
+    ever is.
+
+    That asymmetry is why it is reported on its own line rather than as a
+    caveat beside the score. Burying a certain fact inside an uncertain one
+    loses the certain half, and the caveat reads as though both were provisional.
+
+    Declared on the detector and carried on every run, so a submission's score
+    cannot be reported without its declared blindnesses travelling beside it.
+    Self-declaration is the obvious weakness and it is bounded in one direction
+    only: `demonstrated_by` names a corpus record, which makes a *claimed*
+    blindness checkable -- run the detector and confirm the silence. Nothing can
+    force a detector to declare a blindness it would rather not, so the score
+    reports how many misses no declared blindness accounts for, which is the
+    closest available thing to making omission visible.
+    """
+
+    shape: str = Field(
+        min_length=1,
+        description=(
+            "The defect shape that is invisible, as a property rather than as one "
+            "instance of it -- 'a guard that references msg.sender inside the broken "
+            "comparison', not 'the Visor bug'."
+        ),
+    )
+    demonstrated_by: str = Field(
+        min_length=1,
+        description=(
+            "Record id of a corpus record this detector is silent on. What makes the "
+            "entry a proof rather than an opinion, and what makes it checkable."
+        ),
+    )
+    unpatched_because: str = Field(
+        min_length=1,
+        description=(
+            "Why it is a stated gap rather than a fix. A blindness with no reason is a "
+            "bug report filed against oneself and left open."
+        ),
+    )
+    isolated: bool = Field(
+        default=True,
+        description=(
+            "Whether `demonstrated_by` shows this shape alone. False when the record "
+            "trips several independently sufficient blindnesses at once, so closing "
+            "this one will not make the detector see that record."
+        ),
+    )
+    closed_by: str | None = Field(
+        default=None,
+        description=(
+            "What closed it, once something has. Present so the register is a work "
+            "list rather than a graveyard: an entry that can be closed is falsifiable "
+            "in the direction that matters."
+        ),
+    )
 
 
 class EvidenceRef(_Frozen):
@@ -489,6 +555,14 @@ class DetectorRun(_Frozen):
     evidence: list[EvidenceRef] = Field(
         default_factory=list,
         description="Everything the deterministic phase observed, reported whatever the verdict.",
+    )
+
+    known_blindness: list[KnownBlindness] = Field(
+        default_factory=list,
+        description=(
+            "Defect shapes this detector declares it cannot see, copied from the "
+            "detector by the runner so that a score cannot be reported without them."
+        ),
     )
 
     invalid_reason: InvalidReason | None = None
