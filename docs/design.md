@@ -652,11 +652,12 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   "a human would map this" was counted as "the table could map this". The number
   wants an independent pass before anything rests on it.
 
-  Four independent sources have now been measured for class mapping, and they
-  agree: 18% over 87 findings from one contest platform, 18% over 400 from a
-  second, 32% over 19 from a third, and 17% over 424 from a single researcher's
-  curated database spanning 87 reviews and 69 protocols. The intervals all
-  overlap around a fifth. That is a property of the *population* rather than of
+  Five independent sources have now been measured for class mapping, and they
+  agree: 18% over 87 findings from one contest platform, 20% over 400 from a
+  second, 32% over 19 from a third, 17% over 424 from a single researcher's
+  curated database spanning 87 reviews and 69 protocols, and 11% over 224 from a
+  bounty-competition archive. The intervals all overlap around a sixth to a
+  fifth. That is a property of the *population* rather than of
   any platform's format or curation, which is what the incident-derivation of the
   class list predicts (§4.3) — and it means no further review-platform adapter
   will move it.
@@ -690,6 +691,20 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   declaration index — so their agreement is genuine confirmation of the kind
   §6.6 says a derived locator lacks, and the quote makes it falsifiable by the
   same mechanism that checks a detector's citation.
+
+  One platform makes the branch-reference problem look tractable rather than
+  merely large, and the distinction is where the reference lives. A bounty
+  competition archive of about a thousand findings cites exactly one Solidity
+  file per finding and pins **none** of them: every link names a branch. That is
+  worse per finding than a platform pinning half. But a commit identifies the
+  *competition's* audited snapshot, not the finding, so establishing it is one
+  lookup per competition rather than one per finding — forty lookups for a
+  thousand findings. Where a platform declares its scope commit, substituting it
+  for a branch reference is a bounded inference with a stateable assumption: that
+  the repository did not move within scope during the competition. Resolving the
+  branch as it stands today is unbounded drift instead, with no assumption anyone
+  can write down, which is why §6.3 refuses branch references now rather than
+  resolving them.
 
   Part of it is recoverable rather than merely measurable. A report naming a file
   and a function but no span can have the span looked up in the declaration
