@@ -59,6 +59,7 @@ from contract_assay.models import (
     EvidenceTier,
     FailedCheck,
     Finding,
+    RejectionKind,
     SkipReason,
     VulnerabilityClass,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "ModelTaskSpec",
     "SubmissionLimits",
     "TaskOutput",
+    "check_citation",
     "gate",
     "is_compatible",
     "validate_claim",
@@ -338,6 +340,77 @@ def gate(source: str) -> SkipReason | None:
     return None
 
 
+def check_citation(ctx: AnalysisContext, finding: Finding) -> FailedCheck | None:
+    """Re-read the source at a finding's locator and compare it to the quote.
+
+    Harness-owned and always run, for the same reason `gate` is: the data
+    contract says a finding is re-verified against source unconditionally, every
+    run, and that is simply false if each submission has to remember to do it. A
+    detector that omitted the check would have its unverifiable claims accepted,
+    which is the same hole as an overridable gate wearing different clothes. So
+    `verdict()` is left for class-specific rules, and this runs whatever it
+    returns.
+
+    Every failure here is a `CITATION` rejection, never a `VERDICT` one, and the
+    distinction decides what the whole run is. A finding whose quote is not where
+    it says establishes nothing about whether the class is present at that
+    location -- the detector may have found a real defect and mis-cited it, or
+    invented both. Recording it as `clean` would assert "nothing here" on the
+    strength of a broken citation.
+
+    Comparison normalises leading and trailing whitespace per line and ignores
+    blank lines. Indentation is not semantic, and a model reproducing a
+    function's body with its indentation shifted has still quoted the code;
+    demanding byte-exact whitespace would reject true findings for a reason
+    unrelated to whether they are true, which is a wrong skip paid for in
+    recall.
+    """
+    # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
+    # on \v, \f, \x1c-\x1e and U+2028/2029, none of which a compiler or an
+    # editor treats as a line break.
+    lines = ctx.source.split("\n")
+    locator = finding.locator
+
+    if locator.end_line > len(lines):
+        return FailedCheck(
+            check="citation_span_out_of_range",
+            kind=RejectionKind.CITATION,
+            detail=f"span ends at {locator.end_line}, source has {len(lines)} lines",
+        )
+
+    def normalise(text: str) -> str:
+        return "\n".join(line.strip() for line in text.split("\n") if line.strip())
+
+    span = normalise("\n".join(lines[locator.start_line - 1 : locator.end_line]))
+    quote = normalise(finding.quote)
+    if not quote:
+        return FailedCheck(
+            check="citation_quote_absent_from_source",
+            kind=RejectionKind.CITATION,
+            detail="the quote is blank once whitespace is normalised",
+        )
+    if quote in span:
+        return None
+
+    # Distinguished because the two mean different things about the detector: one
+    # quoted real code and pointed at the wrong place, the other quoted code that
+    # is not in this file at all.
+    if quote in normalise(ctx.source):
+        return FailedCheck(
+            check="citation_quote_elsewhere_in_file",
+            kind=RejectionKind.CITATION,
+            detail=(
+                f"the quoted text is in {locator.file} but not at lines "
+                f"{locator.start_line}-{locator.end_line}"
+            ),
+        )
+    return FailedCheck(
+        check="citation_quote_absent_from_source",
+        kind=RejectionKind.CITATION,
+        detail=f"the quoted text does not appear in {locator.file}",
+    )
+
+
 # ---------------------------------------------------------------------------
 # The interface
 # ---------------------------------------------------------------------------
@@ -395,15 +468,33 @@ class Detector(ABC):
         raises until `ABCMeta` fills it in, and it is filled in *after* this hook
         runs -- so consulting it here reports every class as concrete, including
         the abstract ones this exemption exists for.
+
+        A class declaring *none* of the three is exempt too, and that second
+        exemption is not the same as the first. A shared base that implements
+        both methods and leaves the declarations to its subclasses has no
+        abstract methods left, so the test above would treat it as a submission
+        entry point and demand a `detector_id` it has no business owning --
+        pushing authors into inventing a fake one, which is exactly what this
+        check exists to prevent. Declaring none of them says "not an entry
+        point"; declaring some but not all is the actual mistake, and it is
+        still caught, with the missing fields named.
         """
         super().__init_subclass__(**kwargs)
         if any(
             getattr(getattr(cls, name, None), "__isabstractmethod__", False) for name in dir(cls)
         ):
             return
-        for field in ("detector_id", "class_id", "api_version"):
-            if getattr(cls, field, None) is None:
-                raise TypeError(f"{cls.__name__} must declare {field}")
+
+        fields = ("detector_id", "class_id", "api_version")
+        declared = [field for field in fields if getattr(cls, field, None) is not None]
+        if not declared:
+            return
+        missing = [field for field in fields if field not in declared]
+        if missing:
+            raise TypeError(
+                f"{cls.__name__} declares {', '.join(declared)} but not "
+                f"{', '.join(missing)}; a detector declares all three or none"
+            )
         if not is_compatible(cls.api_version):
             raise TypeError(
                 f"{cls.__name__} declares api_version {cls.api_version!r}, which is "

@@ -105,6 +105,33 @@ earned.
 
 ### What you do *not* control
 
+**Citation re-verification.** After your `verdict()` returns, the harness
+re-reads the source at each finding's locator and compares it to the finding's
+`quote`. It runs for every finding on every run, you cannot skip it, and there is
+no method to override — the data contract says a finding is re-verified
+unconditionally, and that is only true if the harness owns it.
+
+Every failure is a `CITATION` rejection, so the run becomes `invalid` rather than
+`clean`. A finding whose quote is not where it says establishes nothing about
+whether the class is present at that location.
+
+The comparison policy is fixed by the harness and identical for every
+submission, so that two detectors reporting the same defect cannot get different
+outcomes from how they happened to format a string:
+
+- Leading and trailing whitespace is stripped **per line**, and blank lines are
+  ignored. Indentation is not semantic; a quote reproduced with its indentation
+  shifted has still quoted the code.
+- Everything else is compared literally. Identifiers, punctuation, operators and
+  the order of lines all have to match.
+- The quote must appear **within** the locator's line span — it need not be the
+  whole span, but a quote wider than the span is a mismatch.
+- A quote that is blank once normalised is a failure, not a pass.
+
+Three failures are distinguished, because they say different things about a
+detector: `citation_span_out_of_range`, `citation_quote_elsewhere_in_file` (real
+code, wrong place) and `citation_quote_absent_from_source`.
+
 **Skipping.** There is no `gate()` method to override. Whether a source unit is
 passed over is decided by `detectors.gate`, outside your submission, and it
 blocks only where there is provably nothing to read — the file does not parse, or

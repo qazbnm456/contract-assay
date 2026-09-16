@@ -25,6 +25,7 @@ from contract_assay.detectors.base import (
     ModelTaskSpec,
     SubmissionLimits,
     TaskOutput,
+    check_citation,
     gate,
     is_compatible,
     validate_claim,
@@ -333,7 +334,9 @@ class TestDetectorDeclaration:
         assert Ok().level is VulnerabilityClass.REENTRANCY.level
 
     @pytest.mark.parametrize("missing", ["detector_id", "class_id", "api_version"])
-    def test_a_missing_declaration_fails_at_definition_time(self, missing: str) -> None:
+    def test_a_partial_declaration_fails_at_definition_time(self, missing: str) -> None:
+        # Declaring some but not all is the actual mistake, and the message names
+        # what is absent so the author does not have to guess.
         body: dict[str, Any] = {
             "detector_id": "x",
             "class_id": VulnerabilityClass.REENTRANCY,
@@ -342,8 +345,30 @@ class TestDetectorDeclaration:
             "verdict": lambda self, ctx, f, e: [],
         }
         del body[missing]
-        with pytest.raises(TypeError, match=f"must declare {missing}"):
+        with pytest.raises(TypeError, match=f"but not {missing}"):
             type("Broken", (Detector,), body)
+
+    def test_a_shared_base_declaring_none_of_them_is_allowed(self) -> None:
+        # A base that implements both methods and leaves the declarations to its
+        # subclasses has no abstract methods left, so an abstractness test alone
+        # would demand a detector_id it has no business owning -- pushing authors
+        # into inventing a fake one, which is what the check exists to prevent.
+        class SharedBase(Detector):
+            def evidence(self, ctx: AnalysisContext) -> Sequence[EvidenceRef]:
+                return []
+
+            def verdict(
+                self, ctx: AnalysisContext, finding: Finding, evidence: Sequence[EvidenceRef]
+            ) -> Sequence[FailedCheck]:
+                return []
+
+        class Leaf(SharedBase):
+            detector_id = "leaf"
+            class_id = VulnerabilityClass.REENTRANCY
+            api_version = API_VERSION
+
+        assert Leaf().detector_id == "leaf"
+        assert getattr(SharedBase, "detector_id", None) is None
 
     def test_an_incompatible_version_fails_at_definition_time(self) -> None:
         with pytest.raises(TypeError, match="incompatible"):
@@ -700,3 +725,143 @@ class TestCallClassify:
 
         with pytest.raises(SubmissionFault, match="already precise"):
             call_classify(Faulty(), a_context(labels=LABELS), [])
+
+
+@pytest.mark.usefixtures("isolated_imports")
+class TestASharedBaseIsNotAnEntryPoint:
+    def test_pointing_a_manifest_at_a_base_is_refused(self, tmp_path: Path) -> None:
+        # `__init_subclass__` lets an undeclared base through precisely because it
+        # is not meant to be an entry point, so the loader has to be the one that
+        # says so -- otherwise reading `api_version` off it raises AttributeError
+        # and a malformed submission arrives as a crash.
+        body = """
+from collections.abc import Sequence
+
+from contract_assay.detectors.base import Detector
+
+class SharedBase(Detector):
+    def evidence(self, ctx):
+        return []
+
+    def verdict(self, ctx, finding, evidence):
+        return []
+"""
+        write_submission(tmp_path, "sub_base_only", body)
+        manifest = SubmissionManifest(
+            submission_id="team-alpha",
+            api_version=API_VERSION,
+            entry_point="sub_base_only:SharedBase",
+        )
+        with pytest.raises(MalformedSubmission, match="shared base rather than a detector"):
+            load_detector(manifest, search_path=tmp_path)
+
+    def test_an_attribute_deleted_after_definition_is_caught(self, tmp_path: Path) -> None:
+        body = GOOD_SUBMISSION + "\ndel MyDetector.detector_id\n"
+        write_submission(tmp_path, "sub_deleted", body)
+        manifest = SubmissionManifest(
+            submission_id="team-alpha",
+            api_version=API_VERSION,
+            entry_point="sub_deleted:MyDetector",
+        )
+        with pytest.raises(MalformedSubmission, match="declares no detector_id"):
+            load_detector(manifest, search_path=tmp_path)
+
+
+class TestCitationIsReVerifiedByTheHarness:
+    """Re-verification is harness-owned, always runs, and is never a judgement.
+
+    The data contract says a finding is re-verified against source
+    unconditionally, every run. That sentence is false if each submission has to
+    remember to do it, and a submission that omitted the check would have its
+    unverifiable claims accepted -- the overridable-gate hole with a different
+    label.
+    """
+
+    SOURCE = """\
+contract Vault {
+    function withdraw(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+    }
+
+    function other() external {
+        payable(msg.sender).transfer(1);
+    }
+}
+"""
+
+    def _ctx(self) -> AnalysisContext:
+        return a_context(source=self.SOURCE, path="src/Vault.sol")
+
+    def _finding(self, quote: str, start: int, end: int) -> Finding:
+        return a_finding(
+            quote=quote,
+            locator=a_locator(file="src/Vault.sol", start_line=start, end_line=end),
+        )
+
+    def test_a_quote_matching_its_locator_passes(self) -> None:
+        assert (
+            check_citation(
+                self._ctx(), self._finding("payable(msg.sender).transfer(amount);", 3, 3)
+            )
+            is None
+        )
+
+    def test_indentation_is_not_semantic(self) -> None:
+        # A model reproducing a line with its indentation shifted has still
+        # quoted the code. Demanding byte-exact whitespace would reject true
+        # findings for a reason unrelated to whether they are true, which is a
+        # wrong skip paid for in recall.
+        quoted = "         payable(msg.sender).transfer(amount);   "
+        assert check_citation(self._ctx(), self._finding(quoted, 3, 3)) is None
+
+    def test_blank_lines_are_ignored(self) -> None:
+        quoted = "\n\npayable(msg.sender).transfer(amount);\n\n"
+        assert check_citation(self._ctx(), self._finding(quoted, 3, 3)) is None
+
+    def test_a_multi_line_quote_matches_its_span(self) -> None:
+        quoted = (
+            "function withdraw(uint256 amount) external {\npayable(msg.sender).transfer(amount);\n}"
+        )
+        assert check_citation(self._ctx(), self._finding(quoted, 2, 4)) is None
+
+    def test_real_code_at_the_wrong_place_is_distinguished(self) -> None:
+        # The two failures mean different things about the detector: one quoted
+        # real code and pointed at the wrong place, the other quoted code that is
+        # not in the file at all.
+        failure = check_citation(
+            self._ctx(), self._finding("payable(msg.sender).transfer(amount);", 7, 7)
+        )
+        assert failure is not None
+        assert failure.check == "citation_quote_elsewhere_in_file"
+
+    def test_a_quote_absent_from_the_file_is_reported(self) -> None:
+        failure = check_citation(self._ctx(), self._finding("selfdestruct(owner);", 3, 3))
+        assert failure is not None
+        assert failure.check == "citation_quote_absent_from_source"
+
+    def test_a_span_past_the_end_of_the_source_is_reported(self) -> None:
+        failure = check_citation(self._ctx(), self._finding("anything", 99, 99))
+        assert failure is not None
+        assert failure.check == "citation_span_out_of_range"
+
+    def test_a_quote_that_is_only_whitespace_is_reported(self) -> None:
+        failure = check_citation(self._ctx(), self._finding("   \n\t ", 3, 3))
+        assert failure is not None
+        assert failure.check == "citation_quote_absent_from_source"
+
+    @pytest.mark.parametrize(
+        "quote",
+        ["selfdestruct(owner);", "   \n ", "payable(msg.sender).transfer(amount);"],
+    )
+    def test_every_failure_is_a_citation_never_a_verdict(self, quote: str) -> None:
+        # A finding whose quote is not where it says establishes nothing about
+        # whether the class is present there. Recording it as a verdict would
+        # make the run `clean` -- asserting "nothing here" on the strength of a
+        # broken citation.
+        failure = check_citation(self._ctx(), self._finding(quote, 7, 7))
+        assert failure is None or failure.kind is RejectionKind.CITATION
+
+    def test_the_check_is_not_a_detector_method(self) -> None:
+        # Same reasoning as the gate: a submission that could skip it would have
+        # its unverifiable claims accepted.
+        assert not hasattr(Ok(), "check_citation")

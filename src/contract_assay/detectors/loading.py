@@ -179,6 +179,22 @@ def load_detector(manifest: SubmissionManifest, *, search_path: Path | None = No
             f"instantiating {manifest.entry_point} failed: {type(exc).__name__}: {exc}"
         ) from exc
 
+    # Re-read from the instance rather than trusting the definition-time check.
+    # A class declaring none of the three is a legitimate shared base, which
+    # `__init_subclass__` lets through precisely because it is not meant to be an
+    # entry point -- and a manifest can still point at one. A submission can also
+    # delete an attribute after the class body has passed.
+    missing = [
+        field
+        for field in ("detector_id", "class_id", "api_version")
+        if getattr(detector, field, None) is None
+    ]
+    if missing:
+        raise MalformedSubmission(
+            f"{manifest.entry_point} declares no {', '.join(missing)}; it looks like a "
+            "shared base rather than a detector"
+        )
+
     if not is_compatible(detector.api_version):
         raise IncompatibleSubmission(
             f"{manifest.entry_point} declares api_version {detector.api_version!r}; "
