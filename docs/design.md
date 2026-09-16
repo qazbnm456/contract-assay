@@ -65,9 +65,9 @@ different objectives.
 │    Structural facts about the code, each with a location.
 │    Cannot be influenced by anything the model later says.
 │
-├─ task (RLMTask) ──────────── the model, in a sandbox
+├─ plan() ─▶ the model ─────── optional, in a sandbox
 │    The contract is a variable it explores, not text pasted into a prompt.
-│    Produces Findings carrying citations.
+│    Produces Findings carrying citations. Returning None runs no model.
 │
 └─ verdict() ───────────────── deterministic, always runs
      Accepts or rejects each finding, naming every predicate that rejected.
@@ -106,6 +106,14 @@ rejected finding is retained with `status=unverified` and the list of predicates
 that rejected it, so the recall cost of every rule is a number someone can look
 at and argue with.
 
+The gate is owned by the harness and is not overridable. Its two blocking
+conditions are universal rather than per-class — they are exactly the two members
+of `SkipReason` — so there is nothing for a detector to contribute. More
+importantly, a per-detector skip is indistinguishable, in the recorded result,
+from a detector that looked and found nothing. Offering one would hand a
+submission a way to convert misses into exclusions with nothing downstream able
+to tell the two apart.
+
 ### 2.3 Predicates work on shapes, not names
 
 Identifiers are attacker-controlled and author-controlled; shapes are not. A
@@ -123,6 +131,48 @@ Corollaries:
   immune to renaming.
 - Use a trie for large synonym sets (router interfaces, oracle interfaces,
   vault entry points) rather than alternating regex.
+
+### 2.4 The interface is a public API
+
+The three layers above are also what people outside this project write against:
+a submitted detector is a `Detector` subclass, loaded from a declared entry point
+and run under isolation. `docs/api.md` is the external-facing contract and states
+the compatibility surface. Two consequences belong here, because they changed the
+design rather than merely describing it.
+
+**Nothing a submission returns is taken on trust.** Among cooperating authors an
+abstract base class is a convention: nothing checks that `verdict()` returned
+what it promised, and nothing needs to. Across an untrusted boundary the same
+class is a claim. Every returned value is therefore re-validated, and anything
+unusable becomes `invalid` with `schema_violation` — never a crash, and never
+`clean`. Recording a submission's bug as `clean` would report the code under test
+as sound on the strength of a defect in the code testing it.
+
+The refusals that matter are the charitable ones. A method returning `None` where
+a sequence belongs is rejected, `verdict()` included: reading `None` as "no
+rejections" means a `verdict()` that falls off an exception path accepts every
+finding handed to it. A returned `str` is rejected although strings iterate,
+because it would otherwise decompose into characters and fail a layer deeper with
+an unrecognisable message.
+
+**Inputs travel in one object.** `AnalysisContext` exists so that the interface
+can gain capabilities without changing a signature any submission implements.
+Adding a field is a minor version; adding a parameter to `evidence()` would break
+every submission ever written against it. A stability commitment is worth only as
+much as the mechanism that lets the API keep growing underneath it.
+
+For the same reason the interface owns no task type from the model runtime.
+Re-exporting a third-party type inherits stability guarantees this project does
+not control and cannot promise on, so `plan()` returns a declarative
+`ModelTaskSpec` owned here and the harness translates it on its own side of the
+boundary.
+
+Isolation itself is infrastructure and sits outside this package: loading a
+submission imports its module, and importing a module runs its top-level code.
+The manifest is what makes external isolation possible — it is readable without
+executing anything, so what will run can be decided before it runs. Calling the
+loader a sandbox would be precisely the error §8 exists to prevent, reporting an
+intention as a capability.
 
 ## 3. Evidence tiers
 
@@ -377,6 +427,44 @@ Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.
 
+### 7.1 Two scores, reported side by side
+
+Location-scored results are reported alongside a classification-only score,
+which matches a prediction to ground truth on labels alone — class, subclass,
+severity, description similarity — per repository, with no file, function or line
+involved.
+
+Running both is not a concession to compatibility. The gap between them is the
+measurement. A submission scoring well on labels and poorly on locations is
+recognising which kinds of defect a protocol of that shape usually carries, which
+is a real skill and not the one being claimed; the same submission scoring well
+on both has found something. A single figure averages those two states into a
+number that cannot distinguish them — the failure of §1.1, reappearing one level
+up.
+
+So the two columns are reported side by side, always, and never averaged into a
+composite. Where a ranking needs one number, completion rate *multiplies* rather
+than folds in: `invalid` runs stay out of the confusion matrix and cost the
+submission separately, so a detector crashing on a third of the corpus ranks
+below one that does not, without any error ever being counted as a judgement.
+
+Two details recorded now because they are cheap to write down and expensive to
+rediscover:
+
+- Assigning predictions to ground truth **greedily** and assigning them
+  **optimally** produce different numbers, and greedy is not an approximation of
+  optimal — it is a different rule. Whichever a scorer uses has to be stated
+  where it is used. Two scorers silently disagreeing about assignment is a
+  discrepancy with no visible cause.
+- A detector is not deterministic, so a submission does not have *a* score. A
+  scorer reports mean and spread over repeated runs; a single figure asserts a
+  precision the measurement does not have, and adding the repetition afterwards
+  is a schema change rather than a reporting change.
+
+The label taxonomy is supplied as data (`LabelSpaceSpec`), never built in. A
+scorer that hardcodes one label set can score one exercise; one that takes a
+taxonomy as input can score any.
+
 ## 8. Layout and status
 
 Status is stated per component because a design document that describes planned
@@ -389,17 +477,21 @@ work in the present tense reports intentions as capabilities.
 | `corpus/verify.py` | verification against pinned source | **built** |
 | `evidence/solidity.py` | syntactic backend: declarations and spans | **built** |
 | `cli.py` | `verify`, `declarations` | **built** |
+| `detectors/base.py` | the public detector interface (§2.4) | **built** |
+| `detectors/loading.py` | manifest loading, the untrusted boundary (§2.4) | **built** |
 | `evidence/` predicates | the shape-level predicate library (§2.3) | not started |
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
-| `detectors/` | `evidence()` / `task` / `verdict()` per class (§2) | not started |
+| `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | not started |
 | `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
-| `report/` | scoring, match strengths, stratification (§7) | not started |
+| `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
 
-Consequences worth stating plainly: §2.2's gate and verdict predicates exist as
-a rule for writing them, not as code; §3's tier degradation is represented in the
-type system but has no backend to degrade between; and §6.4, the mutation stage
-of §6.5 and all of §7 are design only. The only production path into `verify` today is the CLI resolving against a
+Consequences worth stating plainly: §2.2's gate is code, but its verdict
+predicates remain a rule for writing them rather than a library; §3's tier
+degradation is represented in the type system but has no backend to degrade
+between, so every result today is `syntactic`; no detector exists yet to exercise
+§2.4's interface end to end; and §6.4, the mutation stage of §6.5 and all of §7
+are design only. The only production path into `verify` today is the CLI resolving against a
 local checkout, which confirms that a record is coherent against the bytes on
 disk but not that those bytes belong to the pinned commit.
 
@@ -417,8 +509,12 @@ which is the one property no amount of prompt tuning can restore once lost.
 
 ## 9. Non-goals
 
-- **Severity assignment.** A value judgement, not an observation. Detectors are
-  asked only for facts they can point at.
+- **Severity on a located finding.** `Finding` carries no severity and will not
+  gain one: a model asked how bad a defect is states a value judgement as an
+  observation, and nothing can check it. Reproducing a severity a named auditor
+  recorded is a different claim — it has a ground truth to be wrong about — and
+  so it lives on `ClassificationClaim` (§7.1), scored against
+  `Provenance.reported_severity` and never mixed into located results.
 - **Bytecode-level analysis.** Corpus sources are repositories, most never
   deployed; and the classes here need source semantics that bytecode discards.
 - **Unverified on-chain contracts.** A real gap for deployed-contract

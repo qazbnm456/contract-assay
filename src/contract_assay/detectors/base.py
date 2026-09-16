@@ -1,0 +1,481 @@
+"""The detector interface, and the boundary it is trusted across.
+
+This module is a **public API**. Its compatibility surface, and what changing it
+costs, are stated in `docs/api.md`; everything named in `__all__` is covered by
+that commitment and everything prefixed with an underscore is not.
+
+Why that changes the design
+---------------------------
+An interface written for nine detectors in this repository and an interface
+strangers write submissions against are not the same artifact, even when the
+method names coincide. Two differences drive almost every decision below.
+
+*Trust.* A submission is arbitrary code. An abstract base class among
+cooperating authors is a convention: the compiler does not check that
+`verdict()` returns what it promised, and among colleagues it does not need to.
+Across an untrusted boundary the same class is a claim to be checked. So every
+value a submission hands back is re-validated before it is believed -- see
+`contract_assay.detectors.loading` -- and a submission that returns nonsense
+yields `invalid` with `schema_violation`, never a crash and never `clean`.
+
+*Stability.* A method signature that subclasses implement cannot gain a
+parameter without breaking every submission already written. So the inputs
+travel in one frozen object, `AnalysisContext`, which can gain fields
+compatibly, and the signatures stay fixed. This is the difference between
+"we added a capability" and "we broke the cohort's code".
+
+What this module deliberately does not do
+-----------------------------------------
+It does not sandbox anything. Loading a submission in this process runs the
+submission's module-level code in this process. Container isolation, egress
+denial and budget enforcement are infrastructure, and they sit *outside* this
+module; `SubmissionLimits` tells a detector what it has been allotted, but a
+detector that ignores it is stopped from outside or not at all. Documenting a
+limit is not enforcing one, and this file must not be read as providing
+isolation it has no way to provide.
+
+It also does not re-export a task type from the model harness. A public API that
+re-exports a third-party type silently inherits that type's stability guarantees,
+which this project does not control and cannot promise on. `ModelTaskSpec` is
+therefore a plain declarative record owned here, and translating it into whatever
+the model runtime wants is the harness's job, on the harness's side of the
+boundary.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from enum import StrEnum
+from typing import ClassVar
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from contract_assay.evidence.solidity import index_source
+from contract_assay.models import (
+    MAX_DESCRIPTION_CHARS,
+    DifficultyLevel,
+    EvidenceRef,
+    EvidenceTier,
+    FailedCheck,
+    Finding,
+    SkipReason,
+    VulnerabilityClass,
+)
+
+__all__ = [
+    "API_VERSION",
+    "AnalysisContext",
+    "ClassificationClaim",
+    "Detector",
+    "LabelSpaceSpec",
+    "ModelTaskSpec",
+    "SubmissionLimits",
+    "TaskOutput",
+    "gate",
+    "is_compatible",
+    "validate_claim",
+]
+
+
+API_VERSION = "1.0"
+"""Version of this interface, as `major.minor`.
+
+Major changes break submissions; minor changes do not. A submission declares the
+version it was written against and the loader refuses a major mismatch rather
+than failing somewhere deep in a run, where the cause would be attributed to the
+submission's logic instead of to a version skew.
+"""
+
+
+def is_compatible(declared: str) -> bool:
+    """True if a submission declaring `declared` can run against `API_VERSION`.
+
+    Same major version is the whole rule. A submission written against a newer
+    minor version than the host is accepted: minor versions only add, so the
+    fields it does not know about are ones it never reads.
+    """
+    try:
+        return declared.split(".", 1)[0] == API_VERSION.split(".", 1)[0]
+    except AttributeError:
+        return False
+
+
+class _Frozen(BaseModel):
+    """Immutable, and refuses unknown fields.
+
+    `extra="forbid"` is load-bearing on this boundary rather than merely tidy. A
+    submission returning an object with an extra key has misunderstood the
+    contract, and accepting it silently would let two different meanings of the
+    same type coexist until something downstream read the wrong one.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+# ---------------------------------------------------------------------------
+# What a detector is given
+# ---------------------------------------------------------------------------
+
+
+class SubmissionLimits(_Frozen):
+    """What one run is allotted.
+
+    Visible to the detector so that it can spend its allowance sensibly, and
+    enforced from outside because a limit a submission can choose to observe is
+    not a limit. Both halves are needed: without the record a detector cannot
+    plan, and without external enforcement the record is advice.
+    """
+
+    wall_seconds: int = Field(ge=1)
+    max_model_calls: int = Field(ge=0)
+    max_tokens: int = Field(ge=0)
+    escalation_allowed: bool = Field(
+        description="Whether the larger model may be requested. False at difficulty S."
+    )
+
+    @classmethod
+    def for_level(
+        cls, level: DifficultyLevel, *, wall_seconds: int, max_model_calls: int, max_tokens: int
+    ) -> SubmissionLimits:
+        """Limits with escalation metered by difficulty level.
+
+        The escape hatch is closed at `S` and open above it. Deriving the flag
+        here rather than letting a caller pass it means the policy lives in one
+        place; `DetectorRun` rejects an `S`-level escalation at construction, and
+        a flag set by hand could contradict it.
+        """
+        return cls(
+            wall_seconds=wall_seconds,
+            max_model_calls=max_model_calls,
+            max_tokens=max_tokens,
+            escalation_allowed=level is not DifficultyLevel.S,
+        )
+
+
+class LabelSpaceSpec(_Frozen):
+    """A label taxonomy, supplied as data.
+
+    Classification-style scoring needs a set of valid tags, subtags and severity
+    labels. Those belong to whoever is running the exercise, so they arrive as
+    data rather than living in this package: hardcoding one taxonomy would adopt
+    an arrangement this project has no reason to adopt, and would turn a general
+    capability into a special case for a single consumer.
+
+    `tags` maps each tag to its permitted subtags. An empty list means the tag
+    takes no subtag.
+    """
+
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    tags: dict[str, list[str]] = Field(min_length=1)
+    severities: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _labels_are_usable(self) -> LabelSpaceSpec:
+        if any(not tag.strip() for tag in self.tags):
+            raise ValueError("a tag must not be blank")
+        if any(not sev.strip() for sev in self.severities):
+            raise ValueError("a severity label must not be blank")
+        if len(set(self.severities)) != len(self.severities):
+            raise ValueError("severity labels must be distinct")
+        return self
+
+
+class AnalysisContext(_Frozen):
+    """Everything a detector is given for one source unit.
+
+    Inputs travel in one object so that the interface can gain capabilities
+    without changing any signature a submission implements. Adding a field here
+    is a minor version; adding a parameter to `evidence()` would break every
+    submission ever written against it.
+
+    `facts` carries evidence the harness computed before the detector ran --
+    today always the syntactic tier, later whatever the semantic backend
+    produces. A detector reads it instead of recomputing, which matters because
+    semantic facts may not be recomputable inside the sandbox at all: the
+    compiler and its dependency resolution live outside.
+    """
+
+    source_id: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    source: str = Field(description="The Solidity source under analysis.")
+    tier: EvidenceTier = Field(
+        description="Strongest backend that could read this unit. Never absent: a unit "
+        "that no backend could read is skipped by the gate and never reaches a detector."
+    )
+    level: DifficultyLevel
+    limits: SubmissionLimits
+    facts: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence the harness computed before the detector ran."
+    )
+    labels: LabelSpaceSpec | None = Field(
+        default=None,
+        description="Label taxonomy for classification output. None outside competition mode.",
+    )
+
+    @property
+    def classification_expected(self) -> bool:
+        """True when a label taxonomy was supplied, and so classification output is wanted."""
+        return self.labels is not None
+
+
+# ---------------------------------------------------------------------------
+# What a detector produces
+# ---------------------------------------------------------------------------
+
+
+class TaskOutput(StrEnum):
+    """Which shape of answer a model task is asked for."""
+
+    FINDINGS = "findings"
+    """Located claims, each carrying a quote that is re-verified against source."""
+
+    CLASSIFICATION = "classification"
+    """Repository-level labels, which no source check can confirm or refute."""
+
+    BOTH = "both"
+
+
+class ModelTaskSpec(_Frozen):
+    """A declarative description of what to ask the model.
+
+    Deliberately thin. This is the one part of the interface whose eventual shape
+    depends on a runtime this module does not import, so it says what is wanted
+    and leaves how to a translation layer on the harness's side. A richer spec
+    invented now would be a stability promise about a design that does not exist
+    yet, which is the most expensive kind of guess a versioned API can make.
+    """
+
+    instruction: str = Field(min_length=1)
+    expects: TaskOutput = TaskOutput.FINDINGS
+    max_steps: int | None = Field(default=None, ge=1)
+
+
+class ClassificationClaim(_Frozen):
+    """A repository-level label claim: what kind of bug, how bad, described.
+
+    Kept off `Finding` on purpose, and the separation is the point rather than
+    tidiness. A `Finding` carries a locator and a quote, so it can be checked
+    against source and refuted. A claim of this shape carries neither and cannot
+    be: "this repository has a high-severity access-control bug" is either
+    scored against a label list or not scored at all. Merging the two would let
+    an unfalsifiable claim inherit the credibility of a verified one.
+
+    Severity appears here and nowhere else in the system. `Finding` has no
+    severity field and will not get one -- a model inventing a severity is
+    stating a value judgement as an observation. Reproducing a severity that a
+    named auditor recorded, against a stated label list, is a different claim:
+    it has a ground truth to be wrong about. `Provenance.reported_severity`
+    holds that truth, and it is never compared with anything but this.
+    """
+
+    tag: str = Field(min_length=1)
+    subtag: str | None = None
+    severity: str = Field(min_length=1)
+    description: str = Field(
+        min_length=1,
+        max_length=MAX_DESCRIPTION_CHARS,
+        description="Prose description, scored by similarity against the reference text.",
+    )
+
+
+def validate_claim(claim: ClassificationClaim, spec: LabelSpaceSpec) -> list[str]:
+    """Problems that make `claim` unscorable against `spec`, or an empty list.
+
+    Returns every problem rather than the first. An author fixing a submission
+    should learn everything wrong with a claim in one run; reporting one problem
+    per attempt turns a three-field mistake into three rounds of guessing.
+    """
+    problems: list[str] = []
+
+    if claim.tag not in spec.tags:
+        problems.append(f"tag {claim.tag!r} is not in label space {spec.name!r}")
+    else:
+        permitted = spec.tags[claim.tag]
+        if claim.subtag is not None and claim.subtag not in permitted:
+            problems.append(f"subtag {claim.subtag!r} is not permitted under tag {claim.tag!r}")
+        elif claim.subtag is None and permitted:
+            problems.append(f"tag {claim.tag!r} requires a subtag, and none was given")
+
+    if claim.severity not in spec.severities:
+        problems.append(f"severity {claim.severity!r} is not in label space {spec.name!r}")
+
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# Admission
+# ---------------------------------------------------------------------------
+
+
+def gate(source: str) -> SkipReason | None:
+    """Whether a source unit may be passed over entirely. `None` means analyse it.
+
+    Harness-owned, and deliberately **not** a method on `Detector`. Both halves
+    of that are decisions.
+
+    Lenient by construction: it blocks only where there is provably nothing to
+    read. A wasted model call costs a fraction of a cent; a wrong skip costs a
+    true positive and leaves no trace in the output that it happened, so "this
+    looks unpromising" is never a reason. The two conditions below are the whole
+    list, which is why `SkipReason` has exactly two members.
+
+    Not overridable because a per-detector skip is indistinguishable, in the
+    recorded result, from a detector that looked and found nothing. Letting a
+    submission declare its own skips would hand it a way to convert misses into
+    exclusions, and nothing downstream could tell the two apart.
+
+    Only the syntactic tier is consulted, because it is the only backend built.
+    When the semantic backend lands, a unit *it* can read must not be skipped
+    here even if the parser fails on it -- §3 skips only when both tiers fail.
+    """
+    index = index_source(source)
+    if not index.parsed:
+        return SkipReason.UNPARSEABLE
+    if not any(decl.kind.is_type for decl in index.declarations):
+        return SkipReason.NO_CONTRACT_DECLARATION
+    return None
+
+
+# ---------------------------------------------------------------------------
+# The interface
+# ---------------------------------------------------------------------------
+
+
+class Detector(ABC):
+    """One vulnerability class, in three layers.
+
+    A subclass declares what it is and implements two deterministic methods; the
+    model-driven middle is optional.
+
+        class MyReentrancyDetector(Detector):
+            detector_id = "my-reentrancy"
+            class_id = VulnerabilityClass.REENTRANCY
+            api_version = "1.0"
+
+            def evidence(self, ctx): ...
+            def verdict(self, ctx, finding, evidence): ...
+
+    The layers run in a fixed order -- `evidence`, then `plan` and the model, then
+    `verdict` on each returned finding -- and the ordering carries a guarantee
+    worth naming: **evidence is recorded whatever the model concludes**. A model
+    may decline to report, or report wrongly; it cannot remove an evidence item.
+    A verdict asserted against the evidence is therefore visible as exactly that,
+    which is a signal worth having and one that disappears the moment the two are
+    allowed to influence each other.
+
+    It is also what makes a multi-condition rule enforceable. "Exploitable only
+    if A and B and C" written into prompt text is enforced by the model's
+    attention holding across the whole input. Written in `verdict()`, it is
+    `and`.
+
+    A purely deterministic detector is a first-class citizen: leave `plan()`
+    returning `None` and no model runs. Static analysers are the baseline this
+    project measures against, and an interface that could not express one could
+    not express its own control group.
+    """
+
+    detector_id: ClassVar[str]
+    class_id: ClassVar[VulnerabilityClass]
+    api_version: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Check the declaration at class-definition time.
+
+        A submission missing `class_id` should fail on import, with a message
+        naming the field, rather than partway through a run where the failure
+        reads as a defect in the detector's logic. Abstract intermediate classes
+        are exempt: a shared base that subclasses complete is a normal thing to
+        write, and forcing it to invent a `detector_id` would push authors into
+        declaring a fake one.
+
+        Abstractness is read from the methods themselves rather than from
+        `cls.__abstractmethods__`. That attribute is a slot on `type` which
+        raises until `ABCMeta` fills it in, and it is filled in *after* this hook
+        runs -- so consulting it here reports every class as concrete, including
+        the abstract ones this exemption exists for.
+        """
+        super().__init_subclass__(**kwargs)
+        if any(
+            getattr(getattr(cls, name, None), "__isabstractmethod__", False) for name in dir(cls)
+        ):
+            return
+        for field in ("detector_id", "class_id", "api_version"):
+            if getattr(cls, field, None) is None:
+                raise TypeError(f"{cls.__name__} must declare {field}")
+        if not is_compatible(cls.api_version):
+            raise TypeError(
+                f"{cls.__name__} declares api_version {cls.api_version!r}, which is "
+                f"incompatible with {API_VERSION!r}"
+            )
+
+    @property
+    def level(self) -> DifficultyLevel:
+        """Difficulty of this detector's class. Derived, never declared separately."""
+        return self.class_id.level
+
+    @abstractmethod
+    def evidence(self, ctx: AnalysisContext) -> Sequence[EvidenceRef]:
+        """Structural facts about the source, each with a location.
+
+        Deterministic, model-free, and always run. Must not consult a model, a
+        network or a clock: the guarantee that evidence is independent of the
+        verdict holds only if nothing in this method can be influenced by what
+        the model later says.
+
+        Predicates here should test shapes rather than names. Identifiers are
+        chosen by whoever wrote the contract and can be changed without changing
+        behaviour, so a predicate keyed on one measures the author's naming
+        habits. Solidity is case-sensitive; do not case-fold identifiers, which
+        manufactures matches that the compiler would not make.
+        """
+
+    def plan(self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]) -> ModelTaskSpec | None:
+        """What to ask the model, or `None` to run no model at all.
+
+        Receives the evidence so the request can build on what is already known.
+        The default runs no model, which makes a deterministic detector the
+        cheapest thing to write rather than the hardest.
+        """
+        return None
+
+    @abstractmethod
+    def verdict(
+        self, ctx: AnalysisContext, finding: Finding, evidence: Sequence[EvidenceRef]
+    ) -> Sequence[FailedCheck]:
+        """Checks that reject `finding`. Empty means it stands.
+
+        Strict, in the opposite direction from `gate`: reject when unsure. That
+        is affordable only because every rejection is recorded and named. A
+        rejected finding is retained with `status=unverified` and the list of
+        checks that rejected it, so the recall cost of each rule is a number
+        somebody can look at and argue with -- rather than a silent absence
+        indistinguishable from the model never having looked.
+
+        Each returned `FailedCheck` must carry the right `RejectionKind`, and the
+        distinction decides what the whole run is. `VERDICT` means a rule was
+        applied and the claim did not meet it: a judgement, and the run remains a
+        measurement. `CITATION` means the claim could not be checked against
+        source at all: an error, and the run measured nothing. Returning the
+        second as the first converts infrastructure failures into model
+        judgements, which is invisible in any aggregate afterwards.
+        """
+
+    def classify(
+        self, ctx: AnalysisContext, findings: Sequence[Finding]
+    ) -> Sequence[ClassificationClaim]:
+        """Repository-level label claims, for classification-style scoring.
+
+        Called only when `ctx.labels` is supplied. The default returns nothing,
+        because a detector built to locate defects has no obligation to also
+        guess labels, and a default that fabricated them would put words in its
+        mouth.
+
+        `findings` are those that survived `verdict()`. A claim need not
+        correspond to one -- label-only scoring does not check location, so a
+        detector may legitimately claim a category it could not localise. That
+        gap is exactly what dual-track reporting exists to expose, and it is the
+        reason this method's output is never merged into the located results.
+        """
+        return ()

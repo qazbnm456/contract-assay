@@ -12,6 +12,8 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.models import (
+    MAX_QUOTE_CHARS,
+    MAX_REASONING_CHARS,
     CitationStatus,
     DetectorRun,
     DifficultyLevel,
@@ -403,3 +405,40 @@ class TestEscalationPolicy:
             ]
         )
         assert run.escalations[0].changed_verdict
+
+
+class TestTextIsBounded:
+    """Free-text fields are bounded because untrusted code fills them.
+
+    A submission runs inside a sandbox with no egress, so the only channel out is
+    the result it is supposed to return. Every unbounded string on a finding is
+    that channel.
+    """
+
+    def _finding(self, **over: object) -> Finding:
+        base: dict[str, object] = {
+            "detector_id": "example",
+            "locator": Locator(file="src/Vault.sol", start_line=1, end_line=2),
+            "quote": "x = 1;",
+            "reasoning": "because",
+        }
+        return Finding(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_reasoning_is_capped(self) -> None:
+        with pytest.raises(ValidationError):
+            self._finding(reasoning="x" * (MAX_REASONING_CHARS + 1))
+
+    def test_quoted_source_is_capped_too(self) -> None:
+        # Capping only the obvious field buys the appearance of a control: the
+        # payload moves to `quote` in one line.
+        with pytest.raises(ValidationError):
+            self._finding(quote="x" * (MAX_QUOTE_CHARS + 1))
+
+    def test_the_bounds_are_generous_enough_for_an_honest_finding(self) -> None:
+        # They bound a channel's bandwidth; they are not a style rule.
+        assert (
+            self._finding(
+                reasoning="x" * MAX_REASONING_CHARS, quote="y" * MAX_QUOTE_CHARS
+            ).detector_id
+            == "example"
+        )

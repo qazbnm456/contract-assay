@@ -8,8 +8,9 @@ than whether it said something somewhere in a repository that happened to be
 labelled vulnerable.
 
 > **Status: early construction.** Built so far: the data contract, the corpus
-> record schema and its verifier, the syntactic analysis backend, and a CLI for
-> authoring and checking records. Not yet built: detectors, the predicate
+> record schema and its verifier, the syntactic analysis backend, the public
+> detector interface with its submission loader, and a CLI for authoring and
+> checking records. Not yet built: the detectors themselves, the predicate
 > library, the compiled analysis backend, corpus harvesting, and scoring. Nothing
 > here can measure a model yet. `docs/design.md` carries a per-component status
 > table.
@@ -53,10 +54,12 @@ the run is `invalid`. Recorded as a bare list of failed check names the two are
 indistinguishable, so each rejection carries its kind, and a run cannot be
 `clean` over a finding nobody could check.
 
-Severity is deliberately absent from the model's output contract. It is a value
-judgement, not an observation; detectors are asked only for facts they can
-point at. Severity assigned by the original auditors travels with corpus
-records as provenance and is never mixed with anything a model produced.
+Severity is absent from a located finding. Asked how bad a defect is, a model
+states a value judgement as an observation, and nothing can check it; detectors
+are asked only for facts they can point at. Reproducing a severity that a named
+auditor recorded is a different claim, because it has a ground truth to be wrong
+about — that one lives on the classification track, is scored against the
+severity the original report assigned, and is never mixed into located results.
 
 ## Design
 
@@ -78,6 +81,13 @@ Analysis runs on a compiled backend where the source builds, and degrades to a
 syntactic one where it does not. The tier travels with every result, because a
 `clean` verdict reached without data flow is a weaker claim than one reached
 with it, and the two must never be averaged together.
+
+The detector interface is a public API. A submission is a `Detector` subclass
+loaded from a declared entry point and run under isolation, and nothing it
+returns is taken on trust: every value is re-validated, and anything unusable is
+recorded as a harness failure rather than as the absence of a finding.
+[docs/api.md](docs/api.md) states the compatibility surface and what running
+under isolation asks of a submission.
 
 Built on [rlm-harness](https://github.com/qazbnm456/rlm-harness).
 

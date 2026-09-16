@@ -26,6 +26,9 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
+    "MAX_DESCRIPTION_CHARS",
+    "MAX_QUOTE_CHARS",
+    "MAX_REASONING_CHARS",
     "CitationStatus",
     "DetectorRun",
     "DifficultyLevel",
@@ -48,6 +51,32 @@ class _Frozen(BaseModel):
     """Records are immutable once built: a run artifact must not be edited in place."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+# ---------------------------------------------------------------------------
+# Text bounds
+# ---------------------------------------------------------------------------
+#
+# Free-text fields are bounded because the code that fills them is not always
+# trusted. When a submission written by someone else produces a finding, any
+# unbounded string on that finding is a channel out of the sandbox: source bytes
+# encoded into prose leave with the result, and no egress rule sees it, because
+# the result is exactly what the harness is supposed to send back.
+#
+# Bounding every such field rather than the most obvious one is the whole point.
+# A cap on `reasoning` alone is routed around in one line by moving the payload
+# into `quote`, so a partial cap buys the appearance of a control and not the
+# control. The limits are generous enough that an honest finding never meets
+# them: they bound a channel's bandwidth, they are not a style rule.
+
+MAX_REASONING_CHARS = 2_000
+"""Upper bound on a finding's justification prose."""
+
+MAX_QUOTE_CHARS = 4_000
+"""Upper bound on quoted source. Ample for a long function; not ample for a file."""
+
+MAX_DESCRIPTION_CHARS = 1_000
+"""Upper bound on a classification claim's description."""
 
 
 # ---------------------------------------------------------------------------
@@ -241,8 +270,10 @@ class Finding(_Frozen):
 
     detector_id: str = Field(min_length=1)
     locator: Locator
-    quote: str = Field(min_length=1, description="Exact source text at `locator`.")
-    reasoning: str = Field(min_length=1)
+    quote: str = Field(
+        min_length=1, max_length=MAX_QUOTE_CHARS, description="Exact source text at `locator`."
+    )
+    reasoning: str = Field(min_length=1, max_length=MAX_REASONING_CHARS)
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
