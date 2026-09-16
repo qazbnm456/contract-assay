@@ -25,6 +25,18 @@ Two consequences of taking that seriously:
     verifying it against an overload the annotator may not have intended, so it
     is rejected as ambiguous instead.
 
+*   A synthetic variant cannot be verified here at all, and is rejected rather
+    than approximated. A pin identifies bytes in a repository, and a variant's
+    bytes exist in no repository; pointing its pin at the original makes the
+    record verify against source that does not contain the mutation, and the
+    digest written back then certifies the wrong bytes under the name of
+    reproducibility. Verifying a variant means regenerating it deterministically
+    from the pinned original plus the transformation that produced it, which
+    needs a recipe this schema does not yet carry. Storing the mutated bytes
+    instead is not an alternative: a structure-preserving mutation is a
+    derivative work, so vendoring it would break the corpus's pointer-only
+    property and attach the original's licence to the result.
+
 *   A file that cannot be parsed is rejected rather than waved through. "I could
     not read this" is not evidence that the record is sound. This is distinct
     from *analysis*, where an unreadable compilation unit degrades to a weaker
@@ -42,7 +54,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from contract_assay.corpus.records import CorpusRecord
+from contract_assay.corpus.records import CorpusRecord, CorpusSplit
 from contract_assay.evidence.solidity import SolidityUnavailable, index_source
 
 __all__ = [
@@ -88,6 +100,9 @@ class CheckFailure(StrEnum):
     FUNCTION_AMBIGUOUS_IN_SPAN = "function_ambiguous_in_span"
     """Several overloads of the named function fall in the span, so it identifies none."""
 
+    VARIANT_NOT_REGENERABLE = "variant_not_regenerable"
+    """The record is a synthetic variant, whose bytes no commit can pin."""
+
 
 @dataclass(frozen=True, slots=True)
 class VerificationResult:
@@ -116,6 +131,19 @@ def verify_record(record: CorpusRecord, resolve: SourceResolver) -> Verification
     On success the result carries the digest of the bytes checked, which
     `verify_all` writes onto the pin.
     """
+    if record.split is CorpusSplit.SYNTHETIC_VARIANT:
+        # Refused before anything is resolved, so no digest is computed and none
+        # can be written back. A variant's pin can only describe the source it
+        # was mutated from, so every check below would run against bytes that do
+        # not contain the mutation -- and pass.
+        return _reject(
+            record.record_id,
+            CheckFailure.VARIANT_NOT_REGENERABLE,
+            "a synthetic variant must be regenerated from its source record and the "
+            "transformation that produced it; verifying it against a pinned commit "
+            "checks the unmutated source and certifies the wrong bytes",
+        )
+
     source = resolve(record.pin.repo_url, record.pin.commit, record.pin.path)
     if source is None:
         return _reject(

@@ -409,6 +409,17 @@ Mutation moves code, so a variant's locator is recomputed against the mutated
 source rather than carried forward. The declaration index of §6.3 is what makes
 that mechanical rather than manual.
 
+A variant also cannot be stored the way every other record is. A pin identifies
+bytes in a repository and a variant's bytes exist in no repository, so a variant
+needs a **recipe** — source record, ordered operators, seed, tool version — which
+regenerates it deterministically from an original that is itself pinned.
+Reproducibility survives that indirection, and the licence problem dissolves with
+it: a recipe is entirely this project's own work, whereas the mutated bytes are a
+derivative of somebody else's contract. Until the recipe exists, `verify` rejects
+a variant outright rather than checking it against the source it was mutated
+from — which would pass, against bytes that do not contain the mutation, and
+write that source's digest onto the record as proof of reproducibility.
+
 ## 7. Scoring
 
 The scorer is a separate component and does not run inside the harness. Trace

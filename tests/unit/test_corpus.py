@@ -640,3 +640,39 @@ contract Other {
         result = verify_record(record, resolver(self.TWO_CONTRACTS))
         assert not result.ok
         assert CheckFailure.FUNCTION_AMBIGUOUS_IN_SPAN in result.failures
+
+
+class TestVariantsCannotBeVerifiedAgainstAPin:
+    """A variant's bytes exist in no repository, so no commit can pin them."""
+
+    def _variant(self, **over: object) -> CorpusRecord:
+        base: dict[str, object] = {
+            "record_id": "vault-slippage-1-v2",
+            "split": CorpusSplit.SYNTHETIC_VARIANT,
+            "derived_from": "vault-slippage-1",
+            "notes": "Renamed params; re-ran the PoC and the defect survives.",
+        }
+        return a_positive(**{**base, **over})
+
+    def test_a_variant_is_rejected_rather_than_checked_against_its_source(self) -> None:
+        # Nothing stops the pin describing the unmutated original, and every
+        # check would then pass against source that does not contain the
+        # mutation.
+        result = verify_record(self._variant(), resolver())
+        assert not result.ok
+        assert result.failures == (CheckFailure.VARIANT_NOT_REGENERABLE,)
+
+    def test_no_digest_is_computed_for_a_variant(self) -> None:
+        # The write-back is what makes a pin's promise real, so a digest of the
+        # wrong bytes is worse than none: it certifies the original as the
+        # variant.
+        assert verify_record(self._variant(), resolver()).computed_sha256 is None
+
+    def test_a_variant_is_never_admitted_by_verify_all(self) -> None:
+        admitted, rejected = verify_all([self._variant(), a_positive()], resolver())
+        assert [r.record_id for r in admitted] == ["vault-slippage-1"]
+        assert [r.record_id for r in rejected] == ["vault-slippage-1-v2"]
+
+    @pytest.mark.parametrize("split", [CorpusSplit.PUBLIC, CorpusSplit.PRIVATE_HOLDOUT])
+    def test_the_other_splits_still_verify(self, split: CorpusSplit) -> None:
+        assert verify_record(a_positive(split=split), resolver()).ok
