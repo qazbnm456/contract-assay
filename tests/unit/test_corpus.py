@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
+    LocatorLabel,
     LocatorProvenance,
     NegativeKind,
     Population,
@@ -824,9 +825,16 @@ class TestLocatorProvenanceIsRecorded:
         with pytest.raises(ValidationError, match="must say where the defect is"):
             a_positive(locator=None, locator_provenance=None)
 
-    def test_only_a_stated_span_is_cross_checked(self) -> None:
-        assert LocatorProvenance.STATED.is_cross_checked
-        assert not LocatorProvenance.DERIVED.is_cross_checked
+    def test_confirmation_needs_two_claims_from_the_report(self) -> None:
+        # Not a property of the provenance, which is the mistake this replaced.
+        # A stated span with a stated function name gives the index two report
+        # claims to adjudicate. A stated span alone does not: the name it would
+        # be checked against was read out of that very span.
+        both = a_positive(asserted_labels=[LocatorLabel.CONTRACT, LocatorLabel.FUNCTION])
+        span_only = a_positive(asserted_labels=[])
+        assert both.is_cross_checked
+        assert not span_only.is_cross_checked
+        assert (both.report_assertion_count, span_only.report_assertion_count) == (3, 1)
 
     def test_admitted_records_are_split_by_provenance(self) -> None:
         stated = a_positive(record_id="vault-stated")
@@ -893,12 +901,14 @@ class TestAnchoredLocators:
         with pytest.raises(ValidationError, match="lies outside the span"):
             self._anchored(anchor_line=SWAP_END + 5)
 
-    def test_only_a_stated_span_is_independently_cross_checked(self) -> None:
-        # Re-checking that an anchor falls inside a span computed from it
-        # confirms the derivation was reproducible, not that it was right.
-        assert LocatorProvenance.STATED.is_cross_checked
-        assert not LocatorProvenance.ANCHORED.is_cross_checked
-        assert not LocatorProvenance.DERIVED.is_cross_checked
+    def test_an_anchor_alone_confirms_nothing(self) -> None:
+        # One claim. The function name came from the declaration the anchor
+        # landed in, so asking whether it contains the anchor is certain.
+        assert not self._anchored(asserted_labels=[]).is_cross_checked
+
+    def test_an_anchor_plus_a_named_contract_is_confirmed(self) -> None:
+        # Two claims, neither from the index, so their agreement is evidence.
+        assert self._anchored(asserted_labels=[LocatorLabel.CONTRACT]).is_cross_checked
 
     def test_exact_match_is_unavailable_only_for_a_prose_derived_span(self) -> None:
         assert LocatorProvenance.STATED.supports_exact_match
@@ -936,15 +946,30 @@ class TestPopulationIsAStratificationAxis:
 
 
 class TestQuotedProvenance:
-    def test_a_quoted_span_is_cross_checked_and_a_derived_one_is_not(self) -> None:
-        # The confirming parties differ: a stated span is adjudicated by the
-        # declaration index, a quoted one by the repository's bytes. An anchored
-        # or derived span was produced by the index, so asking the index about it
-        # confirms reproducibility rather than correctness.
-        assert LocatorProvenance.QUOTED.is_cross_checked
-        assert LocatorProvenance.STATED.is_cross_checked
-        assert not LocatorProvenance.ANCHORED.is_cross_checked
-        assert not LocatorProvenance.DERIVED.is_cross_checked
+    def test_a_quoted_span_is_confirmed_on_its_own(self) -> None:
+        # The repository's bytes contain the report's text, uniquely, and the
+        # bytes are not the report. No second claim is needed.
+        record = a_positive(locator_provenance=LocatorProvenance.QUOTED, asserted_labels=[])
+        assert record.is_cross_checked
+        assert record.report_assertion_count == 0
+
+    def test_a_prose_derived_span_needs_both_labels(self) -> None:
+        # The report named a function and the index produced the span, so one
+        # claim confirms nothing. A contract and a function can disagree.
+        one = a_positive(
+            locator_provenance=LocatorProvenance.DERIVED,
+            asserted_labels=[LocatorLabel.FUNCTION],
+        )
+        two = a_positive(
+            locator_provenance=LocatorProvenance.DERIVED,
+            asserted_labels=[LocatorLabel.CONTRACT, LocatorLabel.FUNCTION],
+        )
+        assert not one.is_cross_checked
+        assert two.is_cross_checked
+
+    def test_a_label_the_report_did_not_supply_cannot_be_claimed(self) -> None:
+        with pytest.raises(ValidationError, match="carries no contract"):
+            a_positive(locator=a_locator(contract=None), asserted_labels=[LocatorLabel.CONTRACT])
 
     def test_every_provenance_but_the_prose_one_supports_exact_match(self) -> None:
         assert LocatorProvenance.QUOTED.supports_exact_match

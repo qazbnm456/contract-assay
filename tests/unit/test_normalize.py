@@ -16,6 +16,7 @@ from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.normalize import NormalizeCause, normalize
 from contract_assay.corpus.records import (
     CorpusSplit,
+    LocatorLabel,
     LocatorProvenance,
     Population,
     Provenance,
@@ -395,7 +396,7 @@ contract Vault {
         ).records
         assert record.locator_provenance is LocatorProvenance.QUOTED
         assert (record.locator.start_line, record.locator.end_line) == (4, 7)
-        assert record.locator_provenance.is_cross_checked
+        assert record.is_cross_checked
         assert record.locator_provenance.supports_exact_match
 
     def test_the_host_is_recovered_from_the_matched_span(self) -> None:
@@ -520,3 +521,45 @@ class TestAStatedSpanGetsItsLabels:
             a_draft(start_line=7, end_line=9, contract="Vault", function="setOwner")
         ).records
         assert record.locator.function == "setOwner"
+
+
+class TestWhatTheReportActuallyAsserted:
+    """Confirmation depends on the report having made two claims, not on the label.
+
+    A span whose function name the index filled in is not corroborated by that
+    name: `verify` asks whether the function lies in the span it was read out
+    of, and the answer is certain. Recording which labels came from the report
+    is what keeps that distinguishable, because a finished record cannot tell an
+    index-supplied label from a stated one.
+    """
+
+    def test_a_stated_span_alone_is_not_cross_checked(self) -> None:
+        [record] = run(a_draft(start_line=7, end_line=9, contract=None, function=None)).records
+        assert record.locator.function == "setOwner"  # supplied by the index
+        assert record.asserted_labels == []
+        assert not record.is_cross_checked
+
+    def test_a_stated_span_with_a_stated_name_is_cross_checked(self) -> None:
+        [record] = run(
+            a_draft(start_line=7, end_line=9, contract="Vault", function="setOwner")
+        ).records
+        assert set(record.asserted_labels) == {LocatorLabel.CONTRACT, LocatorLabel.FUNCTION}
+        assert record.is_cross_checked
+
+    def test_an_anchored_records_function_is_never_the_reports(self) -> None:
+        # It came from the declaration the anchor landed in, even when the draft
+        # happened to carry a name as well.
+        [record] = run(a_draft(anchor_line=8, function="withdraw", contract="Vault")).records
+        assert record.locator.function == "setOwner"
+        assert record.asserted_labels == [LocatorLabel.CONTRACT]
+        assert record.is_cross_checked
+
+    def test_a_prose_derived_record_keeps_both_stated_labels(self) -> None:
+        [record] = run(a_draft(contract="Vault", function="setOwner")).records
+        assert set(record.asserted_labels) == {LocatorLabel.CONTRACT, LocatorLabel.FUNCTION}
+        assert record.is_cross_checked
+
+    def test_a_prose_derived_record_with_only_a_function_is_not(self) -> None:
+        [record] = run(a_draft(contract=None, function="withdraw")).records
+        assert record.asserted_labels == [LocatorLabel.FUNCTION]
+        assert not record.is_cross_checked

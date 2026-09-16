@@ -31,6 +31,7 @@ from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 __all__ = [
     "CorpusRecord",
     "CorpusSplit",
+    "LocatorLabel",
     "LocatorProvenance",
     "NegativeKind",
     "Population",
@@ -71,6 +72,22 @@ class Population(StrEnum):
 
     EXPLOITED_INCIDENT = "exploited_incident"
     """Exploited in the wild and written up afterwards."""
+
+
+class LocatorLabel(StrEnum):
+    """A locator field the *source report* asserted, as opposed to one read off
+    the declaration index.
+
+    Recorded because whether a location was independently confirmed depends on
+    it. The index can adjudicate between two things the report said; it cannot
+    adjudicate its own answer. A report giving a span and a function name has
+    made two claims that the index can contradict; a report giving only a span,
+    whose function name the index then supplied, has made one -- and asking
+    whether that function sits in that span is answered by construction.
+    """
+
+    CONTRACT = "contract"
+    FUNCTION = "function"
 
 
 class LocatorProvenance(StrEnum):
@@ -131,30 +148,6 @@ class LocatorProvenance(StrEnum):
 
     DERIVED = "derived"
     """The span was computed from a function named in prose. Weakest of the three."""
-
-    @property
-    def is_cross_checked(self) -> bool:
-        """Whether the span was confirmed by a source that did not produce it.
-
-        True for `STATED` and `QUOTED`, and the confirming party differs. A
-        stated span is checked against the declaration index, which is asked
-        whether the function the report named is declared inside the span the
-        report gave -- two assertions from the report, adjudicated by a third
-        party that got its answer from the source. A quoted span is confirmed by
-        the repository's bytes containing the report's text, uniquely.
-
-        False for `ANCHORED` and `DERIVED`, where the span was produced by the
-        declaration index and re-checking it asks the index about its own answer.
-        That confirms the derivation was reproducible, not that it was right --
-        the guarantee the digest already gives, arriving a second time.
-
-        `ANCHORED` has one real check available that this flag does not cover:
-        where the report names a contract *and* points at a line, neither came
-        from the index, so their disagreement is disqualifying. That is enforced
-        in `normalize`, not here, because it depends on the report having
-        supplied both.
-        """
-        return self in (LocatorProvenance.STATED, LocatorProvenance.QUOTED)
 
     @property
     def supports_exact_match(self) -> bool:
@@ -340,6 +333,13 @@ class CorpusRecord(BaseModel):
             "forbidden when it is absent."
         ),
     )
+    asserted_labels: list[LocatorLabel] = Field(
+        default_factory=list,
+        description=(
+            "Locator labels the source report itself stated. Labels absent from this "
+            "list were read off the declaration index and cannot corroborate the span."
+        ),
+    )
     anchor_line: int | None = Field(
         default=None,
         ge=1,
@@ -360,6 +360,42 @@ class CorpusRecord(BaseModel):
     @property
     def is_positive(self) -> bool:
         return bool(self.classes)
+
+    @property
+    def report_assertion_count(self) -> int:
+        """How many independent claims about the location the source report made.
+
+        The span counts when the report gave it, the anchor counts when the
+        report pointed at a line, and each label counts when the report named it.
+        A label the declaration index supplied does not count -- it is not a
+        second source, it is the adjudicator answering.
+        """
+        span = self.locator_provenance in (
+            LocatorProvenance.STATED,
+            LocatorProvenance.ANCHORED,
+        )
+        return int(span) + len(set(self.asserted_labels))
+
+    @property
+    def is_cross_checked(self) -> bool:
+        """Whether something that did not produce this location confirmed it.
+
+        Not a property of the provenance, which is the mistake this replaced. A
+        `quoted` span is confirmed outright: the repository's bytes contain the
+        report's text, uniquely, and the bytes are not the report. Otherwise
+        confirmation requires the report to have made **two** claims about the
+        location, which the declaration index can then adjudicate -- a span and a
+        function name, a line and a contract, a contract and a function.
+
+        One claim is not enough however strong it looks. A report giving a span
+        and nothing else gets its function name from the index, and `verify` then
+        asks the index whether that function lies in the span it was read from.
+        That answer is certain, so the check cannot fail, so it confirms nothing
+        beyond what the digest already guarantees.
+        """
+        if self.locator_provenance is LocatorProvenance.QUOTED:
+            return True
+        return self.report_assertion_count >= 2
 
     @property
     def level(self) -> DifficultyLevel:
@@ -460,6 +496,17 @@ class CorpusRecord(BaseModel):
                 "was computed from it, and discarding it leaves a record indistinguishable "
                 "from one whose span was guessed from prose"
             )
+        if self.locator is None and self.asserted_labels:
+            raise ValueError(
+                "asserted_labels is set on a record with no locator, so it describes nothing"
+            )
+        for label in self.asserted_labels:
+            if getattr(self.locator, label.value, None) is None:
+                raise ValueError(
+                    f"the report is recorded as asserting {label.value!r}, but the locator "
+                    f"carries no {label.value}"
+                )
+
         if not anchored and self.anchor_line is not None:
             raise ValueError(
                 f"anchor_line is set on a {self.locator_provenance} locator, where the span "

@@ -46,6 +46,7 @@ from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
+    LocatorLabel,
     LocatorProvenance,
     Population,
     SourcePin,
@@ -174,6 +175,13 @@ class Located:
     locator: Locator
     provenance: LocatorProvenance
     anchor_line: int | None = None
+    asserted_labels: tuple[LocatorLabel, ...] = ()
+    """Labels the report supplied, as opposed to ones read off the index.
+
+    Carried through because whether the location was independently confirmed
+    depends on it, and a record cannot recover it afterwards: once the index has
+    filled a label in, nothing distinguishes it from one the report stated.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +288,21 @@ def _record_id(draft: DraftRecord) -> str:
     return f"{repo.strip('-') or 'repo'}-{draft.classes[0].value.replace('_', '-')}-{digest}"
 
 
+def _labels_from(draft: DraftRecord, *, function: bool = True) -> tuple[LocatorLabel, ...]:
+    """Which locator labels this draft's report actually stated.
+
+    `function` is False where the span's own route supplies the name: an
+    anchored span is labelled from the declaration the line landed in, so a name
+    on the locator did not come from the report and cannot corroborate anything.
+    """
+    labels: list[LocatorLabel] = []
+    if draft.contract:
+        labels.append(LocatorLabel.CONTRACT)
+    if function and draft.function:
+        labels.append(LocatorLabel.FUNCTION)
+    return tuple(labels)
+
+
 def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     """Settle a draft's location by the strongest route the report supports.
 
@@ -318,6 +341,7 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
                 end_line=draft.end_line,
             ),
             LocatorProvenance.STATED,
+            asserted_labels=_labels_from(draft),
         )
 
     if isinstance(quoted, tuple):
@@ -332,6 +356,7 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
                 end_line=end,
             ),
             LocatorProvenance.QUOTED,
+            asserted_labels=_labels_from(draft),
         )
     if quoted is not None:
         return quoted
@@ -366,6 +391,9 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
             ),
             LocatorProvenance.ANCHORED,
             anchor_line=draft.anchor_line,
+            # The function name came from the declaration the anchor landed in,
+            # never from the report, so it cannot corroborate the span.
+            asserted_labels=_labels_from(draft, function=False),
         )
 
     if draft.contract and not parsed.index.declares_type(draft.contract):
@@ -390,6 +418,7 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
             end_line=declaration.end_line,
         ),
         LocatorProvenance.DERIVED,
+        asserted_labels=_labels_from(draft),
     )
 
 
@@ -462,6 +491,7 @@ def normalize(
                 locator=located.locator,
                 locator_provenance=located.provenance,
                 anchor_line=located.anchor_line,
+                asserted_labels=list(located.asserted_labels),
                 classes=list(draft.classes),
                 provenance=draft.provenance,
             )

@@ -778,13 +778,28 @@ kinds, and what confirms each differs:
 | `anchored` | the declaration containing a line the report gave | nothing independent — see below |
 | `derived` | the declaration matching a function the report named in prose | nothing independent |
 
-The first two are cross-checked and the last two are not, and the distinction is
-about *who answered*. For `quoted` and `stated` a third party adjudicates two
-assertions the report made — the bytes in one case, the index in the other — and
-neither got its answer from the report. For `anchored` and `derived` the span was
-produced by the index, so re-checking it asks the index about its own answer:
-that confirms the derivation was reproducible, not that it was right, which is
-the guarantee the digest already gives.
+Whether a location was independently confirmed is **not a property of the
+provenance**, and treating it as one was a mistake worth recording. It is a
+property of *who answered*, which depends on how many claims the report made.
+
+A `quoted` span is confirmed outright: the repository's bytes contain the
+report's text, uniquely, and the bytes are not the report. Otherwise
+confirmation needs the report to have made **two** claims about the location,
+which the declaration index can then adjudicate — a span and a function name, a
+line and a contract, a contract and a function. One claim is never enough,
+however strong it looks: a report giving a span and nothing else has its function
+name filled in from the index, and `verify` then asks the index whether that
+function lies in the span it was read out of. That answer is certain, the check
+cannot fail, and it confirms nothing beyond what the digest already guarantees.
+
+So `CorpusRecord.is_cross_checked` is computed from `asserted_labels` — which
+labels the *report* supplied — rather than read off the provenance. A finished
+record cannot recover that distinction otherwise: once the index has filled a
+label in, nothing about the record tells it apart from one the report stated.
+
+This was found by turning §1.3's own question on code written after §1.3 was.
+Nothing protects new code from a rule in an old section except somebody pointing
+the question at it again.
 
 `quoted` and `stated` fail differently rather than better, and are recorded
 rather than ranked. A stated line number goes stale when the report numbered a

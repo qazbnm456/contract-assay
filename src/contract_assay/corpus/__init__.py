@@ -20,6 +20,7 @@ from contract_assay.corpus.normalize import (
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
+    LocatorLabel,
     LocatorProvenance,
     NegativeKind,
     Provenance,
@@ -42,6 +43,7 @@ __all__ = [
     "CorpusSplit",
     "DraftRecord",
     "HarvestReport",
+    "LocatorLabel",
     "LocatorProvenance",
     "NegativeKind",
     "NormalizeCause",
