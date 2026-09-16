@@ -31,6 +31,7 @@ from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 __all__ = [
     "CorpusRecord",
     "CorpusSplit",
+    "LocatorProvenance",
     "NegativeKind",
     "Provenance",
     "SourcePin",
@@ -38,6 +39,42 @@ __all__ = [
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
+
+
+class LocatorProvenance(StrEnum):
+    """Who decided where the defect is.
+
+    The distinction exists because verification is not equally informative for
+    the two. A record whose span the auditor stated is cross-checked: `verify`
+    confirms the named function is declared inside that span, so a transcription
+    error by whoever entered the record is caught. A record whose span was
+    *computed* from the declaration index has no second source to cross-check
+    against -- asking the index whether the function sits in a span the index
+    itself produced is a tautology, and it passes at a rate indistinguishable
+    from real confirmation.
+
+    What still does work for a derived locator: the digest check, which
+    establishes the file is byte-identical to the one the derivation ran against,
+    and the ambiguity check, which refuses a name resolving to more than one
+    declaration. What does not: the span check that carries the weight for a
+    stated locator. So a derived record rests entirely on the original report's
+    prose naming the right function, with nothing to contradict it.
+
+    Carried on the record so reports can stratify by it, or exclude it. Without
+    the flag an admitted count silently mixes records that passed a real check
+    with records that passed a vacuous one -- the invisibility of §1.3, occurring
+    inside the machinery built to implement §1.3.
+    """
+
+    STATED = "stated"
+    """The source report gave the line span. `verify` cross-checks it."""
+
+    DERIVED = "derived"
+    """The span was computed from the declaration index. Weaker ground truth."""
+
+    @property
+    def is_cross_checked(self) -> bool:
+        return self is LocatorProvenance.STATED
 
 
 class CorpusSplit(StrEnum):
@@ -191,6 +228,13 @@ class CorpusRecord(BaseModel):
             "the sample hard: the source is not clean, only clean for the class in question."
         ),
     )
+    locator_provenance: LocatorProvenance | None = Field(
+        default=None,
+        description=(
+            "Who decided the line span. Required whenever a locator is present, and "
+            "forbidden when it is absent."
+        ),
+    )
     negative_kind: NegativeKind | None = None
     derived_from: str | None = Field(
         default=None,
@@ -230,6 +274,15 @@ class CorpusRecord(BaseModel):
                 f"locator.file {self.locator.file!r} does not match pin.path {self.pin.path!r}"
             )
 
+        # Checked for both polarities and immediately after the path check, so
+        # that a record carrying a locator always says where the span came from.
+        if self.locator is not None and self.locator_provenance is None:
+            raise ValueError(
+                "a record with a locator must say whether the span was stated by the "
+                "source report or derived from the declaration index; verification "
+                "cross-checks the first and cannot check the second, so an unmarked "
+                "locator makes a weaker record indistinguishable from a stronger one"
+            )
         if self.is_positive:
             if self.locator is None:
                 raise ValueError(
@@ -279,6 +332,13 @@ class CorpusRecord(BaseModel):
                     "a confirmed-clean negative must record how it was confirmed; "
                     "'someone checked' is not reviewable and not reproducible"
                 )
+
+        # Checked after the polarity rules, so a positive record missing its
+        # locator reports that rather than reporting a field describing nothing.
+        if self.locator is None and self.locator_provenance is not None:
+            raise ValueError(
+                "locator_provenance is set on a record with no locator, so it describes nothing"
+            )
 
         if overlap := set(self.vulnerable_to) & set(self.negative_for):
             raise ValueError(

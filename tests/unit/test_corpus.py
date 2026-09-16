@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
+    LocatorProvenance,
     NegativeKind,
     Provenance,
     SourcePin,
@@ -99,6 +100,7 @@ def a_positive(**over: object) -> CorpusRecord:
         "split": CorpusSplit.PUBLIC,
         "pin": a_pin(),
         "locator": a_locator(),
+        "locator_provenance": LocatorProvenance.STATED,
         "classes": [VulnerabilityClass.SLIPPAGE],
         "provenance": a_provenance(),
     }
@@ -594,6 +596,7 @@ contract Router {
                 start_line=start,
                 end_line=end,
             ),
+            "locator_provenance": LocatorProvenance.STATED,
             "classes": [VulnerabilityClass.SLIPPAGE],
             "provenance": a_provenance(),
         }
@@ -771,3 +774,66 @@ class TestTheReportSaysWhatTheCorpusIsASampleOf:
         # a warning about one invocation.
         report = verify_all([a_positive()], resolver())
         assert report.sampling_statement() == ("1 record admitted; no candidates were rejected.")
+
+
+class TestLocatorProvenanceIsRecorded:
+    """A derived span is weaker ground truth, and the difference must be visible.
+
+    `verify` cross-checks a stated span by confirming the named function is
+    declared inside it, which catches a transcription error. Asking the
+    declaration index whether a function sits in a span the index itself produced
+    is a tautology: it passes at a rate indistinguishable from real confirmation.
+    An admitted count that mixed the two would hide exactly the kind of shortfall
+    §1.3 exists to expose, inside the report built to expose it.
+    """
+
+    def test_a_record_with_a_locator_must_say_where_the_span_came_from(self) -> None:
+        with pytest.raises(ValidationError, match="must say whether the span was stated"):
+            a_positive(locator_provenance=None)
+
+    def test_provenance_without_a_locator_describes_nothing(self) -> None:
+        with pytest.raises(ValidationError, match="describes nothing"):
+            CorpusRecord(
+                record_id="vault-neg-prov",
+                split=CorpusSplit.PUBLIC,
+                pin=a_pin(),
+                classes=[],
+                negative_for=[VulnerabilityClass.REENTRANCY],
+                vulnerable_to=[VulnerabilityClass.SLIPPAGE],
+                negative_kind=NegativeKind.CROSS_CLASS,
+                locator_provenance=LocatorProvenance.STATED,
+                provenance=a_provenance(),
+            )
+
+    def test_a_missing_locator_reports_that_rather_than_the_provenance_field(self) -> None:
+        # Ordering matters: the primary problem with an unlocated positive is
+        # that it cannot be scored, not that a companion field describes nothing.
+        with pytest.raises(ValidationError, match="must say where the defect is"):
+            a_positive(locator=None, locator_provenance=None)
+
+    def test_only_a_stated_span_is_cross_checked(self) -> None:
+        assert LocatorProvenance.STATED.is_cross_checked
+        assert not LocatorProvenance.DERIVED.is_cross_checked
+
+    def test_admitted_records_are_split_by_provenance(self) -> None:
+        stated = a_positive(record_id="vault-stated")
+        derived = a_positive(
+            record_id="vault-derived", locator_provenance=LocatorProvenance.DERIVED
+        )
+        report = verify_all([stated, derived], resolver())
+        assert report.admitted_by_locator_provenance == {
+            LocatorProvenance.STATED: 1,
+            LocatorProvenance.DERIVED: 1,
+        }
+        assert report.derived_locator_count == 1
+
+    def test_the_statement_says_how_many_spans_were_not_cross_checked(self) -> None:
+        derived = a_positive(locator_provenance=LocatorProvenance.DERIVED)
+        statement = verify_all([derived], resolver()).sampling_statement()
+        assert "1 of those carries a derived locator" in statement
+        assert "cannot cross-check" in statement
+
+    def test_a_corpus_of_stated_records_says_nothing_about_derivation(self) -> None:
+        # No noise when the distinction does not apply.
+        statement = verify_all([a_positive()], resolver()).sampling_statement()
+        assert "derived" not in statement

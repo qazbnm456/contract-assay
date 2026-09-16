@@ -88,11 +88,27 @@ yield fewer confirmed variants per unit of effort, and a variant set built
 without planning against that cost skews toward the classes the predicates can
 see.
 
+**Derived locators.** Not fixable, and the most instructive of the four,
+because it appears *inside* the machinery built to implement this rule. A
+harvester can recover a line span for a finding that only named a file and a
+function, by looking the function up in the declaration index (§6.3). The span is
+then verified by asking the declaration index whether the function sits inside
+it — which it does, because the span came from there. The check is tautological
+for such records and passes at a rate indistinguishable from real confirmation.
+So `LocatorProvenance` marks each locator as stated or derived, and the
+verification report counts them separately (§6.6): an admitted total mixing the
+two would hide the shortfall in the very number built to expose it.
+
 The pattern generalises past this repository, and the response differs by case:
 fix it where the instrument can be decoupled from the subject, and where it
 cannot, measure the shortfall and report it. What is never acceptable is leaving
 it unstated, because the number it produces looks exactly like a number that
 does not have the problem.
+
+Note also how the fourth instance was found. Three of these were discovered by
+asking, of a mechanism that had just been built, what it shares a source of truth
+with. That question is cheap and belongs in a review of anything that measures
+anything.
 
 ## 2. Detector anatomy
 
@@ -442,6 +458,35 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
 ```
 
 - **harvest** — pull findings from public audit platforms into draft records.
+  Two obligations, both from §1.3. A harvester parsing only certain report shapes
+  yields a corpus skewed toward those platforms, so it tallies what it skipped
+  and why. And it tallies those skips **by class**, not only by platform and
+  cause: a skipped finding has no record — that is why it was skipped — so a
+  per-platform count gives magnitude while leaving the confound intact, unable to
+  separate "we skipped 40% of this platform" from "this platform has a different
+  class mix". Class survives location: a report states the vulnerability type
+  even when it describes the place in prose. "Skipped 61% of arithmetic
+  candidates and 9% of oracle candidates" says the surviving distribution is an
+  artefact; per-platform numbers only hint at it.
+
+  Why that matters more than it looks: a finding is only usable if a repository,
+  a commit, a path and a span can be recovered from it, so yield is biased toward
+  findings whose authors linked precisely. Linking discipline correlates with
+  recency, recency with Solidity version, and version with class prevalence —
+  0.8.0 made arithmetic checked by default, collapsing overflow findings after
+  it, while oracle and flash-loan findings rise over the same period as DeFi
+  matures. The bias therefore arrives wearing the appearance of a class
+  distribution, which is worse than the platform skew: that one looks like an
+  artefact and invites suspicion, this one looks like a finding about the world.
+
+  Part of it is recoverable rather than merely measurable. A report naming a file
+  and a function but no span can have the span looked up in the declaration
+  index, which converts the whole prose-located category from lost to usable —
+  and that category is precisely the one whose loss produces the era bias.
+  Derivation obeys the same ambiguity discipline as verification: derive only
+  when the named function is declared exactly once inside the named type, and
+  skip otherwise. Every derived locator is marked as such (§6.6), because
+  verification cannot cross-check it.
 - **normalize** — resolve locations, pin commit SHAs, map to `class_id`.
 - **verify** — check every record against reality: the commit resolves, the
   digest matches, the span lies inside the file, and the named function and
@@ -568,6 +613,16 @@ bias shows up: an aggregate can look tolerable while a single class is
 decimated, and that class is then quietly under-represented in everything scored
 against the corpus afterwards.
 
+The report also splits admitted records by `LocatorProvenance`, for a different
+reason: not everything admitted was admitted on equal evidence. A stated span is
+cross-checked against the declaration index; a *derived* span came from that
+index, so asking it the same question is a tautology. What still does work for a
+derived locator is the digest check, which establishes the file is byte-identical
+to the one the derivation ran against, and the ambiguity check. What does not is
+the span check that carries the weight for a stated locator — so a derived record
+rests on the original report's prose naming the right function, with nothing
+available to contradict it.
+
 ## 7. Scoring
 
 The scorer is a separate component and does not run inside the harness. Trace
@@ -593,23 +648,12 @@ overload as having found the right one — §1.1's failure again, one scale down
 than the ABI-canonical one, which is sufficient here because the compiler
 rejects a contract declaring one signature twice.
 
-Reports are stratified by difficulty level and by evidence tier, and state
-counts of `invalid` and `skipped` alongside — never folded in.
-
-One consequence of §1.2's outcome rules has to be undone here rather than
-inherited. A run with one verified finding is `vulnerable` even if nine other
-claims failed their citation check, which is right at the outcome layer: the run
-did measure something. Carried into scoring unchanged it would make spraying
-claims free, and the cheapest strategy available to a detector would be to emit
-many and let the harness sort them. So citation-failed findings are retained in
-the record — which is why `VerifiedFinding` keeps them rather than dropping them
-— and they count against precision. It is the same treatment a claim outside the
-label space gets in §7.1, for the same reason: **output that costs nothing to
-produce must not be free to produce.**
-
-Sampling is an explicit parameter of a benchmark run, and metrics are reported
-at the corpus's real class prevalence. Forcing a balanced sample produces
-numbers that describe no population and cannot be compared across classes.
+Reports are stratified by difficulty level, by evidence tier, and by the
+locator provenance of the ground truth they scored against (§6.6), and state
+counts of `invalid` and `skipped` alongside — never folded in. The third axis is
+there so a derived-locator subset can be reported separately or excluded: it is
+weaker ground truth, and a score computed over a mixture of the two is a claim
+about neither.
 
 ### 7.1 Two scores, reported side by side
 
@@ -648,6 +692,37 @@ rediscover:
 The label taxonomy is supplied as data (`LabelSpaceSpec`), never built in. A
 scorer that hardcodes one label set can score one exercise; one that takes a
 taxonomy as input can score any.
+
+### 7.2 Nothing a detector emits is free
+
+> **Output that costs nothing to produce must not be free to produce.**
+
+Stated once because it has decided three separate questions, and each time the
+alternative looked locally reasonable.
+
+A run with one verified finding is `vulnerable` even if nine other claims failed
+their citation check. That is right at the outcome layer — the run did measure
+something — and carried into scoring unchanged it would make spraying claims
+free, so the cheapest strategy available would be to emit many and let the
+harness sort them. Citation-failed findings are therefore retained in the record,
+which is why `VerifiedFinding` keeps them rather than dropping them, and they
+count against precision.
+
+A classification claim whose tag falls outside the supplied label space is
+retained for the same reason (§7.1), not dropped. Dropping it would refund the
+false-positive penalty it earned, making an unusable claim cost nothing.
+
+And a submission's `invalid` runs cost it separately rather than being ignored,
+which is why completion rate multiplies a leaderboard score instead of being
+folded into the matrix (§7.1). A detector that crashes on a third of the corpus
+must not rank alongside one that does not.
+
+The common shape: wherever the harness tidies away output a detector should not
+have produced, it also removes the incentive not to produce it.
+
+Sampling is an explicit parameter of a benchmark run, and metrics are reported
+at the corpus's real class prevalence. Forcing a balanced sample produces
+numbers that describe no population and cannot be compared across classes.
 
 ## 8. Layout and status
 

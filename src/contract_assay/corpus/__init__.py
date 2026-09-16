@@ -3,6 +3,7 @@
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
+    LocatorProvenance,
     NegativeKind,
     Provenance,
     SourcePin,
@@ -21,6 +22,7 @@ __all__ = [
     "CheckFailure",
     "CorpusRecord",
     "CorpusSplit",
+    "LocatorProvenance",
     "NegativeKind",
     "Provenance",
     "SourcePin",

@@ -55,7 +55,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from contract_assay.corpus.records import CorpusRecord, CorpusSplit
+from contract_assay.corpus.records import CorpusRecord, CorpusSplit, LocatorProvenance
 from contract_assay.evidence.solidity import SolidityUnavailable, index_source
 from contract_assay.models import VulnerabilityClass
 
@@ -263,6 +263,14 @@ class VerificationReport:
 
     rejected_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     admitted_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
+    admitted_by_locator_provenance: Mapping[LocatorProvenance, int] = field(default_factory=dict)
+    """Admitted records split by whether their span was stated or derived.
+
+    Without this the admitted count mixes records whose span verification
+    cross-checked with records whose span it could not -- see
+    `LocatorProvenance`. The mix is invisible in a single total, which is the
+    failure §1.3 describes, occurring inside the report built to implement it.
+    """
 
     @property
     def candidates(self) -> int:
@@ -283,6 +291,10 @@ class VerificationReport:
         seen = self.rejected_by_class.get(cls, 0) + self.admitted_by_class.get(cls, 0)
         return self.rejected_by_class.get(cls, 0) / seen if seen else 0.0
 
+    @property
+    def derived_locator_count(self) -> int:
+        return self.admitted_by_locator_provenance.get(LocatorProvenance.DERIVED, 0)
+
     def sampling_statement(self) -> str:
         """One sentence a report must carry beside any number computed from this.
 
@@ -291,8 +303,15 @@ class VerificationReport:
         rather than an oversight.
         """
         admitted = _plural(len(self.admitted), "record")
+        count = self.derived_locator_count
+        derived = (
+            f" {count} of those {'carries' if count == 1 else 'carry'} a derived "
+            f"locator, whose span verification cannot cross-check."
+            if count
+            else ""
+        )
         if not self.rejected:
-            return f"{admitted} admitted; no candidates were rejected."
+            return f"{admitted} admitted; no candidates were rejected.{derived}"
 
         failures = ", ".join(
             f"{failure.value} {count}"
@@ -311,8 +330,8 @@ class VerificationReport:
         return (
             f"{admitted} admitted; {len(self.rejected)} of "
             f"{_plural(self.candidates, 'candidate')} ({self.rejection_rate:.1%}) rejected as "
-            f"unverifiable -- {failures}.{concentration} Every number computed over "
-            "this corpus describes the admitted records only."
+            f"unverifiable -- {failures}.{concentration}{derived} Every number computed "
+            "over this corpus describes the admitted records only."
         )
 
 
@@ -340,6 +359,7 @@ def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> Verifica
     by_failure: Counter[CheckFailure] = Counter()
     rejected_by_class: Counter[VulnerabilityClass] = Counter()
     admitted_by_class: Counter[VulnerabilityClass] = Counter()
+    admitted_by_provenance: Counter[LocatorProvenance] = Counter()
 
     for record in records:
         result = verify_record(record, resolve)
@@ -354,6 +374,8 @@ def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> Verifica
             record = record.model_copy(update={"pin": pinned})
         admitted.append(record)
         admitted_by_class.update(_classes_of(record))
+        if record.locator_provenance is not None:
+            admitted_by_provenance[record.locator_provenance] += 1
 
     return VerificationReport(
         admitted=tuple(admitted),
@@ -361,4 +383,5 @@ def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> Verifica
         by_failure=dict(by_failure),
         rejected_by_class=dict(rejected_by_class),
         admitted_by_class=dict(admitted_by_class),
+        admitted_by_locator_provenance=dict(admitted_by_provenance),
     )

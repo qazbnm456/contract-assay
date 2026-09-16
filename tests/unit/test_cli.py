@@ -56,6 +56,7 @@ def a_record(**over: object) -> dict[str, object]:
             "start_line": 11,
             "end_line": 13,
         },
+        "locator_provenance": "stated",
         "classes": ["slippage"],
         "provenance": {
             "platform": "example-platform",
