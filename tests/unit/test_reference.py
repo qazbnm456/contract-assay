@@ -271,9 +271,10 @@ contract C {
 
 
 class TestAccessControlVerdict:
-    def _verdict(self, finding: Finding) -> list[str]:
+    def _verdict(self, finding: Finding, **over: object) -> list[str]:
         detector = AccessControlDetector()
-        return [check.check for check in detector.verdict(a_context(detector.level), finding, [])]
+        ctx = a_context(detector.level, **over)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
 
     def test_an_unguarded_external_setter_stands(self) -> None:
         assert self._verdict(a_finding(6, 6, "function setOwner(address o) external")) == []
@@ -291,10 +292,33 @@ class TestAccessControlVerdict:
             a_finding(24, 24, "function guarded(address o) external onlyOwner")
         )
 
-    def test_a_function_writing_no_state_is_refuted(self) -> None:
+    NO_EFFECT = """\
+contract Quiet {
+    address owner;
+
+    function readOnlyish(address to) external {
+        uint256 unused = 1;
+    }
+}
+"""
+
+    def test_a_function_that_changes_and_calls_nothing_is_refuted(self) -> None:
+        # The rejection asserts a fact here: nothing is written and nothing is
+        # called, so there is genuinely nothing for a check to protect.
         assert "host_writes_no_state" in self._verdict(
-            a_finding(8, 10, "function drain(address to) external")
+            a_finding(4, 6, "function readOnlyish(address to) external"),
+            source=self.NO_EFFECT,
         )
+
+    def test_a_function_whose_effect_leaves_the_unit_is_refuted_for_that_reason(self) -> None:
+        # `drain` writes nothing and does `to.call("")`, which may change state
+        # anywhere. Still rejected -- §2.2 keeps the verdict side strict and an
+        # undecided basis is not a confirmation -- but not by asserting that
+        # there is nothing to protect, which would be false and would be used to
+        # discard a true finding.
+        checks = self._verdict(a_finding(8, 10, "function drain(address to) external"))
+        assert "host_state_change_indeterminate" in checks
+        assert "host_writes_no_state" not in checks
 
     def test_every_failing_condition_is_reported_not_just_the_first(self) -> None:
         # A conjunction expressed as `and` can say which conjunct failed, which

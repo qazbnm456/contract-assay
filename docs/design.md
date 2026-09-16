@@ -160,10 +160,16 @@ false and is acted on.
   independently sufficient (§7.3). Same rule, arriving from the instrument's
   side rather than the input's.
 
+The corollary is the dangerous part: **the accounting being complete is what
+makes a wrong cause invisible.** Every instance above had honest, complete
+counts. Completeness is normally the check that catches errors, so a wrong cause
+hiding behind a right count passes the review that would have caught anything
+else.
+
 The companion check is cheap and is the one that caught all three: **for each
 cause, one input that produced it.** A cause with no example behind it is a
-guess about why, and a guess about why survives review because the count beside
-it is right.
+guess about why, and a guess about why is indistinguishable from knowledge when
+the number beside it is correct.
 
 **Absence as evidence needs a control; absence as a prompt does not.** The
 distinction matters because "pair every absence with a presence" would be
@@ -393,6 +399,57 @@ Only when *both* tiers fail is the source skipped, with
 The tier travels with every result. A `clean` verdict reached without data flow
 is a weaker claim than one reached with it, and reports must never average the
 two together.
+
+### 3.1 A predicate has three answers, not two
+
+The separation this system is founded on — `invalid` apart from `clean`, an
+error never wearing a measurement's clothes — was missing one layer down, inside
+the evidence that feeds it. A predicate could fire or stay silent, and silence
+carried both "the property is absent here" and "I had no basis to decide". Only
+the first is a fact about the code.
+
+So a predicate evaluation is three-valued: **established**, **not fired**, or
+**indeterminate with a reason**. It was not a hypothetical. The access-control
+predicate looked for state writes and skipped a function that had none, so a
+function changing state through `token.mint(to, n)` produced nothing — and
+"nothing" was read downstream as "no state change here". An incident record in
+the corpus is exactly that shape.
+
+**Indeterminacy belongs to a site, not to a tier.** A tier says what the backend
+could do for a compilation *unit*; indeterminacy is a property of one
+*evaluation* — this call's effect is unknowable because the callee's
+implementation is not in the bytes we hold. Putting a per-site fact in a per-unit
+field would be the same misplacement this document keeps catching elsewhere.
+
+Three rules govern how it propagates, and the third is where the defect would
+return:
+
+1. **An indeterminate site does not make a run `invalid`.** The model can still
+   reason about the code; only the deterministic layer failed to corroborate,
+   and a run whose evidence was inconclusive still measured something.
+2. **It qualifies the run's negative.** A `clean` outcome with an undecided site
+   is not the claim "nothing is here". `DetectorRun.negative_is_established`
+   says which, and the score report counts qualified negatives beside `invalid`
+   and `skipped`, entering no matrix.
+3. **`verdict()` must not treat indeterminate as absent.** This is the natural
+   thing to write when a three-valued input meets a two-valued condition, and it
+   was already written here: the access-control verdict rejected a finding with
+   "the enclosing function writes no contract state, so there is nothing for an
+   access check to protect" — false for a function that mints through a call,
+   and used to discard a true finding. The claim is still not admitted, because
+   §2.2 keeps the verdict side strict and an undecided basis is not a
+   confirmation; what changed is that the cause is accurate and counted apart.
+   Which is §1.3's cause rule, reaching a verdict predicate.
+
+**The semantic tier does not close indeterminacy, and that is not a gap in the
+tier.** Full def-use, control flow and a call graph over the pinned unit still
+cannot read code the unit does not contain, and an interface declaration's
+implementation is not there. What does close it, for an address-pinned record
+(§6.1), is that the callee is a deployed contract at a known address and block,
+so its verified source is fetchable — a recursive resolution this design records
+and deliberately does not build. The asymmetry is worth knowing: indeterminacy
+is closeable for an address pin in a way it is not for a commit pin, where a
+third-party interface has no implementation anywhere we hold.
 
 ## 4. Vulnerability classes
 

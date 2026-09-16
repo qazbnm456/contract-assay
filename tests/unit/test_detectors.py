@@ -43,6 +43,7 @@ from contract_assay.detectors.loading import (
 )
 from contract_assay.detectors.reference import AccessControlDetector
 from contract_assay.models import (
+    Determination,
     DifficultyLevel,
     EvidenceRef,
     EvidenceTier,
@@ -896,13 +897,19 @@ class TestTheBlindnessRegisterIsCheckable:
     WRITE = "        shares[to] += amount;"
     EXTERNAL = "        v.mint(to, amount);"
 
-    def _fires(self, *, guard: bool, external: bool) -> list[str]:
+    def _evidence(self, *, guard: bool, external: bool) -> list[EvidenceRef]:
         source = self.BASE.format(
             guard=self.GUARD if guard else "",
             effect=self.EXTERNAL if external else self.WRITE,
         )
-        evidence = AccessControlDetector().evidence(a_context(source=source, path="src/R.sol"))
-        return [e.locator.function for e in evidence]
+        return list(AccessControlDetector().evidence(a_context(source=source, path="src/R.sol")))
+
+    def _fires(self, *, guard: bool, external: bool) -> list[str]:
+        return [
+            e.locator.function
+            for e in self._evidence(guard=guard, external=external)
+            if e.is_established
+        ]
 
     def test_the_predicate_works_when_neither_condition_holds(self) -> None:
         # The control. Without it, "silent" would not distinguish a blindness
@@ -912,13 +919,23 @@ class TestTheBlindnessRegisterIsCheckable:
     def test_an_unsound_guard_silences_it(self) -> None:
         assert self._fires(guard=True, external=False) == []
 
-    def test_an_external_effect_silences_it(self) -> None:
+    def test_an_external_effect_is_reported_as_indeterminate(self) -> None:
         # Independently of the guard, which is what makes it a second entry
-        # rather than a restatement of the first.
+        # rather than a restatement of the first -- and it is now *reported*
+        # rather than silent, because the silence meant both "no state change
+        # here" and "the change happens where I cannot see", and only the first
+        # is a fact about this code.
         assert self._fires(guard=False, external=True) == []
+        [entry] = self._evidence(guard=False, external=True)
+        assert entry.determination is Determination.INDETERMINATE
+        assert "not in the analysed unit" in (entry.indeterminate_because or "")
 
-    def test_both_together_silence_it(self) -> None:
+    def test_both_together_leave_no_established_evidence(self) -> None:
+        # The record's own shape. The indeterminacy is reported and the
+        # established answer is absent, which are different things and now
+        # visible as different things.
         assert self._fires(guard=True, external=True) == []
+        assert all(not e.is_established for e in self._evidence(guard=True, external=True))
 
     def test_both_shapes_are_declared(self) -> None:
         shapes = [b.shape for b in AccessControlDetector().known_blindness]

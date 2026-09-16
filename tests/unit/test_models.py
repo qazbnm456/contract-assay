@@ -16,6 +16,7 @@ from contract_assay.models import (
     MAX_REASONING_CHARS,
     CitationStatus,
     DetectorRun,
+    Determination,
     DifficultyLevel,
     Escalation,
     EvidenceRef,
@@ -478,3 +479,116 @@ class TestEvidenceCarriesTwoPayloads:
         # A field nobody declared would let two meanings of one predicate coexist.
         with pytest.raises(ValidationError):
             self._ref(surprise="?")
+
+
+class TestAThreeValuedPredicateResult:
+    """`invalid` versus `clean`, one layer down, inside the evidence.
+
+    A predicate that can only fire or stay silent has the merged version of the
+    distinction `Outcome` exists to keep: its silence means both "the property is
+    absent here" and "I had no basis to decide", and only the first is a fact
+    about the code.
+    """
+
+    def _ref(self, **over: object) -> EvidenceRef:
+        base: dict[str, object] = {
+            "predicate": "p",
+            "tier": EvidenceTier.SYNTACTIC,
+            "locator": Locator(file="src/V.sol", start_line=1, end_line=1),
+        }
+        return EvidenceRef(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_a_result_is_established_unless_it_says_otherwise(self) -> None:
+        # A predicate reporting a site without qualifying it is reporting a fact.
+        assert self._ref().is_established
+
+    def test_an_indeterminate_result_must_say_why(self) -> None:
+        # Silence about the reason is what makes an indeterminacy
+        # indistinguishable from an absence, which is the whole defect.
+        with pytest.raises(ValidationError, match="must say why"):
+            self._ref(determination=Determination.INDETERMINATE)
+
+    def test_a_blank_reason_is_not_a_reason(self) -> None:
+        with pytest.raises(ValidationError, match="must say why"):
+            self._ref(determination=Determination.INDETERMINATE, indeterminate_because="   ")
+
+    def test_an_established_result_may_not_carry_a_reason(self) -> None:
+        # A field that is sometimes a reason and sometimes decoration cannot be
+        # read; on a fact it would look like a caveat.
+        with pytest.raises(ValidationError, match="reads as a caveat on a fact"):
+            self._ref(indeterminate_because="not sure")
+
+    def test_an_indeterminate_result_is_not_established(self) -> None:
+        ref = self._ref(
+            determination=Determination.INDETERMINATE,
+            indeterminate_because="the callee is not in the unit",
+        )
+        assert not ref.is_established
+
+
+class TestIndeterminacyDoesNotBecomeAnError:
+    """The propagation rule, which is where this defect would come back.
+
+    An indeterminate site does not make a run `invalid`: the model can still
+    reason about the code, and only the deterministic layer failed to
+    corroborate. What it does is qualify the run's negative, because "I could
+    not tell" and "nothing is here" are different claims.
+    """
+
+    def _run(self, outcome: Outcome, *, indeterminate: bool, **over: object) -> DetectorRun:
+        evidence = []
+        if indeterminate:
+            evidence.append(
+                EvidenceRef(
+                    predicate="p",
+                    tier=EvidenceTier.SYNTACTIC,
+                    locator=Locator(file="src/V.sol", start_line=1, end_line=1),
+                    determination=Determination.INDETERMINATE,
+                    indeterminate_because="the callee is not in the analysed unit",
+                )
+            )
+        base: dict[str, object] = {
+            "detector_id": "d",
+            "class_id": VulnerabilityClass.ACCESS_CONTROL,
+            "source_id": "u",
+            "outcome": outcome,
+            "evidence_tier": EvidenceTier.SYNTACTIC,
+            "evidence": evidence,
+        }
+        return DetectorRun(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_a_clean_run_with_an_indeterminate_site_is_still_clean(self) -> None:
+        run = self._run(Outcome.CLEAN, indeterminate=True)
+        assert run.outcome is Outcome.CLEAN
+        assert run.invalid_reason is None
+
+    def test_but_its_negative_is_not_established(self) -> None:
+        assert self._run(Outcome.CLEAN, indeterminate=True).negative_is_established is False
+
+    def test_a_clean_run_with_nothing_indeterminate_is_established(self) -> None:
+        assert self._run(Outcome.CLEAN, indeterminate=False).negative_is_established is True
+
+    def test_the_two_kinds_of_evidence_are_separable(self) -> None:
+        run = self._run(Outcome.CLEAN, indeterminate=True)
+        assert run.established_evidence == []
+        assert len(run.indeterminate_evidence) == 1
+
+    def test_a_qualified_negative_is_only_about_negatives(self) -> None:
+        # A run that found something is not qualified by an undecided site
+        # elsewhere: it measured something and says so.
+        run = self._run(
+            Outcome.VULNERABLE,
+            indeterminate=True,
+            findings=[
+                VerifiedFinding(
+                    finding=Finding(
+                        detector_id="d",
+                        quote="x",
+                        reasoning="r",
+                        locator=Locator(file="src/V.sol", start_line=1, end_line=1),
+                    ),
+                    status=CitationStatus.VERIFIED,
+                )
+            ],
+        )
+        assert run.negative_is_established is True

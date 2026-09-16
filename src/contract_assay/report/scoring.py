@@ -136,6 +136,18 @@ class ClassScore:
     invalid_runs: int = 0
     skipped_runs: int = 0
     measured_runs: int = 0
+    qualified_negatives: int = 0
+    """Clean runs resting on a site the deterministic layer could not decide.
+
+    A `clean` outcome means the detector looked and found nothing. When some
+    site was indeterminate, the run still measured something -- the model
+    reasoned about the code -- but "nothing is here" is not the claim it
+    supports, and a matrix that could not tell the two apart would have
+    `Outcome`'s founding conflation back inside the evidence feeding it
+    (`models.Determination`). Counted and disclosed, entering no matrix, which is
+    the treatment `invalid` and `skipped` already get.
+    """
+
     missed_record_ids: tuple[str, ...] = ()
     """Which records nothing matched, so a miss can be told from a blindness."""
 
@@ -359,6 +371,15 @@ class ScoreReport:
                 "blindness -- which is the figure to read as a weakness. Declaring a "
                 "blindness moves a miss out of it and adds no count that grows, so a "
                 "submission reports its own limits by preferring to."
+            )
+
+        qualified = sum(s.qualified_negatives for s in self.by_class.values())
+        if qualified:
+            parts.append(
+                f"{_plural(qualified, 'clean run')} rested on a site the deterministic "
+                f"layer could not decide, so {'its' if qualified == 1 else 'their'} "
+                "negative is qualified rather than a finding of absence. Counted here "
+                "and in no confusion matrix."
             )
 
         invalid = sum(s.invalid_runs for s in self.by_class.values())
@@ -588,6 +609,7 @@ def score(
             invalid_runs=sum(1 for r in class_runs if r.outcome is Outcome.INVALID),
             skipped_runs=sum(1 for r in class_runs if r.outcome is Outcome.SKIPPED),
             measured_runs=sum(1 for r in class_runs if r.outcome.is_measurement),
+            qualified_negatives=sum(1 for r in class_runs if not r.negative_is_established),
             exact_unavailable=sum(
                 1
                 for r in class_records

@@ -330,16 +330,23 @@ class AccessControlDetector(_SyntacticDetector):
         KnownBlindness(
             shape=(
                 "a state change effected through an external call rather than by "
-                "writing storage: the function mints, transfers or delegates, and the "
-                "predicate sees no state change to ask about access to"
+                "writing storage: the function mints, transfers or delegates, so "
+                "whether it changes state depends on what the callee does"
             ),
             demonstrated_by="rewardshypervisor-access-control-13849006",
             isolated=False,
             unpatched_because=(
                 "knowing that a call changes state means knowing what the callee does, "
-                "which is interprocedural and across a contract boundary. Treating "
-                "every external call as a state change would make the predicate fire "
-                "on every function that calls anything."
+                "and for an interface declaration the implementation is not in the "
+                "pinned bytes at all -- so the semantic tier does not close this one. "
+                "Full def-use, control flow and a call graph over the unit still cannot "
+                "read code the unit does not contain. The site is therefore reported as "
+                "indeterminate rather than absent, which is the honest answer available "
+                "at any tier over one unit. For an address-pinned record the callee is "
+                "a deployed contract at a known address and block, so its verified "
+                "source is fetchable and the indeterminacy is closeable there in a way "
+                "it is not for a commit pin -- recorded, deliberately not built, and "
+                "waiting for something that needs it."
             ),
         ),
     )
@@ -396,11 +403,42 @@ class AccessControlDetector(_SyntacticDetector):
             )
         ]
         if not writes:
-            failures.append(
-                _reject(
-                    "host_writes_no_state",
-                    "the enclosing function writes no contract state, so there is nothing "
-                    "for an access check to protect",
+            # Two causes, not one. A function with no writes and no outgoing
+            # calls changes nothing, and the rejection asserts a fact. A
+            # function that mints or transfers through an external call may well
+            # change state, and "writes no contract state, so there is nothing
+            # to protect" would then be a false assertion used to discard a true
+            # finding -- the three-valued predicate result meeting a two-valued
+            # condition, which is the substitution `Determination` exists to
+            # stop. The claim is still not admitted, because §2.2 keeps the
+            # verdict side strict and an undecided basis is not a confirmation;
+            # what changes is that the cause is accurate and counted apart.
+            outbound = [
+                call
+                for call in parsed.calls
+                if call.receiver is not None
+                and any(
+                    function.site.start_line <= call.site.start_line <= function.site.end_line
+                    for function in hosts
                 )
-            )
+            ]
+            if outbound:
+                failures.append(
+                    _reject(
+                        "host_state_change_indeterminate",
+                        "the enclosing function writes no state directly and makes "
+                        f"{len(outbound)} external "
+                        f"{'call' if len(outbound) == 1 else 'calls'}, so whether there is "
+                        "state for an access check to protect depends on code outside the "
+                        "analysed unit",
+                    )
+                )
+            else:
+                failures.append(
+                    _reject(
+                        "host_writes_no_state",
+                        "the enclosing function writes no contract state and calls nothing "
+                        "external, so there is nothing for an access check to protect",
+                    )
+                )
         return failures

@@ -81,7 +81,7 @@ from contract_assay.evidence.syntax import (
     LOW_LEVEL_CALL_MEMBERS,
     Syntax,
 )
-from contract_assay.models import EvidenceRef, EvidenceTier, VulnerabilityClass
+from contract_assay.models import Determination, EvidenceRef, EvidenceTier, VulnerabilityClass
 
 __all__ = [
     "FLAG_RETURNING_MEMBERS",
@@ -342,6 +342,16 @@ def _state_change_reachable_without_modifier_or_sender_reference(
         beside an unguarded write -- suppresses the fact.
     *   A guard implemented as an internal helper, `_checkOwner()`, is invisible:
         distinguishing that call from any other internal call needs types.
+
+    A third thing it used to miss *silently*, which is the worse kind. A
+    function that changes state through an external call -- `token.mint(to, n)`
+    -- writes no storage itself, so the search for writes came back empty and
+    the predicate said nothing. "Nothing" then meant both "no state changes
+    here" and "the state change happens somewhere I cannot see", and only the
+    first is a fact about this code. Such a site is now reported as
+    **indeterminate** with its reason, which is the `invalid`/`clean`
+    separation this project is built on, applied one layer down
+    (`models.Determination`).
     """
     found: list[EvidenceRef] = []
     for function in syntax.functions:
@@ -358,6 +368,29 @@ def _state_change_reachable_without_modifier_or_sender_reference(
             w for w in syntax.writes if w.writes_state and _inside(declaration, w.site.start_line)
         ]
         if not writes:
+            outbound = [
+                call
+                for call in syntax.calls
+                if call.receiver is not None and _inside(declaration, call.site.start_line)
+            ]
+            if outbound:
+                found.append(
+                    EvidenceRef(
+                        predicate="state_change_reachable_without_modifier_or_sender_reference",
+                        tier=_SYNTACTIC,
+                        locator=function.site.locator(path),
+                        determination=Determination.INDETERMINATE,
+                        indeterminate_because=(
+                            "the function writes no storage itself and makes "
+                            f"{len(outbound)} external "
+                            f"{'call' if len(outbound) == 1 else 'calls'}, so whether it "
+                            "changes state depends on what the callees do -- which is not "
+                            "in the analysed unit"
+                        ),
+                        detail={"outbound_calls": len(outbound), "writes_storage": False},
+                        diagnostic={"callees": ", ".join(sorted({c.callee for c in outbound})[:5])},
+                    )
+                )
             continue
         senders = [
             1

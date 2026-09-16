@@ -31,6 +31,7 @@ __all__ = [
     "MAX_REASONING_CHARS",
     "CitationStatus",
     "DetectorRun",
+    "Determination",
     "DifficultyLevel",
     "Escalation",
     "EvidenceRef",
@@ -239,6 +240,41 @@ class EvidenceTier(StrEnum):
     """Parsed only: syntax tree, no types, no data flow."""
 
 
+class Determination(StrEnum):
+    """Whether a predicate's answer at a site is a finding about the code.
+
+    The founding separation of this system, one layer further down. At the
+    outcome layer `invalid` -- could not measure -- is kept apart from `clean` --
+    measured, found nothing -- because merging them makes an error
+    indistinguishable from a conclusion afterwards (`Outcome`). A predicate that
+    can only fire or stay silent has the merged version of exactly that problem:
+    its silence means both "the property is absent here" and "I had no basis to
+    decide", and only the first is a fact about the code.
+
+    So a predicate evaluation is three-valued. Indeterminacy is recorded at the
+    **site**, not on the unit's evidence tier: a tier says what the backend
+    could do for a compilation unit, while indeterminacy is a property of one
+    evaluation -- this call's effect is unknowable because the callee's
+    implementation is not in the bytes we hold. Putting a per-site fact in a
+    per-unit field would be the same misplacement in a new spot.
+    """
+
+    ESTABLISHED = "established"
+    """The predicate's condition holds here, and the evidence says what holds."""
+
+    INDETERMINATE = "indeterminate"
+    """The predicate could not decide here, and says why.
+
+    Recorded rather than dropped, and it does **not** make the run `invalid`:
+    the model can still reason about the code, and only the deterministic layer
+    failed to corroborate. What it must never do is stand in for absence --
+    `verdict()` treating indeterminate as "the property is not here" is the
+    merged version of this distinction reappearing one layer up, and it is the
+    natural thing to write when a three-valued input meets a two-valued
+    condition.
+    """
+
+
 class KnownBlindness(_Frozen):
     """A defect shape a detector cannot see, and the record that proves it.
 
@@ -346,6 +382,50 @@ class EvidenceRef(_Frozen):
             "identifiers belong here."
         ),
     )
+
+    determination: Determination = Field(
+        default=Determination.ESTABLISHED,
+        description=(
+            "Whether the predicate decided here or could not. Defaults to established, "
+            "because a predicate that reports a site without saying otherwise is "
+            "reporting a fact about the code."
+        ),
+    )
+    indeterminate_because: str | None = Field(
+        default=None,
+        description=(
+            "Why the predicate could not decide, in prose. Required for an "
+            "indeterminate result and refused for an established one."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _indeterminacy_states_its_reason(self) -> EvidenceRef:
+        """An indeterminate result says why, and an established one may not claim to.
+
+        The same discipline every cause here carries (§1.3): a cause with no
+        reason behind it is a guess about why, and a guess about why survives
+        review because the thing beside it is correct. Refusing the reason on an
+        established result is the other half -- a field that is sometimes a
+        reason and sometimes decoration cannot be read.
+        """
+        if self.determination is Determination.INDETERMINATE:
+            if not (self.indeterminate_because or "").strip():
+                raise ValueError(
+                    "an indeterminate evidence result must say why it could not decide; "
+                    "silence about the reason is what makes an indeterminacy "
+                    "indistinguishable from an absence"
+                )
+        elif self.indeterminate_because is not None:
+            raise ValueError(
+                "indeterminate_because is set on an established result, which then "
+                "reads as a caveat on a fact"
+            )
+        return self
+
+    @property
+    def is_established(self) -> bool:
+        return self.determination is Determination.ESTABLISHED
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +649,35 @@ class DetectorRun(_Frozen):
     skip_reason: SkipReason | None = None
     escalations: list[Escalation] = Field(default_factory=list)
     trace_path: str | None = Field(default=None, description="Path to the run's JSONL trajectory.")
+
+    @property
+    def established_evidence(self) -> list[EvidenceRef]:
+        """Evidence that says something about the code."""
+        return [e for e in self.evidence if e.is_established]
+
+    @property
+    def indeterminate_evidence(self) -> list[EvidenceRef]:
+        """Sites the deterministic layer could not decide, each with its reason."""
+        return [e for e in self.evidence if not e.is_established]
+
+    @property
+    def negative_is_established(self) -> bool:
+        """Whether a `clean` outcome rests on anything.
+
+        `clean` means the detector looked and found nothing. When the
+        deterministic layer could not decide at some site, a clean verdict is
+        still a measurement -- the model reasoned about the code -- but it is
+        not the same claim as "nothing is here", and a report that could not
+        tell them apart would have the founding conflation of `Outcome` back
+        inside the evidence that feeds it.
+
+        Not a rejection. An indeterminate site does not make a run `invalid`,
+        because the run measured something; it makes the run's negative
+        qualified, and says so.
+        """
+        if self.outcome is not Outcome.CLEAN:
+            return True
+        return not self.indeterminate_evidence
 
     @property
     def level(self) -> DifficultyLevel:
