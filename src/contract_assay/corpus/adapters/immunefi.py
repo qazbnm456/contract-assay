@@ -53,6 +53,7 @@ from dataclasses import dataclass
 from contract_assay.corpus.adapters.classify import classify_title
 from contract_assay.corpus.adapters.markdown import (
     SourceCitation,
+    address_target,
     permalinks,
     quoted_source,
     section,
@@ -260,6 +261,17 @@ class ImmunefiAdapter:
 
         cited = [c for c in permalinks(parsed.target) if c.is_solidity]
         if not cited:
+            # A target naming a deployed contract states a location; it states
+            # it in coordinates this stage cannot yet resolve. Filing it as
+            # stating none says the wrong thing about both the report and the
+            # work remaining.
+            address = address_target(parsed.target)
+            if address is not None:
+                return Skip(
+                    SkipCause.NO_SOURCE_AT_ADDRESS,
+                    f"target names deployed contract {address} and no verified source "
+                    "was resolved for it",
+                )
             return Skip(SkipCause.NO_FILE_PATH, f"target is not a Solidity file: {parsed.target}")
         target = _with_line_from_body(cited[0], parsed.body)
 

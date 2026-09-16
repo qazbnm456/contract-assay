@@ -302,3 +302,45 @@ Target: {REPO}/blob/main/src/Vault.sol
         outcome = adapter.extract(report, candidate)
         assert isinstance(outcome, Skip)
         assert outcome.cause is SkipCause.MALFORMED_REPORT
+
+
+class TestATargetThatNamesADeployedContract:
+    """A location in coordinates this stage cannot resolve is still a location.
+
+    Found by reading the inputs behind a `no_file_path` count of 35: fifteen of
+    them named an explorer address URL. Filing those as stating no location said
+    the wrong thing about the report and about the work remaining.
+    """
+
+    def _skip(self, target: str) -> Skip:
+        body = WELL_FORMED.body.replace(
+            f"Target: {REPO}/blob/main/src/Vault.sol", f"Target: {target}"
+        )
+        report = a_report(body)
+        adapter = ImmunefiAdapter(resolve_commit=resolver)
+        [candidate] = adapter.candidates(report)
+        outcome = adapter.extract(report, candidate)
+        assert isinstance(outcome, Skip)
+        return outcome
+
+    def test_an_explorer_address_is_counted_apart(self) -> None:
+        skip = self._skip("https://testnet.snowtrace.io/address/0x" + "A" * 40)
+        assert skip.cause is SkipCause.NO_SOURCE_AT_ADDRESS
+        # Lowercased: mixed case is a checksum, so two spellings of one address
+        # must not become two pins.
+        assert "0x" + "a" * 40 in skip.detail
+
+    def test_the_host_is_not_what_identifies_it(self) -> None:
+        # Matched on the shape of the path. A list of explorer hosts is the part
+        # that goes stale; `/address/0x...` is what names the coordinate system.
+        for host in ("etherscan.io", "bscscan.com", "some-new-explorer.example"):
+            assert self._skip(f"https://{host}/address/0x{'b' * 40}").cause is (
+                SkipCause.NO_SOURCE_AT_ADDRESS
+            )
+
+    def test_a_target_naming_neither_is_still_a_missing_path(self) -> None:
+        # The third application of the rule found a genuine absence: a target
+        # naming a repository at a tag states no file, and that is the report.
+        assert self._skip("https://github.com/example/other/tree/v1.2.3").cause is (
+            SkipCause.NO_FILE_PATH
+        )

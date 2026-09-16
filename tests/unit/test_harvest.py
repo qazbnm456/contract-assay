@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.corpus.harvest import (
+    SAMPLES,
     Candidate,
     DraftRecord,
     RawReport,
@@ -442,3 +443,61 @@ class TestADraftMustBeAbleToBecomeARecord:
         draft = self._draft(start_line=None, end_line=None)
         assert draft.function == "withdraw"
         assert not draft.has_stated_span
+
+
+class TestAZeroArrivesWithItsEvidence:
+    """A not-stated verdict retains some of the inputs that produced it.
+
+    Every such verdict investigated in this project turned out to be the reader
+    rather than the input, until one was not -- which is the point. The rule is
+    "a claim about the reader until a sample says otherwise", and it needed
+    something better than a reminder to go and look, so the reader keeps the
+    evidence and the statement prints some of it.
+    """
+
+    def _harvest(self, cause: SkipCause, reports: int = 4):  # type: ignore[no-untyped-def]
+        class Adapter:
+            platform = "p"
+
+            def candidates(self, report: RawReport) -> list[Candidate]:
+                return [Candidate(candidate_id=report.report_url, title="t")]
+
+            def extract(self, report: RawReport, candidate: Candidate) -> Skip:
+                return Skip(cause, f"nothing usable in {report.report_url}")
+
+        return harvest(
+            Adapter(),
+            [
+                RawReport(platform="p", report_url=f"https://x/{i}", body="b")
+                for i in range(reports)
+            ],
+        )
+
+    def test_samples_are_retained_for_an_absence(self) -> None:
+        report = self._harvest(SkipCause.NO_LOCATION)
+        assert SkipCause.NO_LOCATION in report.absence_samples
+        assert "https://x/0" in report.absence_samples[SkipCause.NO_LOCATION][0]
+
+    def test_the_sample_is_bounded(self) -> None:
+        # Enough to tell a reader failure from a genuine absence, few enough
+        # that the statement stays readable.
+        report = self._harvest(SkipCause.NO_LOCATION, reports=50)
+        assert len(report.absence_samples[SkipCause.NO_LOCATION]) == SAMPLES
+
+    def test_a_judgement_is_not_an_absence(self) -> None:
+        # `unmapped_class` is the reader deciding, not the reader failing to
+        # read: the label was there and does not map. Retaining samples for it
+        # would bury the causes where a sample changes the diagnosis.
+        report = self._harvest(SkipCause.UNMAPPED_CLASS)
+        assert report.absence_samples == {}
+
+    def test_the_statement_prints_one(self) -> None:
+        statement = self._harvest(SkipCause.NO_LOCATION).yield_statement()
+        assert "largest not-stated verdict is no_location" in statement
+        assert "https://x/0" in statement
+        assert "claim about the reader" in statement
+
+    def test_a_skip_remembers_which_document_it_came_from(self) -> None:
+        # So a loss can be re-read without re-running the harvest.
+        report = self._harvest(SkipCause.NO_COMMIT)
+        assert {s.report_url for s in report.skipped} == {f"https://x/{i}" for i in range(4)}

@@ -38,7 +38,7 @@ what the corpus is a sample of.
 from __future__ import annotations
 
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -48,6 +48,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from contract_assay.corpus.records import Provenance
 from contract_assay.models import VulnerabilityClass
+
+SAMPLES = 3
+"""How many inputs to retain per not-stated verdict.
+
+Enough to tell a reader failure from a genuine absence -- one sample is an
+anecdote and the whole set is the input -- and small enough that a statement
+stays readable.
+"""
 
 __all__ = [
     "Candidate",
@@ -82,6 +90,21 @@ class SkipCause(StrEnum):
     NO_FILE_PATH = "no_file_path"
     """A location was described but no file could be resolved from it."""
 
+    NO_SOURCE_AT_ADDRESS = "no_source_at_address"
+    """The report located a deployed contract, and no verified source was found.
+
+    Counted apart from `no_file_path` because the two point at different fixes,
+    and one of them is not a fix to this pipeline at all. A target naming a
+    document states no location; a target naming `/address/0x...` states a
+    perfectly good one, in coordinates an `AddressPin` can hold (§6.1). What is
+    missing is the source at that address, which is a fact about what has been
+    verified on that chain rather than about the report or the reader.
+
+    Found by reading the inputs behind a `no_file_path` count of 35: every
+    retained sample was an explorer address URL, and filing them as stating no
+    location was the reader again.
+    """
+
     NO_LOCATION = "no_location"
     """Neither a line span nor a function name, so nothing can be derived."""
 
@@ -96,6 +119,30 @@ class SkipCause(StrEnum):
 
     MALFORMED_REPORT = "malformed_report"
     """The report could not be read far enough to judge."""
+
+    @property
+    def is_an_absence(self) -> bool:
+        """Whether this cause is a claim that the input did not state something.
+
+        These are the causes that have been wrong every time they were checked.
+        A quarter of one archive was filed as out of scope by a reader that
+        could not parse its metadata block; four incident populations were
+        written off as unpinnable by a schema that could not express an address;
+        a proof-of-concept archive was reported as stating no fork points by a
+        pattern that wanted a literal. Every case opened was the reader, none
+        was the input.
+
+        So a zero under one of these causes is a hypothesis, and the report
+        carries samples of the inputs that produced it (§6.3).
+        """
+        return self in (
+            SkipCause.NO_REPOSITORY,
+            SkipCause.NO_COMMIT,
+            SkipCause.NO_FILE_PATH,
+            SkipCause.NO_LOCATION,
+            SkipCause.NO_CLASS,
+            SkipCause.MALFORMED_REPORT,
+        )
 
 
 class RawReport(BaseModel):
@@ -244,6 +291,13 @@ class SkippedCandidate:
     platform: str
     candidate: Candidate
     skip: Skip
+    report_url: str = ""
+    """Which document this candidate came from, so a loss can be re-read.
+
+    Held rather than derived because the point of retaining it is to make a
+    not-stated verdict checkable without re-running the harvest, and a candidate
+    id is not always a locator back to the source document.
+    """
 
 
 class CommitResolver(Protocol):
@@ -313,6 +367,22 @@ class HarvestReport:
     are known.
     """
 
+    absence_samples: Mapping[SkipCause, tuple[str, ...]] = field(default_factory=dict)
+    """A few inputs behind each not-stated verdict, so the verdict can be checked.
+
+    `SkipCause.is_an_absence` says which causes get them and why: every such
+    zero that has been investigated here turned out to be the reader rather than
+    the input, without exception. The rule that follows -- when a reader reports
+    that its input does not state something, that is a claim about the reader
+    until a sample says otherwise -- needed something better than a reminder to
+    go and look, so the reader retains the evidence and the statement prints
+    some of it.
+
+    Diagnostic only, and deliberately never part of a record: these strings can
+    contain report prose, which is third-party writing, and a corpus record
+    carries pointers rather than text (§6.1).
+    """
+
     anchored_drafts: int = 0
     """Drafts stating one line, to be widened to the declaration containing it."""
 
@@ -342,6 +412,31 @@ class HarvestReport:
         skipped = self.skipped_by_class.get(cls, 0)
         seen = skipped + self.extracted_by_class.get(cls, 0)
         return skipped / seen if seen else 0.0
+
+    def absence_evidence(self) -> str:
+        """One retained input behind the largest not-stated verdict.
+
+        Printed rather than merely held, because a check that needs somebody to
+        decide to run it is the kind this project has spent its history moving
+        into the artefact. A zero arrives with a sample of what produced it, and
+        whoever reads the number reads the evidence in the same sentence.
+
+        The largest cause only: a statement that printed every sample would stop
+        being read, and the largest absence is where a reader defect costs most.
+        """
+        if not self.absence_samples:
+            return ""
+        cause, samples = max(
+            self.absence_samples.items(),
+            key=lambda item: (self.by_cause.get(item[0], 0), item[0].value),
+        )
+        return (
+            f" The largest not-stated verdict is {cause.value}"
+            f" ({self.by_cause.get(cause, 0)}); {len(samples)} of its inputs"
+            f" {'is' if len(samples) == 1 else 'are'} retained, one being:"
+            f" {samples[0][:160]}. A not-stated verdict is a claim about the reader"
+            " until one of these says otherwise."
+        )
 
     def yield_statement(self) -> str:
         """The sentence a report must carry beside any claim about corpus content.
@@ -397,7 +492,7 @@ class HarvestReport:
             if self.anchored_drafts
             else ""
         )
-        derived = anchored + derived
+        derived = anchored + derived + self.absence_evidence()
         return (
             f"{drafts} ({self.yield_rate:.1%}); {len(self.skipped)} skipped -- {causes}."
             f"{concentration}{unclassified}{derived}{floor}"
@@ -420,6 +515,7 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
     drafts: list[DraftRecord] = []
     skipped: list[SkippedCandidate] = []
     by_cause: Counter[SkipCause] = Counter()
+    absence_samples: defaultdict[SkipCause, list[str]] = defaultdict(list)
     skipped_by_class: Counter[VulnerabilityClass] = Counter()
     extracted_by_class: Counter[VulnerabilityClass] = Counter()
     candidates_by_platform: Counter[str] = Counter()
@@ -448,8 +544,13 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
                     derived_span_drafts += 1
                 continue
 
-            skipped.append(SkippedCandidate(report.platform, candidate, outcome))
+            skipped.append(SkippedCandidate(report.platform, candidate, outcome, report.report_url))
             by_cause[outcome.cause] += 1
+            if outcome.cause.is_an_absence and len(absence_samples[outcome.cause]) < SAMPLES:
+                absence_samples[outcome.cause].append(
+                    f"{report.report_url} -- "
+                    f"{outcome.detail or candidate.title[:80] or '(no detail)'}"
+                )
             skipped_by_platform[report.platform] += 1
             if candidate.classes:
                 skipped_by_class.update(candidate.classes)
@@ -457,6 +558,7 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
                 unclassified_skips += 1
 
     return HarvestReport(
+        absence_samples={c: tuple(v) for c, v in absence_samples.items() if v},
         drafts=tuple(drafts),
         skipped=tuple(skipped),
         by_cause=dict(by_cause),

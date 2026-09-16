@@ -854,6 +854,32 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   scope and the four incident populations written off as unpinnable were zeroes
   nobody had opened.
 
+  **An absence is a claim about the observer wherever it appears**, and the
+  reader phrasing is the actionable case rather than the whole of it. Eighty-
+  eight findings were dropped as an absence of records for their class (§7.2).
+  "One incident in seven is pinnable" was an absence of expressible pins (§6.6).
+  A metadata field that could not be read was filed as a platform saying no. The
+  same shape every time, and every time the absence was about the instrument.
+
+  So the rule is given the treatment every other check here gets, and stops
+  depending on somebody deciding to run it: **the reader retains a few of the
+  inputs behind each not-stated verdict, and the statement prints one.** A zero
+  arrives with its own evidence, in the sentence where the number is read.
+  `SkipCause.is_an_absence` marks which causes qualify — a judgement such as
+  "this label maps onto none of the nine" is the reader deciding, not the reader
+  failing, and retaining samples for it would bury the causes where a sample
+  changes the diagnosis.
+
+  It repaid itself on the first run, and the third application is the one worth
+  keeping. A `no_file_path` count of 35 came with its inputs attached: fifteen
+  named an explorer `/address/0x…` URL, which is a perfectly good location in
+  coordinates an `AddressPin` now holds — so they are counted apart, under a
+  cause naming what is actually missing, which is verified source at that
+  address rather than a path in the report. Of the remaining twenty, every one
+  named a repository at a tag with no file in it. That is a **genuine absence**:
+  the sample said otherwise, the diagnosis stood, and the rule stopped. A check
+  that only ever confirms its own suspicion is not a check.
+
   Closing both gaps moved the in-scope population from 224 reports to 331 and
   the class-mapping rate from 11% to 17%, which lands where the other four
   sources already were (§4.3). The gaps had been depressing the *denominator*,

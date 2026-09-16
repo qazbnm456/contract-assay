@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 __all__ = [
     "SourceCitation",
+    "address_target",
     "contest_snapshot",
     "permalinks",
     "quoted_source",
@@ -133,3 +134,24 @@ def section(text: str, heading: str, *, level: int = 3) -> str | None:
     )
     found = pattern.search(text)
     return found.group(1) if found else None
+
+
+_EXPLORER_ADDRESS = re.compile(
+    r"https?://(?P<host>[\w.-]+)/address/(?P<address>0x[0-9a-fA-F]{40})\b"
+)
+
+
+def address_target(target: str) -> str | None:
+    """The contract address a target names, when it names a deployed contract.
+
+    Matched on the shape of the path rather than against a list of explorer
+    hosts. A host list is the part that goes stale -- there are hundreds of
+    explorers and more arrive -- while `/address/0x…` is what actually
+    identifies the coordinate system, and it is the same shape on all of them.
+
+    Returned lowercased, because mixed case in an address is a checksum: a
+    property of the rendering rather than of the contract, and two spellings of
+    one address must not become two pins.
+    """
+    match = _EXPLORER_ADDRESS.search(target)
+    return match.group("address").lower() if match else None
