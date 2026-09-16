@@ -1,5 +1,16 @@
 """Corpus: pointer-based ground-truth records and their verification."""
 
+from contract_assay.corpus.harvest import (
+    Candidate,
+    DraftRecord,
+    HarvestReport,
+    RawReport,
+    ReportAdapter,
+    Skip,
+    SkipCause,
+    SkippedCandidate,
+    harvest,
+)
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
@@ -19,17 +30,26 @@ from contract_assay.corpus.verify import (
 )
 
 __all__ = [
+    "Candidate",
     "CheckFailure",
     "CorpusRecord",
     "CorpusSplit",
+    "DraftRecord",
+    "HarvestReport",
     "LocatorProvenance",
     "NegativeKind",
     "Provenance",
+    "RawReport",
+    "ReportAdapter",
+    "Skip",
+    "SkipCause",
+    "SkippedCandidate",
     "SourcePin",
     "SourceResolver",
     "VerificationReport",
     "VerificationResult",
     "VulnerabilityClass",
+    "harvest",
     "verify_all",
     "verify_record",
 ]

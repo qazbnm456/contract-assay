@@ -487,7 +487,11 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   when the named function is declared exactly once inside the named type, and
   skip otherwise. Every derived locator is marked as such (§6.6), because
   verification cannot cross-check it.
-- **normalize** — resolve locations, pin commit SHAs, map to `class_id`.
+- **normalize** — resolve locations, deriving a span where the report named only
+  a function, and pin commit SHAs and digests. Class mapping is *not* here: it
+  belongs to the adapter, because the taxonomy being mapped from is the
+  platform's, and because a candidate that fails extraction must already carry
+  its class or the skip cannot be counted under one.
 - **verify** — check every record against reality: the commit resolves, the
   digest matches, the span lies inside the file, and the named function and
   contract are declared where the record says — the function *within the span*,
@@ -623,6 +627,27 @@ the span check that carries the weight for a stated locator — so a derived rec
 rests on the original report's prose naming the right function, with nothing
 available to contradict it.
 
+**One repair for this is rejected rather than merely unbuilt**, and it is written
+down because it is a good idea that will be proposed again. A derived locator
+could apparently be corroborated by asking whether predicates consistent with the
+claimed class fire at the derived span: a report saying "reentrancy in
+`Vault.withdraw`", a derived span, and the reentrancy predicate firing there
+looks like independent confirmation, and it addresses precisely the residual
+trust named above.
+
+It is §1.3's first instance in a new costume. Corroboration as an admission
+criterion caps derived-locator admission at predicate coverage, so derived
+records survive for the classes the predicates can see and die for the classes
+they cannot — the `Q` classes — reintroducing the era bias that derivation exists
+to remove, by a different route and with a more respectable justification.
+
+Nor does it survive being demoted from a gate to a recorded signal. The
+corroboration rate would be confounded by uneven predicate coverage across
+classes, so "40% of derived locators had corroborating evidence" would report
+which classes they belonged to rather than whether the derivations were sound —
+and would be read as a quality measure. There is nothing available to contradict
+the prose, and that is the accurate statement.
+
 ## 7. Scoring
 
 The scorer is a separate component and does not run inside the harness. Trace
@@ -743,7 +768,8 @@ work in the present tense reports intentions as capabilities.
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
-| `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
+| `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **partly built** |
+| `corpus/normalize.py` | location resolution and span derivation (§6.3) | not started |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
 
@@ -759,6 +785,12 @@ findings are passed in rather than fetched, which is the same injection
 `corpus.verify` uses for source resolution and for the same reason — the whole
 path stays exercisable with no model, no network and no toolchain. For a
 detector whose `plan()` returns `None` it is not half a run but the entire one.
+
+`corpus/harvest.py` is *partly* built in a specific sense: the adapter
+protocol, the extraction loop and the whole yield accounting exist and are
+covered, and no adapter for a real platform does. What is built is the part that
+decides whether the losses are measurable; what is missing is the part that has
+to be written once per platform.
 
 The predicate library is marked *partly* built rather than built, and the gap
 is worth naming precisely. Six predicates cover five of the nine classes;
