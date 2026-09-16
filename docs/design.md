@@ -573,6 +573,25 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   can, make the judgement runnable if you cannot, and disclose only when neither
   is available.
 
+  A fourth route is **measured but not implemented**, recorded here because
+  reproducing the measurement costs network access. Findings quote the vulnerable
+  code inline far more often than they cite it: across 87 accepted findings, 82%
+  carry a fenced code block and 63% carry one that looks like source rather than
+  a proof-of-concept harness, against the 11% carrying the structured excerpt the
+  adapter already reads. Locating a quoted block in the pinned file by matching
+  — comments stripped, whitespace collapsed, elisions dropped — yielded a usable
+  span for 2 of 3 candidates tested, with the third correctly refused: its
+  fragments matched across a 240-line region, and a match scattered over a whole
+  file locates nothing, so a span wider than about three times its excerpt is
+  rejected. Three candidates is a direction rather than a rate.
+
+  If built, this route deserves its own locator provenance rather than joining
+  the derived family. The span would come from matching the report's own text
+  against the repository's bytes — two sources neither of which is the
+  declaration index — so their agreement is genuine confirmation of the kind
+  §6.6 says a derived locator lacks, and the quote makes it falsifiable by the
+  same mechanism that checks a detector's citation.
+
   Part of it is recoverable rather than merely measurable. A report naming a file
   and a function but no span can have the span looked up in the declaration
   index, which converts the whole prose-located category from lost to usable —
