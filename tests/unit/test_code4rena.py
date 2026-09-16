@@ -133,10 +133,27 @@ class TestExtraction:
         assert reentrancy.repo_url == REPO
         assert reentrancy.classes == (VulnerabilityClass.REENTRANCY,)
 
-    def test_a_single_line_permalink_becomes_a_one_line_span(self) -> None:
+    def test_a_single_line_permalink_becomes_an_anchor_not_a_span(self) -> None:
+        # `#L44` says the defect is at line 44 and nothing about where it ends,
+        # so treating it as a one-line span would assert more than the report
+        # did. It becomes an anchor, widened later to its declaration.
         result = harvest(Code4renaAdapter(), [WELL_FORMED])
         oracle = next(d for d in result.drafts if d.path.endswith("Oracle.sol"))
-        assert (oracle.start_line, oracle.end_line) == (44, 44)
+        assert oracle.anchor_line == 44
+        assert not oracle.has_stated_span
+        assert oracle.has_anchor
+
+    def test_a_ranged_permalink_stays_a_stated_span(self) -> None:
+        result = harvest(Code4renaAdapter(), [WELL_FORMED])
+        vault = next(d for d in result.drafts if d.path.endswith("Vault.sol"))
+        assert (vault.start_line, vault.end_line) == (20, 28)
+        assert vault.has_stated_span
+        assert not vault.has_anchor
+
+    def test_the_two_kinds_are_counted_apart(self) -> None:
+        result = harvest(Code4renaAdapter(), [WELL_FORMED])
+        assert result.anchored_drafts == 1
+        assert result.derived_span_drafts == 0
 
     def test_severity_is_kept_as_provenance_not_as_a_class(self) -> None:
         result = harvest(Code4renaAdapter(), [WELL_FORMED])
@@ -175,7 +192,7 @@ See <{REPO}/blob/{SHA}/src/Vault.sol#L20>, then
         )
         result = harvest(Code4renaAdapter(), [a_report(body)])
         [draft] = result.drafts
-        assert (draft.path, draft.start_line) == ("src/Vault.sol", 20)
+        assert (draft.path, draft.anchor_line) == ("src/Vault.sol", 20)
 
     def test_a_lines_of_code_section_wins_over_a_noisy_body(self) -> None:
         stated = (
@@ -294,4 +311,123 @@ class TestTheAdapterSurvivesOddReports:
     def test_a_well_formed_report_yields_drafts_that_normalize_would_accept(self) -> None:
         for draft in harvest(Code4renaAdapter(), [WELL_FORMED]).drafts:
             assert isinstance(draft, DraftRecord)
-            assert draft.has_stated_span
+            assert draft.has_stated_span or draft.has_anchor
+
+
+class TestLineNumberedExcerpts:
+    """The best location signal the format offers, and the only one with a quote.
+
+    The platform's submission tooling emits excerpts headed by the file they came
+    from and prefixed with line numbers. Measured over six published reports it
+    appears in about one accepted finding in nine -- a minority convention rather
+    than the format, and the only signal that arrives with source text attached,
+    which can be checked against the pinned file.
+    """
+
+    EXCERPT = a_report(
+        f"""\
+# Scope
+Audited at <{REPO}/blob/{SHA}/README.md#L1>.
+
+# High Risk Findings (1)
+## [[H-01] Reentrancy in the withdrawal path](https://example.invalid/issues/1)
+
+### Vulnerability details
+
+```solidity
+File: src/Vault.sol
+120:   function withdraw(uint256 amount) external {{
+121:     payable(msg.sender).transfer(amount);
+122:     balances[msg.sender] -= amount;
+123:   }}
+```
+"""
+    )
+
+    def test_the_path_and_span_come_from_the_excerpt(self) -> None:
+        [draft] = harvest(Code4renaAdapter(), [self.EXCERPT]).drafts
+        assert draft.path == "src/Vault.sol"
+        assert (draft.start_line, draft.end_line) == (120, 123)
+        assert draft.has_stated_span
+
+    def test_the_commit_comes_from_the_contest_not_the_finding(self) -> None:
+        # A commit identifies the snapshot under audit, so any permalink in the
+        # report establishes it. A *location* is specific to one finding and
+        # cannot be borrowed the same way.
+        [draft] = harvest(Code4renaAdapter(), [self.EXCERPT]).drafts
+        assert draft.commit == SHA
+        assert draft.repo_url == REPO
+
+    def test_the_most_cited_snapshot_wins_over_a_stray_link(self) -> None:
+        other = "b" * 40
+        body = self.EXCERPT.body.replace(
+            "# High Risk Findings (1)",
+            f"Unrelated: <https://github.com/someone/else/blob/{other}/x.sol#L1>\n"
+            f"Also <{REPO}/blob/{SHA}/src/Other.sol#L2>\n\n# High Risk Findings (1)",
+        )
+        [draft] = harvest(Code4renaAdapter(), [a_report(body)]).drafts
+        assert draft.commit == SHA
+
+    def test_a_report_with_no_permalink_anywhere_cannot_be_pinned(self) -> None:
+        body = self.EXCERPT.body.replace(
+            f"Audited at <{REPO}/blob/{SHA}/README.md#L1>.", "Audited at the tagged release."
+        )
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        assert result.drafts == ()
+        assert result.by_cause == {SkipCause.NO_LOCATION: 1}
+
+    def test_an_excerpt_beats_a_function_named_in_prose(self) -> None:
+        # Both signals are present. The excerpt states a span, so it is used and
+        # the record is stated rather than prose-derived.
+        body = self.EXCERPT.body.replace(
+            "### Vulnerability details",
+            "### Vulnerability details\n\nThe bug is in `Vault.somethingElse()`.",
+        )
+        [draft] = harvest(Code4renaAdapter(), [a_report(body)]).drafts
+        assert draft.has_stated_span
+        assert (draft.start_line, draft.end_line) == (120, 123)
+
+    def test_an_excerpt_with_no_line_numbers_is_not_a_location(self) -> None:
+        body = self.EXCERPT.body.replace("120:   ", "").replace("121:     ", "")
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        assert all(d.has_stated_span is False for d in result.drafts)
+
+
+class TestFallingBackToANamedFunction:
+    """Generous extraction, strict resolution: the §2.2 asymmetry, third outing."""
+
+    NAMED = a_report(
+        f"""\
+# High Risk Findings (1)
+## [[H-01] Reentrancy in `Vault.withdraw()`](https://example.invalid/issues/1)
+
+### Impact
+See <{REPO}/blob/{SHA}/src/Vault.sol#L10> and <{REPO}/blob/{SHA}/src/Vault.sol#L90>.
+"""
+    )
+
+    def test_one_cited_file_plus_a_named_function_is_enough(self) -> None:
+        # Two lines cited in one file states no span, but the file plus a name
+        # the prose gives is enough for normalize to resolve -- and if the name
+        # does not resolve there, the draft is lost and counted.
+        [draft] = harvest(Code4renaAdapter(), [self.NAMED]).drafts
+        assert draft.path == "src/Vault.sol"
+        assert (draft.contract, draft.function) == ("Vault", "withdraw")
+        assert not draft.has_stated_span and not draft.has_anchor
+
+    def test_an_unqualified_call_gives_a_function_without_a_contract(self) -> None:
+        body = self.NAMED.body.replace("`Vault.withdraw()`", "`withdraw()`")
+        [draft] = harvest(Code4renaAdapter(), [a_report(body)]).drafts
+        assert (draft.contract, draft.function) == (None, "withdraw")
+
+    def test_a_cited_file_with_no_named_function_is_a_loss(self) -> None:
+        body = self.NAMED.body.replace("in `Vault.withdraw()`", "somewhere")
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        assert result.drafts == ()
+        assert result.by_cause == {SkipCause.NO_LOCATION: 1}
+
+    def test_several_cited_files_state_no_location_even_with_a_name(self) -> None:
+        body = self.NAMED.body.replace("src/Vault.sol#L90", "src/Token.sol#L90")
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        assert result.drafts == ()
+        assert result.by_cause == {SkipCause.NO_LOCATION: 1}

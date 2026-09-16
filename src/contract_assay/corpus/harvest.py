@@ -152,6 +152,14 @@ class DraftRecord(BaseModel):
     function: str | None = None
     start_line: int | None = Field(default=None, ge=1)
     end_line: int | None = Field(default=None, ge=1)
+    anchor_line: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "A single line the report pointed at, when it gave no range. `normalize` "
+            "widens it to the declaration containing it and keeps it on the record."
+        ),
+    )
     classes: tuple[VulnerabilityClass, ...] = Field(min_length=1)
     provenance: Provenance
 
@@ -161,11 +169,16 @@ class DraftRecord(BaseModel):
             raise ValueError(
                 f"commit must be a full 40-character lowercase hex SHA, got {self.commit!r}"
             )
-        if self.start_line is None and self.function is None:
+        if self.start_line is None and self.anchor_line is None and self.function is None:
             raise ValueError(
-                "a draft needs either a line span or a function name; with neither there "
-                "is nothing for normalize to resolve, and the candidate should have been "
-                "skipped as no_location instead"
+                "a draft needs a line span, an anchor line, or a function name; with none "
+                "of the three there is nothing for normalize to resolve, and the candidate "
+                "should have been skipped as no_location instead"
+            )
+        if self.start_line is not None and self.anchor_line is not None:
+            raise ValueError(
+                "a draft states either a span or a single anchor line, not both; a report "
+                "that gave a range stated its span, and one that gave a line did not"
             )
         if (self.start_line is None) != (self.end_line is None):
             raise ValueError("a line span needs both ends or neither")
@@ -179,8 +192,13 @@ class DraftRecord(BaseModel):
 
     @property
     def has_stated_span(self) -> bool:
-        """True when the report gave the span, so it will not have to be derived."""
+        """True when the report gave a line range, so no widening is needed."""
         return self.start_line is not None
+
+    @property
+    def has_anchor(self) -> bool:
+        """True when the report pointed at one line, to be widened to its declaration."""
+        return self.anchor_line is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,8 +264,16 @@ class HarvestReport:
     are known.
     """
 
+    anchored_drafts: int = 0
+    """Drafts stating one line, to be widened to the declaration containing it."""
+
     derived_span_drafts: int = 0
-    """Drafts with no stated span, whose locator `normalize` will have to derive."""
+    """Drafts naming only a function, whose span must be guessed from prose.
+
+    Counted apart from `anchored_drafts` because the two resolve to different
+    strengths of ground truth: an anchor is an assertion the report made, where
+    a prose-derived span is an inference about what it meant.
+    """
 
     @property
     def candidates(self) -> int:
@@ -311,11 +337,18 @@ class HarvestReport:
         )
         spanless = self.derived_span_drafts
         derived = (
-            f" {spanless} {'draft has' if spanless == 1 else 'drafts have'} no stated span "
-            "and will need one derived."
+            f" {spanless} {'draft names' if spanless == 1 else 'drafts name'} only a "
+            "function, so the span must be inferred from prose."
             if spanless
             else ""
         )
+        anchored = (
+            f" {self.anchored_drafts} state a single line, to be widened to the "
+            "declaration containing it."
+            if self.anchored_drafts
+            else ""
+        )
+        derived = anchored + derived
         return (
             f"{drafts} ({self.yield_rate:.1%}); {len(self.skipped)} skipped -- {causes}."
             f"{concentration}{unclassified}{derived}{floor}"
@@ -343,6 +376,7 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
     candidates_by_platform: Counter[str] = Counter()
     skipped_by_platform: Counter[str] = Counter()
     unclassified_skips = 0
+    anchored_drafts = 0
     derived_span_drafts = 0
 
     for report in reports:
@@ -359,7 +393,9 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
             if isinstance(outcome, DraftRecord):
                 drafts.append(outcome)
                 extracted_by_class.update(outcome.classes)
-                if not outcome.has_stated_span:
+                if outcome.has_anchor:
+                    anchored_drafts += 1
+                elif not outcome.has_stated_span:
                     derived_span_drafts += 1
                 continue
 
@@ -380,5 +416,6 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
         candidates_by_platform=dict(candidates_by_platform),
         skipped_by_platform=dict(skipped_by_platform),
         unclassified_skips=unclassified_skips,
+        anchored_drafts=anchored_drafts,
         derived_span_drafts=derived_span_drafts,
     )

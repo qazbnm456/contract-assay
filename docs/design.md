@@ -99,6 +99,16 @@ So `LocatorProvenance` marks each locator as stated or derived, and the
 verification report counts them separately (§6.6): an admitted total mixing the
 two would hide the shortfall in the very number built to expose it.
 
+**Exact-location matching.** Fixable, and fixed — see §7. `exact` means the
+spans overlap within the same function. For a record whose span was *inferred
+from a function named in prose*, the ground-truth span **is** the whole function,
+so any prediction inside it overlaps and `exact` is satisfied trivially. Left
+alone, every exact-match figure over a mixed corpus would be inflated by however
+many prose-derived records it happened to contain, with nothing in the output
+able to say by how much — a measurement whose strength is silently set by a
+property of the corpus it cannot see. `LocatorProvenance.supports_exact_match`
+is the fix: such records report `exact` as unavailable rather than as satisfied.
+
 The pattern generalises past this repository, and the response differs by case:
 fix it where the instrument can be decoupled from the subject, and where it
 cannot, measure the shortfall and report it. What is never acceptable is leaving
@@ -195,6 +205,13 @@ Strictness on the verdict side is safe only because rejections are recorded. A
 rejected finding is retained with `status=unverified` and the list of predicates
 that rejected it, so the recall cost of every rule is a number someone can look
 at and argue with.
+
+The same asymmetry is worth recognising away from detectors, because it keeps
+recurring: **extract generously, resolve strictly**. A harvester reading a
+function name out of English prose should match freely, because resolution
+refuses anything that is not declared exactly once in the pinned file, and the
+refusal is counted (§6.3). Reversing it — matching cautiously and resolving
+loosely — loses findings silently and admits wrong ones.
 
 The gate is owned by the harness and is not overridable. Its two blocking
 conditions are universal rather than per-class — they are exactly the two members
@@ -400,6 +417,38 @@ backend is wired up.
 | `reentrancy` | control flow + state-write ordering | no |
 | `flashloan_manipulation` | interprocedural reachability | no |
 
+### 4.3 What nine classes means for the claim
+
+Both source taxonomies describe recurring vulnerability *patterns*, and two
+OWASP entries were deliberately not adopted: logic errors and missing input
+validation. Both are residual categories rather than patterns — no detector can
+be written for "logic error" in a shape that could be evaluated, and a
+difficulty grade for it would mean nothing.
+
+Measured against a public audit platform, 71 of 87 accepted high and medium
+findings map to none of the nine. The unmapped ones are overwhelmingly
+protocol-specific logic: an accounting error that deflates reported holdings, a
+token balance that stops tracking one-to-one, a batch identifier collision,
+signature replay across chains, standards non-compliance. That is the residual
+category, arriving as a measurement.
+
+So the claim this benchmark supports is:
+
+> Can a model find instances of nine known vulnerability patterns, at the right
+> location?
+
+And the claim it must never be allowed to drift into is *can a model audit a
+smart contract*. Nothing here supports the second, and an 18% mapping rate
+against real audit output is the evidence for why.
+
+**A tenth catch-all class is refused**, and written down because the proposal
+recurs whenever coverage is measured. "Protocol logic" or "business logic error"
+would lift the mapping rate immediately and add nothing measurable: no
+predicates could be written for it, no difficulty grade would mean anything, no
+detector could be aimed at it, and no scorer could tell a correct detection from
+a plausible-sounding one. It is a generous enumerator (§6.3) one level up —
+improving a number by widening what counts rather than by finding more.
+
 ## 5. Escalation
 
 The working model is small. A larger model is available as a metered escape
@@ -475,6 +524,13 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
 ```
 
 - **harvest** — pull findings from public audit platforms into draft records.
+  A prior obligation, before any of the accounting: an audit platform and a
+  Solidity corpus are different populations. Contests auditing other languages
+  are outside what this corpus could ever draw from, so the harvest statement
+  says which contests were out of language scope — otherwise the denominator
+  quietly includes work no adapter could have used, and every yield figure
+  computed from it understates.
+
   Two obligations, both from §1.3, and a third that turned out to have a better
   answer than disclosure. A harvester parsing only certain report shapes yields a
   corpus skewed toward those platforms, so it tallies what it skipped and why. And it tallies those skips **by class**, not only by platform and
@@ -650,6 +706,14 @@ choice rather than an oversight.
 > unverifiable, concentrated in these classes* are different claims, and only
 > the second one is true.
 
+Records per class matter more than records in total, and a shortfall there is
+not reported by averaging. A hundred records spread unevenly across nine classes
+may leave a class with two — and a class with two supports no claim at all while
+still appearing in every aggregate. Reports therefore state the record count
+beside each per-class figure and name the classes below a stated minimum rather
+than folding them in. This is more urgent here than for a deliberately sampled
+corpus, because the shortfall arrives by collection rate rather than by choice.
+
 The per-class rate matters more than the overall one, because that is where a
 bias shows up: an aggregate can look tolerable while a single class is
 decimated, and that class is then quietly under-represented in everything scored
@@ -702,6 +766,21 @@ disagreement is legible rather than hidden in a threshold:
 | exact | same file, same function, line spans overlap |
 | function | same file, same function |
 | file | same file only |
+
+Not every record can support every strength, and a tier that cannot
+discriminate must say so rather than return a hit. Which strengths are available
+depends on where the ground-truth span came from (§6.6):
+
+| Locator provenance | `exact` scored against | `function`, `file` |
+| --- | --- | --- |
+| `stated` | the span the report gave | yes |
+| `anchored` | the anchor line, not the enclosing span | yes |
+| `derived` | **unavailable** — the span is the whole function | yes |
+
+An anchored record is scored against its anchor rather than its span, because
+the anchor is the finer of the two and is the part the report actually asserted;
+the span around it exists so that a prediction naming the right function still
+matches at `function` strength.
 
 "Same function" compares declared signatures, not names. `swap(uint256)` and
 `swap(uint256,address)` share a name and are two different functions, so

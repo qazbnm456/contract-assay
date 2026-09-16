@@ -27,6 +27,13 @@ location. Proof-of-concept sections routinely cite dozens of lines, and one
 observed finding carried 36 permalinks none of which was the defect. Only a
 "Lines of code" section, or a body citing exactly one distinct source location,
 is treated as stating one.
+
+A permalink to a line *range* and a permalink to a single line are different
+assertions, and the adapter keeps them apart. `#L136-L150` is a span the report
+chose. `#L220` says the defect is at line 220 and says nothing about where it
+ends, so it becomes an anchor: `normalize` widens it to the declaration
+containing it and keeps the line, because that line is the finest thing the
+report actually asserted and it is what such a record is scored against (§7).
 """
 
 from __future__ import annotations
@@ -50,6 +57,33 @@ __all__ = ["Code4renaAdapter", "Code4renaEnumerator", "EnumeratedFinding"]
 _SEVERITY_SECTION = re.compile(r"^# (High|Medium) Risk Findings \((\d+)\)\s*$", re.M)
 _FINDING_HEADING = re.compile(r"^## \[?\[([HM]-\d+)\]\s*(.*?)\]\((\S+?)\)\s*$", re.M)
 _LINES_OF_CODE = re.compile(r"^### Lines of code\s*$(.*?)(?=^### |\Z)", re.M | re.S)
+# Findings name their subject in backticks far more often than they link to it:
+# `onQueueWithdrawal()`, `OperatorDelegator.completeQueuedWithdrawal`. Extraction
+# here is deliberately generous, because resolution is strict -- `normalize`
+# admits a name only if it is declared exactly once in the pinned file, so a
+# match on `tick.rs` or on a local variable is rejected there and counted as a
+# loss rather than becoming a wrong record. That asymmetry is the same one §2.2
+# applies to gates and verdicts, arriving in a third place.
+# The platform's submission tooling emits line-numbered excerpts headed by the
+# file they came from:
+#
+#     File: src/access/FixedTermLoanHooks.sol
+#     848:   function onQueueWithdrawal(
+#     849:     address lender,
+#
+# This is the best location signal the format offers, and the only one that
+# arrives with a quote attached -- the excerpt can be checked against the pinned
+# source, which is the same falsifiability `Finding.quote` gives detector output.
+# It appears in about one finding in nine, so it is a minority convention rather
+# than the format, and worth taking wherever it shows up.
+_FILE_BLOCK = re.compile(
+    r"^File:\s*(?P<path>\S+\.sol)\s*$\n(?P<lines>(?:^[ \t]*\d+:.*$\n?)+)", re.M
+)
+_NUMBERED_LINE = re.compile(r"^[ \t]*(\d+):", re.M)
+
+_BACKTICK_QUALIFIED = re.compile(r"`([A-Z]\w*)\.(\w+)\(?\)?`")
+_BACKTICK_CALL = re.compile(r"`(\w+)\(\)`")
+
 _PERMALINK = re.compile(
     r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)"
     r"/blob/(?P<commit>[0-9a-f]{40})/(?P<path>[^\s>)#]+)"
@@ -189,6 +223,69 @@ class Code4renaAdapter:
 
     platform = "code4rena"
 
+    def _from_excerpt(self, report: RawReport, finding: EnumeratedFinding) -> SourceCitation | None:
+        """A location from a line-numbered excerpt, if the finding carries one.
+
+        The excerpt states a path and line numbers but not a commit, because a
+        commit is a property of the contest rather than of the finding. It is
+        taken from the report's own permalinks, which all point at the audited
+        snapshot; a report containing none is one where nothing can be pinned.
+        """
+        block = _FILE_BLOCK.search(finding.body)
+        if block is None:
+            return None
+        numbers = [int(n) for n in _NUMBERED_LINE.findall(block.group("lines"))]
+        snapshot = _contest_snapshot(report.body)
+        if not numbers or snapshot is None:
+            return None
+        repo_url, commit = snapshot
+        return SourceCitation(
+            repo_url=repo_url,
+            commit=commit,
+            path=block.group("path").lstrip("/"),
+            start_line=min(numbers),
+            end_line=max(numbers),
+        )
+
+    def _by_name(
+        self, report: RawReport, candidate: Candidate, finding: EnumeratedFinding
+    ) -> DraftRecord | Skip:
+        """Fall back to the file the finding cites plus the name its prose gives.
+
+        Reached when no single source location was stated, which is the ordinary
+        case. A file with several lines cited in it has not stated a span, but a
+        file plus a named function is enough for `normalize` to resolve -- and if
+        that name does not resolve to exactly one declaration there, the draft is
+        lost and counted rather than guessed at.
+        """
+        file = _sole_solidity_file(finding.body)
+        if file is None:
+            return Skip(
+                SkipCause.NO_LOCATION,
+                "no stated location, and the finding cites either no Solidity file or several",
+            )
+        named = _named_function(finding.title, finding.body)
+        if named is None:
+            return Skip(
+                SkipCause.NO_LOCATION,
+                f"cites {file.path} but names no function for it",
+            )
+        contract, function = named
+        return DraftRecord(
+            candidate_id=finding.ident,
+            repo_url=file.repo_url,
+            commit=file.commit,
+            path=file.path,
+            contract=contract,
+            function=function,
+            classes=candidate.classes,
+            provenance=Provenance(
+                platform=report.platform,
+                report_url=finding.issue_url or report.report_url,
+                reported_severity=finding.severity,
+            ),
+        )
+
     def __init__(self, enumerator: Code4renaEnumerator | None = None) -> None:
         self.enumerator = enumerator or Code4renaEnumerator()
 
@@ -213,22 +310,26 @@ class Code4renaAdapter:
         if not candidate.classes:
             return Skip(SkipCause.UNMAPPED_CLASS, f"title: {finding.title[:80]}")
 
-        citation = _cite(finding.body)
+        citation = _cite(finding.body) or self._from_excerpt(report, finding)
         if citation is None:
-            return Skip(
-                SkipCause.NO_LOCATION,
-                "no 'Lines of code' section and no single unambiguous source permalink",
-            )
+            return self._by_name(report, candidate, finding)
         if not citation.path.endswith(".sol"):
             return Skip(SkipCause.NO_FILE_PATH, f"cited {citation.path}, which is not Solidity")
 
+        # A permalink to a *range* is a span the report chose. A permalink to a
+        # single line is a place it pointed at, which is not the same assertion:
+        # nothing in `#L220` says the defect stops at line 220. So a range
+        # becomes a stated span and a single line becomes an anchor, to be
+        # widened to its enclosing declaration while the line itself is kept.
+        ranged = citation.start_line != citation.end_line
         return DraftRecord(
             candidate_id=finding.ident,
             repo_url=citation.repo_url,
             commit=citation.commit,
             path=citation.path,
-            start_line=citation.start_line,
-            end_line=citation.end_line,
+            start_line=citation.start_line if ranged else None,
+            end_line=citation.end_line if ranged else None,
+            anchor_line=None if ranged else citation.start_line,
             classes=candidate.classes,
             provenance=Provenance(
                 platform=report.platform,
@@ -236,6 +337,37 @@ class Code4renaAdapter:
                 reported_severity=finding.severity,
             ),
         )
+
+
+def _contest_snapshot(report_body: str) -> tuple[str, str] | None:
+    """The repository and commit the contest audited, from anywhere in the report.
+
+    A commit identifies the snapshot under audit, so any permalink in the report
+    establishes it -- unlike a *location*, which is specific to one finding and
+    cannot be borrowed from another. The most frequently cited pair wins, so a
+    stray link to an unrelated repository does not decide it.
+    """
+    from collections import Counter
+
+    seen = Counter((citation.repo_url, citation.commit) for citation in _permalinks(report_body))
+    return seen.most_common(1)[0][0] if seen else None
+
+
+def _named_function(title: str, body: str) -> tuple[str | None, str] | None:
+    """A function the finding names in backticks, with its type where given.
+
+    Title first, then the opening of the body. A finding's subject is stated
+    where it is introduced; a name appearing only deep in a proof of concept is
+    as likely to be incidental as the permalinks around it.
+    """
+    for text in (title, body[:1500]):
+        qualified = _BACKTICK_QUALIFIED.search(text)
+        if qualified is not None:
+            return qualified.group(1), qualified.group(2)
+        call = _BACKTICK_CALL.search(text)
+        if call is not None:
+            return None, call.group(1)
+    return None
 
 
 def _classify(title: str) -> tuple[VulnerabilityClass, ...]:
@@ -252,6 +384,18 @@ def _classify(title: str) -> tuple[VulnerabilityClass, ...]:
         if keyword in lowered:
             return (cls,)
     return ()
+
+
+def _sole_solidity_file(body: str) -> SourceCitation | None:
+    """The one Solidity file a finding cites, ignoring which lines it cites in it.
+
+    A finding citing several lines of one file has not stated a span, but it has
+    stated a file -- and a file plus a name the prose supplies is enough for
+    `normalize` to resolve. A finding citing several files has stated neither.
+    """
+    cited = [c for c in _permalinks(body) if c.path.endswith(".sol")]
+    paths = {c.path for c in cited}
+    return cited[0] if len(paths) == 1 else None
 
 
 def _cite(body: str) -> SourceCitation | None:

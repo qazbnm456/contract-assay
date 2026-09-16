@@ -10,6 +10,7 @@ only survives if it witnesses the bytes the derivation actually ran against.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.normalize import NormalizeCause, normalize
@@ -210,13 +211,13 @@ class TestAccounting:
         report = run(a_draft(), a_draft(candidate_id="H-02", function="nonexistent"))
         statement = report.statement()
         assert "function_not_found 1" in statement
-        assert "had its span derived" in statement
-        assert "cannot cross-check" in statement
+        assert "had its span inferred from a function named in prose" in statement
+        assert "supports no exact-location match" in statement
 
     def test_a_clean_run_still_mentions_derivation(self) -> None:
         statement = run(a_draft()).statement()
         assert "none were lost" in statement
-        assert "had its span derived" in statement
+        assert "had its span inferred" in statement
 
     def test_an_all_stated_run_says_nothing_about_derivation(self) -> None:
         statement = run(a_draft(start_line=7, end_line=9)).statement()
@@ -230,7 +231,7 @@ class TestAccounting:
 
     def test_plural_derivations_read_correctly(self) -> None:
         report = run(a_draft(), a_draft(candidate_id="H-02", function="withdraw"))
-        assert "2 had their span derived" in report.statement()
+        assert "2 had their span inferred" in report.statement()
 
 
 class TestSplitIsAPolicyDecision:
@@ -244,3 +245,98 @@ class TestSplitIsAPolicyDecision:
     def test_the_split_reaches_the_record(self, split: CorpusSplit) -> None:
         report = normalize([a_draft()], resolver(), split=split)
         assert report.records[0].split is split
+
+
+class TestAnchoring:
+    """A stated line, widened to the declaration containing it."""
+
+    def test_a_stated_line_is_widened_to_its_declaration(self) -> None:
+        # `setOwner` spans 7-9 and the report pointed at line 8.
+        [record] = run(a_draft(anchor_line=8, contract=None, function=None)).records
+        assert record.locator_provenance is LocatorProvenance.ANCHORED
+        assert (record.locator.start_line, record.locator.end_line) == (7, 9)
+        assert record.anchor_line == 8
+        assert record.locator.function == "setOwner"
+        assert record.locator.contract == "Vault"
+
+    def test_the_anchor_survives_onto_the_record(self) -> None:
+        # It is the finest thing the report asserted, and what §7 scores against.
+        [record] = run(a_draft(anchor_line=8, contract=None, function=None)).records
+        assert record.anchor_line == 8
+        assert record.locator_provenance.supports_exact_match
+
+    def test_an_anchor_in_no_declaration_is_a_loss_not_a_guess(self) -> None:
+        # Line 5 is a state variable, not inside any function. The report
+        # pointed somewhere real and this stage cannot name a function for it.
+        report = run(a_draft(anchor_line=5, contract=None, function=None))
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.NO_DECLARATION_AT_ANCHOR: 1}
+
+    def test_an_anchor_past_the_end_of_the_file_is_lost(self) -> None:
+        report = run(a_draft(anchor_line=900, contract=None, function=None))
+        assert report.by_cause == {NormalizeCause.SPAN_OUT_OF_RANGE: 1}
+
+    def test_a_named_contract_disagreeing_with_the_anchor_is_refused(self) -> None:
+        # The one genuine cross-check an anchored locator has: neither the
+        # contract name nor the line came from the declaration index, so their
+        # disagreement means the record does not describe what it claims.
+        report = run(a_draft(anchor_line=8, contract="Treasury", function=None))
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.ANCHOR_CONTRADICTS_CONTRACT: 1}
+
+    def test_a_named_contract_agreeing_with_the_anchor_is_evidence(self) -> None:
+        [record] = run(a_draft(anchor_line=8, contract="Vault", function=None)).records
+        assert record.locator.contract == "Vault"
+
+    def test_an_anchor_beats_a_prose_function_name(self) -> None:
+        # Both are present; the anchor is what the report pointed at, so it wins
+        # and the record is anchored rather than derived.
+        [record] = run(a_draft(anchor_line=8, function="withdraw")).records
+        assert record.locator_provenance is LocatorProvenance.ANCHORED
+        assert record.locator.function == "setOwner"
+
+    def test_a_stated_span_beats_an_anchor(self) -> None:
+        # DraftRecord forbids both, so this is about ordering within `_locate`
+        # rather than about a reachable draft.
+        [record] = run(a_draft(start_line=7, end_line=9)).records
+        assert record.locator_provenance is LocatorProvenance.STATED
+
+    def test_the_three_provenances_are_counted_apart(self) -> None:
+        report = run(
+            a_draft(candidate_id="A", start_line=7, end_line=9),
+            a_draft(candidate_id="B", anchor_line=8, contract=None, function=None),
+            a_draft(candidate_id="C"),
+        )
+        assert report.records_by_provenance == {
+            LocatorProvenance.STATED: 1,
+            LocatorProvenance.ANCHORED: 1,
+            LocatorProvenance.DERIVED: 1,
+        }
+
+    def test_the_statement_distinguishes_anchored_from_inferred(self) -> None:
+        report = run(
+            a_draft(candidate_id="B", anchor_line=8, contract=None, function=None),
+            a_draft(candidate_id="C"),
+        )
+        statement = report.statement()
+        assert "1 is anchored to a stated line" in statement
+        assert "1 had its span inferred" in statement
+
+
+class TestADraftStatesOneKindOfLocation:
+    def _draft(self, **over: object) -> DraftRecord:
+        return a_draft(**over)
+
+    def test_a_span_and_an_anchor_together_are_refused(self) -> None:
+        # A report that gave a range stated its span; one that gave a line did
+        # not. Carrying both would leave which of them was asserted unclear.
+        with pytest.raises(ValidationError, match="either a span or a single anchor"):
+            self._draft(start_line=7, end_line=9, anchor_line=8)
+
+    def test_none_of_the_three_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="should have been skipped"):
+            self._draft(start_line=None, end_line=None, anchor_line=None, function=None)
+
+    def test_an_anchor_alone_is_a_valid_draft(self) -> None:
+        draft = self._draft(function=None, contract=None, anchor_line=8)
+        assert draft.has_anchor and not draft.has_stated_span

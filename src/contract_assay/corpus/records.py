@@ -69,12 +69,49 @@ class LocatorProvenance(StrEnum):
     STATED = "stated"
     """The source report gave the line span. `verify` cross-checks it."""
 
+    ANCHORED = "anchored"
+    """The report gave a single line; the span is the declaration containing it.
+
+    Between the other two, and closer to `stated` than the name suggests. The
+    anchor line is an assertion the original report actually made, at finer
+    granularity than a function, and it is kept on the record rather than
+    discarded once the span is computed -- it is the whole reason this value is
+    worth having.
+    """
+
     DERIVED = "derived"
-    """The span was computed from the declaration index. Weaker ground truth."""
+    """The span was computed from a function named in prose. Weakest of the three."""
 
     @property
     def is_cross_checked(self) -> bool:
+        """Whether verification independently confirms the span.
+
+        True only for `STATED`. For `ANCHORED` the span was produced by finding
+        what encloses the anchor, so re-checking that the anchor falls inside it
+        confirms the derivation was reproducible, not that it was right -- the
+        same guarantee the digest already gives, arriving a second time. Calling
+        that cross-checked would invite somebody to lean on it harder than it can
+        bear.
+        """
         return self is LocatorProvenance.STATED
+
+    @property
+    def supports_exact_match(self) -> bool:
+        """Whether a record of this provenance can support an `exact` location match.
+
+        `exact` means the spans overlap within the same function (§7). For a
+        `DERIVED` record the ground-truth span *is* the whole function, so any
+        prediction inside it overlaps and `exact` is satisfied trivially --
+        reporting it as a hit would inflate every exact-match figure by however
+        many derived records the corpus happened to contain, with nothing in the
+        output able to say by how much. Such records report `exact` as
+        unavailable rather than as satisfied.
+
+        `ANCHORED` supports it because the anchor is strictly finer than the
+        function and came from the report; it is scored against the anchor, not
+        against the enclosing span.
+        """
+        return self is not LocatorProvenance.DERIVED
 
 
 class CorpusSplit(StrEnum):
@@ -235,6 +272,14 @@ class CorpusRecord(BaseModel):
             "forbidden when it is absent."
         ),
     )
+    anchor_line: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "The single line the source report pointed at. Required for an anchored "
+            "locator and forbidden otherwise; it is what such a record is scored against."
+        ),
+    )
     negative_kind: NegativeKind | None = None
     derived_from: str | None = Field(
         default=None,
@@ -338,6 +383,29 @@ class CorpusRecord(BaseModel):
         if self.locator is None and self.locator_provenance is not None:
             raise ValueError(
                 "locator_provenance is set on a record with no locator, so it describes nothing"
+            )
+
+        anchored = self.locator_provenance is LocatorProvenance.ANCHORED
+        if anchored and self.anchor_line is None:
+            raise ValueError(
+                "an anchored locator must record the line the report pointed at; the span "
+                "was computed from it, and discarding it leaves a record indistinguishable "
+                "from one whose span was guessed from prose"
+            )
+        if not anchored and self.anchor_line is not None:
+            raise ValueError(
+                f"anchor_line is set on a {self.locator_provenance} locator, where the span "
+                "was not computed from a single stated line"
+            )
+        if (
+            anchored
+            and self.locator is not None
+            and self.anchor_line is not None
+            and not (self.locator.start_line <= self.anchor_line <= self.locator.end_line)
+        ):
+            raise ValueError(
+                f"anchor_line {self.anchor_line} lies outside the span "
+                f"{self.locator.start_line}-{self.locator.end_line} it produced"
             )
 
         if overlap := set(self.vulnerable_to) & set(self.negative_for):

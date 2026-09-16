@@ -200,7 +200,7 @@ class TestAccountingSurvivesTheWholePipeline:
     def test_every_stage_can_state_what_its_numbers_are_over(self) -> None:
         harvested, normalized, verified = pipeline()
         assert "never recognised as a finding is absent" in harvested.yield_statement()
-        assert "cannot cross-check" in normalized.statement()
+        assert "exact-location match" in normalized.statement()
         assert "describes the admitted records only" in verified.sampling_statement()
 
 

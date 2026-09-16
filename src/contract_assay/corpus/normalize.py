@@ -50,10 +50,11 @@ from contract_assay.corpus.records import (
     SourcePin,
 )
 from contract_assay.corpus.verify import SourceResolver
-from contract_assay.evidence.solidity import index_source
+from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import Locator, VulnerabilityClass
 
 __all__ = [
+    "Located",
     "NormalizeCause",
     "NormalizeReport",
     "NormalizedSkip",
@@ -83,6 +84,21 @@ class NormalizeCause(StrEnum):
 
     FUNCTION_AMBIGUOUS = "function_ambiguous"
     """The name resolves to several declarations, so it identifies none of them."""
+
+    NO_DECLARATION_AT_ANCHOR = "no_declaration_at_anchor"
+    """The line the report pointed at is not inside any function-like declaration."""
+
+    ANCHOR_CONTRADICTS_CONTRACT = "anchor_contradicts_contract"
+    """The report named a contract, and the line it pointed at is in a different one."""
+
+
+@dataclass(frozen=True, slots=True)
+class Located:
+    """A settled location, and how it was settled."""
+
+    locator: Locator
+    provenance: LocatorProvenance
+    anchor_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,12 +145,24 @@ class NormalizeReport:
             return "No drafts were normalized."
 
         derived = self.records_by_provenance.get(LocatorProvenance.DERIVED, 0)
+        anchored = self.records_by_provenance.get(LocatorProvenance.ANCHORED, 0)
         produced = f"{len(self.records)} of {self.drafts} drafts normalized"
-        derivation = (
-            f" {derived} had {'its' if derived == 1 else 'their'} span derived from the "
-            "declaration index, which verification cannot cross-check."
-            if derived
-            else ""
+        derivation = "".join(
+            part
+            for part in (
+                (
+                    f" {anchored} {'is' if anchored == 1 else 'are'} anchored to a stated "
+                    "line and widened to its declaration."
+                    if anchored
+                    else ""
+                ),
+                (
+                    f" {derived} had {'its' if derived == 1 else 'their'} span inferred from "
+                    "a function named in prose, which supports no exact-location match."
+                    if derived
+                    else ""
+                ),
+            )
         )
         if not self.skipped:
             return f"{produced}; none were lost.{derivation}"
@@ -177,14 +205,19 @@ def _record_id(draft: DraftRecord) -> str:
     return f"{repo.strip('-') or 'repo'}-{draft.classes[0].value.replace('_', '-')}-{digest}"
 
 
-def _locate(draft: DraftRecord, source: str) -> tuple[Locator, LocatorProvenance] | NormalizeCause:
-    """Settle a draft's location, deriving the span when the report gave none."""
+def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
+    """Settle a draft's location by the strongest route the report supports.
+
+    Three routes, in descending order of what the report actually asserted: a
+    stated line range, a single stated line widened to the declaration
+    containing it, and a function named in prose.
+    """
     lines = len(source.split("\n"))
 
     if draft.start_line is not None and draft.end_line is not None:
         if draft.end_line > lines:
             return NormalizeCause.SPAN_OUT_OF_RANGE
-        return (
+        return Located(
             Locator(
                 file=draft.path,
                 contract=draft.contract,
@@ -195,14 +228,43 @@ def _locate(draft: DraftRecord, source: str) -> tuple[Locator, LocatorProvenance
             LocatorProvenance.STATED,
         )
 
-    index = index_source(source)
-    if not index.parsed:
+    parsed = Syntax.of(source)
+    if parsed is None:
         return NormalizeCause.UNPARSEABLE_SOURCE
-    if draft.contract and not index.declares_type(draft.contract):
+
+    if draft.anchor_line is not None:
+        if draft.anchor_line > lines:
+            return NormalizeCause.SPAN_OUT_OF_RANGE
+        declaration = parsed.callable_at(draft.anchor_line)
+        if declaration is None:
+            # A line in a state variable block, an import or a comment. The
+            # report pointed somewhere real and this stage cannot name a function
+            # for it, which is a loss rather than a licence to guess.
+            return NormalizeCause.NO_DECLARATION_AT_ANCHOR
+        if draft.contract and declaration.parent != draft.contract:
+            # The report gave two independent signals -- a contract name and a
+            # line -- and they disagree. This is the one genuine cross-check an
+            # anchored locator has: neither signal came from the declaration
+            # index, so their agreement is evidence, and their disagreement means
+            # the record does not describe what it claims to.
+            return NormalizeCause.ANCHOR_CONTRADICTS_CONTRACT
+        return Located(
+            Locator(
+                file=draft.path,
+                contract=declaration.parent,
+                function=declaration.names[0],
+                start_line=declaration.start_line,
+                end_line=declaration.end_line,
+            ),
+            LocatorProvenance.ANCHORED,
+            anchor_line=draft.anchor_line,
+        )
+
+    if draft.contract and not parsed.index.declares_type(draft.contract):
         return NormalizeCause.CONTRACT_NOT_FOUND
 
-    assert draft.function is not None  # DraftRecord refuses neither-span-nor-function
-    found = index.callables(draft.function, inside_type=draft.contract or None)
+    assert draft.function is not None  # DraftRecord refuses a draft with none of the three
+    found = parsed.index.callables(draft.function, inside_type=draft.contract or None)
     if not found:
         return NormalizeCause.FUNCTION_NOT_FOUND
     if len(found) > 1:
@@ -211,7 +273,7 @@ def _locate(draft: DraftRecord, source: str) -> tuple[Locator, LocatorProvenance
         return NormalizeCause.FUNCTION_AMBIGUOUS
 
     declaration = found[0]
-    return (
+    return Located(
         Locator(
             file=draft.path,
             contract=draft.contract or declaration.parent,
@@ -262,7 +324,6 @@ def normalize(
             lose(draft, located, f"{draft.contract or '?'}.{draft.function or '?'}")
             continue
 
-        locator, provenance = located
         records.append(
             CorpusRecord(
                 record_id=_record_id(draft),
@@ -276,14 +337,15 @@ def normalize(
                     # the digest witnesses the bytes the derivation ran against.
                     sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
                 ),
-                locator=locator,
-                locator_provenance=provenance,
+                locator=located.locator,
+                locator_provenance=located.provenance,
+                anchor_line=located.anchor_line,
                 classes=list(draft.classes),
                 provenance=draft.provenance,
             )
         )
         records_by_class.update(draft.classes)
-        records_by_provenance[provenance] += 1
+        records_by_provenance[located.provenance] += 1
 
     return NormalizeReport(
         records=tuple(records),

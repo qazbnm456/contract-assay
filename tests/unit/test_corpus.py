@@ -840,3 +840,65 @@ class TestLocatorProvenanceIsRecorded:
         # No noise when the distinction does not apply.
         statement = verify_all([a_positive()], resolver()).sampling_statement()
         assert "derived" not in statement
+
+
+class TestAnchoredLocators:
+    """A line the report pointed at, widened to the declaration containing it.
+
+    Between stated and derived, and the distinction is not decorative. For a
+    derived record the ground-truth span *is* the whole function, so any
+    prediction inside it overlaps and an `exact` location match is satisfied
+    trivially. An anchored record holds a line the report actually asserted,
+    which is strictly finer than the function, so `exact` can mean what it says.
+    Merging the two would inflate every exact-match figure by however many
+    derived records the corpus happened to contain.
+    """
+
+    def _anchored(self, **over: object) -> CorpusRecord:
+        base: dict[str, object] = {
+            "locator_provenance": LocatorProvenance.ANCHORED,
+            "anchor_line": SWAP_START,
+        }
+        return a_positive(**{**base, **over})
+
+    def test_an_anchored_record_keeps_the_line_it_came_from(self) -> None:
+        # Discarding it after computing the span throws away the only thing that
+        # makes this provenance worth having.
+        assert self._anchored().anchor_line == SWAP_START
+
+    def test_an_anchored_locator_must_carry_its_anchor(self) -> None:
+        with pytest.raises(ValidationError, match="must record the line the report pointed at"):
+            self._anchored(anchor_line=None)
+
+    @pytest.mark.parametrize("provenance", [LocatorProvenance.STATED, LocatorProvenance.DERIVED])
+    def test_an_anchor_on_any_other_provenance_is_refused(
+        self, provenance: LocatorProvenance
+    ) -> None:
+        with pytest.raises(ValidationError, match="anchor_line is set on"):
+            a_positive(locator_provenance=provenance, anchor_line=SWAP_START)
+
+    def test_an_anchor_outside_the_span_it_produced_is_refused(self) -> None:
+        # The span was computed by finding what encloses the anchor, so an anchor
+        # outside it means the two disagree about the same file.
+        with pytest.raises(ValidationError, match="lies outside the span"):
+            self._anchored(anchor_line=SWAP_END + 5)
+
+    def test_only_a_stated_span_is_independently_cross_checked(self) -> None:
+        # Re-checking that an anchor falls inside a span computed from it
+        # confirms the derivation was reproducible, not that it was right.
+        assert LocatorProvenance.STATED.is_cross_checked
+        assert not LocatorProvenance.ANCHORED.is_cross_checked
+        assert not LocatorProvenance.DERIVED.is_cross_checked
+
+    def test_exact_match_is_unavailable_only_for_a_prose_derived_span(self) -> None:
+        assert LocatorProvenance.STATED.supports_exact_match
+        assert LocatorProvenance.ANCHORED.supports_exact_match
+        assert not LocatorProvenance.DERIVED.supports_exact_match
+
+    def test_the_report_counts_anchored_records_separately(self) -> None:
+        report = verify_all([self._anchored(record_id="vault-anchored"), a_positive()], resolver())
+        assert report.admitted_by_locator_provenance == {
+            LocatorProvenance.ANCHORED: 1,
+            LocatorProvenance.STATED: 1,
+        }
+        assert report.derived_locator_count == 0
