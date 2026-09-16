@@ -51,6 +51,7 @@ from contract_assay.models import VulnerabilityClass
 
 __all__ = [
     "Candidate",
+    "CommitResolver",
     "DraftRecord",
     "HarvestReport",
     "RawReport",
@@ -110,6 +111,13 @@ class RawReport(BaseModel):
     platform: str = Field(min_length=1)
     report_url: str = Field(min_length=1)
     body: str = Field(description="The report as fetched: markdown, HTML or JSON.")
+    published: str | None = Field(
+        default=None,
+        description=(
+            "ISO date the platform recorded for this report, where it keeps one outside "
+            "the document. Used to bound a commit recovery, never to locate anything."
+        ),
+    )
 
 
 class Candidate(BaseModel):
@@ -236,6 +244,27 @@ class SkippedCandidate:
     platform: str
     candidate: Candidate
     skip: Skip
+
+
+class CommitResolver(Protocol):
+    """Resolves a repository to the commit it was at on a date.
+
+    Reports routinely cite a *branch*, which names whatever it currently points
+    at and cannot be pinned. Resolving one as it stands today ties a record to
+    code that may be far removed from the version reviewed, on no assumption
+    anyone can write down. Resolving it as of the report's own date is a bounded
+    inference instead -- it assumes the reviewed code is the code that was there
+    then, which is a sentence somebody can agree or disagree with.
+
+    Injected rather than performed inside an adapter, so harvesting stays
+    runnable with no network. An adapter built without one refuses branch
+    references and counts them, which is the honest default.
+
+    Returns None when it cannot answer. That is a counted loss, never a licence
+    to substitute something else.
+    """
+
+    def __call__(self, repo_url: str, iso_date: str) -> str | None: ...
 
 
 class ReportAdapter(Protocol):

@@ -112,7 +112,7 @@ class TestRecoveringTheCommit:
         [draft] = harvest(ImmunefiAdapter(resolve_commit=resolver), [WELL_FORMED]).drafts
         assert draft.commit == RESOLVED
         assert draft.commit_resolved_from is not None
-        assert "submission date, 2024-05-02" in draft.commit_resolved_from
+        assert "date, 2024-05-02" in draft.commit_resolved_from
 
     def test_a_target_already_pinned_records_no_assumption(self) -> None:
         body = WELL_FORMED.body.replace(

@@ -1090,7 +1090,8 @@ work in the present tense reports intentions as capabilities.
 | `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **built** |
 | `corpus/adapters/` | shared markdown and label readers; three platforms | **partly built** |
 | `corpus/normalize.py` | location resolution, span derivation, digest pinning (§6.3) | **built** |
-| `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
+| `report/scoring.py` | location match strengths and stratification (§7) | **built** |
+| `report/` dual track | the classification-only score beside it (§7.1) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
 
 Three of the nine detectors exist — `unchecked_external_call`,
@@ -1111,6 +1112,15 @@ protocol, the extraction loop and the whole yield accounting exist and are
 covered, and no adapter for a real platform does. What is built is the part that
 decides whether the losses are measurable; what is missing is the part that has
 to be written once per platform.
+
+`report/scoring.py` scores located findings and refuses three things that would
+each produce a figure indistinguishable from one without the problem: it will not
+claim a strength it cannot establish, will not compare function *names* as a
+fallback when no source is available to compare signatures with, and will not
+fold `invalid` or `skipped` runs into a matrix. Assignment is maximum matching
+per strength tier rather than greedy, which §7.1 requires be stated where it is
+used. The classification-only score of §7.1 is not built, so there is one track
+rather than two.
 
 `corpus/normalize.py` is built, and it pins the digest itself rather than leaving
 that to `verify`. For a derived span the digest is the only check that survives —

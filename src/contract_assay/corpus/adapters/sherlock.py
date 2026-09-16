@@ -25,11 +25,17 @@ The reference problem
 ---------------------
 Roughly half of observed permalinks point at a branch rather than a commit.
 `main` names whatever it currently points at, so such a citation is not
-reproducible and cannot become a `SourcePin`. Those are skipped as `no_commit`
-and counted, rather than resolved: resolving a branch today gives today's target,
-and whether that is the audited state is a separate question with its own
-uncertainty. Recovering them is a later increment with a stated assumption, not
-a silent one.
+reproducible as written.
+
+Unlike some platforms, a submission here carries no date of its own -- but the
+platform keeps one outside the document, in the issue its judging repository
+syncs. Supplied as `RawReport.published`, that date bounds the recovery: resolve
+the repository as it stood then, assuming the reviewed code is the code that was
+there. The assumption is recorded on the pin and a report can stratify on it.
+
+Without a resolver or without a date, a branch citation is skipped as
+`no_commit` and counted. Resolving the branch as it stands today is refused in
+either case: it rests on no assumption anybody can write down.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ from contract_assay.corpus.adapters.markdown import (
 )
 from contract_assay.corpus.harvest import (
     Candidate,
+    CommitResolver,
     DraftRecord,
     RawReport,
     Skip,
@@ -130,8 +137,13 @@ class SherlockAdapter:
 
     platform = "sherlock"
 
-    def __init__(self, enumerator: SherlockEnumerator | None = None) -> None:
+    def __init__(
+        self,
+        enumerator: SherlockEnumerator | None = None,
+        resolve_commit: CommitResolver | None = None,
+    ) -> None:
         self.enumerator = enumerator or SherlockEnumerator()
+        self.resolve_commit = resolve_commit
 
     def candidates(self, report: RawReport) -> Sequence[Candidate]:
         issue = self.enumerator.issue(report.body)
@@ -170,18 +182,55 @@ class SherlockAdapter:
             )
 
         pinned = [c for c in cited if c.is_pinned]
+        resolved_from: str | None = None
         if not pinned:
-            return Skip(
-                SkipCause.NO_COMMIT,
-                f"cites {cited[0].path} at {cited[0].ref!r}, which names a moving target",
-            )
+            recovered = self._recover(cited, report.published)
+            if recovered is None:
+                return Skip(
+                    SkipCause.NO_COMMIT,
+                    f"cites {cited[0].path} at {cited[0].ref!r}, which names a moving target",
+                )
+            pinned, resolved_from = recovered
+
         if len({(c.path, c.start_line, c.end_line) for c in pinned}) > 1:
             return Skip(
                 SkipCause.NO_LOCATION,
-                f"{len(pinned)} distinct pinned locations cited, so none is stated",
+                f"{len(pinned)} distinct locations cited, so none is stated",
             )
 
-        return _draft(report, issue, candidate, pinned[0], quoted_source(scope))
+        return _draft(report, issue, candidate, pinned[0], quoted_source(scope), resolved_from)
+
+    def _recover(
+        self, cited: list[SourceCitation], published: str | None
+    ) -> tuple[list[SourceCitation], str] | None:
+        """Re-pin branch citations against the repository as of the report's date.
+
+        All citations must name the same repository: a branch reference into a
+        dependency is a different repository at a different state, and resolving
+        one against this report's date would assert something about a project the
+        report never dated.
+        """
+        if self.resolve_commit is None or not published:
+            return None
+        repos = {c.repo_url for c in cited}
+        if len(repos) != 1:
+            return None
+        resolved = self.resolve_commit(next(iter(repos)), published)
+        if resolved is None:
+            return None
+        return (
+            [
+                SourceCitation(
+                    repo_url=c.repo_url,
+                    ref=resolved,
+                    path=c.path,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                )
+                for c in cited
+            ],
+            f"repository head at the report's date, {published}",
+        )
 
 
 def _draft(
@@ -190,6 +239,7 @@ def _draft(
     candidate: Candidate,
     citation: SourceCitation,
     quoted: str | None,
+    resolved_from: str | None,
 ) -> DraftRecord:
     """Build a draft from one pinned citation.
 
@@ -203,6 +253,7 @@ def _draft(
         candidate_id=candidate.candidate_id,
         repo_url=citation.repo_url,
         commit=citation.ref,
+        commit_resolved_from=resolved_from,
         path=citation.path,
         start_line=citation.start_line if ranged else None,
         end_line=citation.end_line if ranged else None,

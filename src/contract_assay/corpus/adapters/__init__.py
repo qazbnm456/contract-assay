@@ -19,7 +19,6 @@ from contract_assay.corpus.adapters.code4rena import (
     EnumeratedFinding,
 )
 from contract_assay.corpus.adapters.immunefi import (
-    CommitResolver,
     ImmunefiAdapter,
     ImmunefiEnumerator,
     ImmunefiReport,
@@ -41,7 +40,6 @@ __all__ = [
     "CLASS_KEYWORDS",
     "Code4renaAdapter",
     "Code4renaEnumerator",
-    "CommitResolver",
     "EnumeratedFinding",
     "ImmunefiAdapter",
     "ImmunefiEnumerator",

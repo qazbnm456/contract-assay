@@ -49,7 +49,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
 
 from contract_assay.corpus.adapters.classify import classify_title
 from contract_assay.corpus.adapters.markdown import (
@@ -60,6 +59,7 @@ from contract_assay.corpus.adapters.markdown import (
 )
 from contract_assay.corpus.harvest import (
     Candidate,
+    CommitResolver,
     DraftRecord,
     RawReport,
     Skip,
@@ -67,7 +67,7 @@ from contract_assay.corpus.harvest import (
 )
 from contract_assay.corpus.records import Provenance
 
-__all__ = ["CommitResolver", "ImmunefiAdapter", "ImmunefiEnumerator", "ImmunefiReport"]
+__all__ = ["ImmunefiAdapter", "ImmunefiEnumerator", "ImmunefiReport"]
 
 _TITLE = re.compile(r"^#\s+(?P<title>\S.*?)\s*$", re.M)
 _FIELD = re.compile(r"^(?P<key>Report type|Report severity|Target):\s*(?P<value>.+?)\s*$", re.M)
@@ -96,17 +96,6 @@ _MONTHS = {
         start=1,
     )
 }
-
-
-class CommitResolver(Protocol):
-    """Resolves a repository to the commit it was at on a date.
-
-    Injected so the stage runs with no network. Returns None when the
-    repository or the date cannot be resolved, which is a counted loss rather
-    than a licence to substitute something else.
-    """
-
-    def __call__(self, repo_url: str, iso_date: str) -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +207,7 @@ class ImmunefiAdapter:
             return Skip(SkipCause.NO_FILE_PATH, f"target is not a Solidity file: {parsed.target}")
         target = _with_line_from_body(cited[0], parsed.body)
 
-        pinned, resolved_from = self._pin(target, parsed)
+        pinned, resolved_from = self._pin(target, parsed, report.published)
         if pinned is None:
             return Skip(
                 SkipCause.NO_COMMIT,
@@ -254,18 +243,23 @@ class ImmunefiAdapter:
             ),
         )
 
-    def _pin(self, target: SourceCitation, parsed: ImmunefiReport) -> tuple[str | None, str | None]:
+    def _pin(
+        self, target: SourceCitation, parsed: ImmunefiReport, published: str | None
+    ) -> tuple[str | None, str | None]:
         """The commit to pin, and how it was obtained."""
         if target.is_pinned:
             return target.ref, None
-        if self.resolve_commit is None or not parsed.submitted:
+        # The in-body submission date is the most precise available; a date the
+        # platform keeps outside the document is the fallback.
+        dated = parsed.submitted or (published or "")
+        if self.resolve_commit is None or not dated:
             return None, None
-        resolved = self.resolve_commit(target.repo_url, parsed.submitted)
+        resolved = self.resolve_commit(target.repo_url, dated)
         if resolved is None:
             return None, None
         return (
             resolved,
-            f"repository head at the report's submission date, {parsed.submitted}",
+            f"repository head at the report's date, {dated}",
         )
 
 
