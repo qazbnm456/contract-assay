@@ -3,11 +3,12 @@
   "population": "audit_review",
   "split": "public",
   "pin": {
+    "kind": "commit",
     "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
     "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
     "path": "src/Voter.sol",
     "sha256": "acd7631d4e9fa2e126f2e99d69b8e32a1d51620f50c7f894199edc6a787e336d",
-    "commit_resolved_from": "repository head at the report's date, 2024-05-02"
+    "resolved_from": "repository head at the report's date, 2024-05-02"
   },
   "locator": {
     "file": "src/Voter.sol",

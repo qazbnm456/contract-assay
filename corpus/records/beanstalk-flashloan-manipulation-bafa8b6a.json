@@ -3,6 +3,7 @@
   "population": "exploited_incident",
   "split": "public",
   "pin": {
+    "kind": "commit",
     "repo_url": "https://github.com/BeanstalkFarms/Beanstalk",
     "commit": "e9f49910e287e7a7afaa6db8f536b7194728b0af",
     "path": "protocol/contracts/farm/facets/GovernanceFacet/GovernanceFacet.sol",

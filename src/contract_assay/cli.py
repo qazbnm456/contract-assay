@@ -15,7 +15,7 @@ import typer
 from pydantic import ValidationError
 
 from contract_assay import __version__
-from contract_assay.corpus.records import CorpusRecord
+from contract_assay.corpus.records import CorpusRecord, SourcePin
 from contract_assay.corpus.verify import verify_all
 from contract_assay.evidence.solidity import index_source
 
@@ -52,8 +52,16 @@ def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
     fetch-based verification once that exists.
     """
 
-    def resolve(repo_url: str, commit: str, path: str) -> str | None:
-        candidate = root / path
+    def resolve(pin: SourcePin) -> str | None:
+        # `path` is a key into the pinned unit, and only some kinds of unit are
+        # directories. Verified source arrives keyed by import-style names --
+        # `@openzeppelin/contracts/token/ERC20/ERC20.sol` and the like -- which
+        # look exactly like repository paths and join to nothing. Joining a key
+        # to a root because it looked like a path reads the wrong file, or no
+        # file, and says nothing about why; so the pin is asked instead.
+        if not pin.is_filesystem_path:
+            return None
+        candidate = root / pin.path
         if not candidate.is_file():
             return None
         return candidate.read_text(encoding="utf-8", errors="replace")

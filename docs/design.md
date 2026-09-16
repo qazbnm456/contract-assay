@@ -570,7 +570,7 @@ Corpus records store *pointers*, never vendored third-party source.
 
 | Tracked in this repository | Fetched at run time |
 | --- | --- |
-| repo URL, commit SHA | contract source |
+| pin coordinates: repo URL and commit, **or** chain, address and fork point | contract source |
 | file path, contract, function, line span | audit report text |
 | class labels, difficulty level | |
 | provenance: report URL, auditor-assigned severity | |
@@ -586,6 +586,56 @@ record it admits. A record carrying no digest would be admitted today against
 one file and tomorrow against different bytes, and nothing would notice; a
 reproducibility guarantee that depends on an author remembering to fill a field
 is not a guarantee.
+
+**There is more than one way for bytes to have an address in the world**, and a
+pin is one type with two shapes because of it. A file in a repository at a
+commit is one. Verified source for a contract deployed at an address, at a point
+in a chain's history, is the other — and the incident population (§6.6) is made
+almost entirely of the second.
+
+An address pin is not the weaker of the two. Deployed bytecode is immutable, so
+an address plus a chain plus a fork point is at least as reproducible as a
+commit and rather more so, since an address cannot be force-pushed. The digest
+witnesses the bytes in both cases, which is what actually pins the source.
+
+What the fork point pins is the **state**, not the source: which implementation
+stood behind a proxy, and what the chain looked like while the defect was live.
+Those are separate claims from "these are the bytes", and a record should be
+able to be wrong about either. It is required unconditionally rather than only
+for proxies, because proxy status cannot be known without asking a verification
+repository — and a validator that needed a network call to decide whether a
+field is mandatory would be the only impure validator here.
+
+Three consequences worth stating, because each was a decision:
+
+- **One type, not two.** A discriminated union on `kind`, exposing `path`,
+  `sha256` and `source_id` to every consumer that needs only those. Two separate
+  types would push the branch into every signature that carries a pin; a union
+  with a common surface pushes it only into the consumers that genuinely differ,
+  which are resolution and anything reporting coordinates. Resolution therefore
+  takes the *pin* rather than its parts: a three-argument
+  `(repo_url, commit, path)` resolver spelled one kind of pin into every
+  resolver ever written against it.
+- **`source_id` is opaque.** An identifier that code takes apart to recover its
+  components is an identifier doing double duty as a data structure, and the
+  coupling stays invisible until a second shape arrives. Components are fields;
+  `source_id` is a key. It leads with the pin's kind so that a consumer which
+  assumed one shape fails visibly on another rather than mis-parsing it.
+- **`path` is not a filesystem path.** It means the same thing in both
+  shapes — which file within the pinned unit — in different namespaces. The trap
+  is not the namespaces: it is that verified source frequently arrives keyed by
+  import-style names such as `@openzeppelin/contracts/token/ERC20/ERC20.sol`,
+  which look exactly like repository paths and join to no checkout. Code that
+  joins a key to a root because it looked like a path reads the wrong file, or
+  none, and says nothing about why. So the pin answers `is_filesystem_path` and
+  callers ask it.
+
+One thing the second shape cannot do, recorded rather than worked around: a
+post-fix negative (§6.2) requires a commit pin, because "after the fix" is
+identified by a commit and an address pin has no commit to compare against. The
+deployed analogue — the implementation behind a proxy after an upgrade — is a
+different claim and needs its own kind of negative. Refusing is what keeps that
+visible.
 
 Auditor-assigned severity is *provenance* — a fact about what the original
 report said. It is never mixed with anything a model produced, and no model in

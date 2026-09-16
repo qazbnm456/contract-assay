@@ -3,11 +3,12 @@
   "population": "audit_review",
   "split": "public",
   "pin": {
+    "kind": "commit",
     "repo_url": "https://github.com/lombard-finance/evm-smart-contracts",
     "commit": "6b19ed213291fcc46b9043fc063268acbdd40f34",
     "path": "contracts/bridge/adapters/TokenPool.sol",
     "sha256": "e227d0aa849f7bb141d935ad46b861ff0091a38fed36e03078f9a208a9940d70",
-    "commit_resolved_from": "repository head at the report's date, 2025-01-01"
+    "resolved_from": "repository head at the report's date, 2025-01-01"
   },
   "locator": {
     "file": "contracts/bridge/adapters/TokenPool.sol",

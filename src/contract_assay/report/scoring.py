@@ -393,9 +393,9 @@ def score(
     def parsed_for(record: CorpusRecord) -> Syntax | None:
         if resolve is None:
             return None
-        key = f"{record.pin.commit}:{record.pin.path}"
+        key = record.pin.source_id
         if key not in parsed_cache:
-            source = resolve(record.pin.repo_url, record.pin.commit, record.pin.path)
+            source = resolve(record.pin)
             parsed_cache[key] = Syntax.of(source) if source else None
         return parsed_cache[key]
 

@@ -55,7 +55,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from contract_assay.corpus.records import CorpusRecord, CorpusSplit, LocatorProvenance
+from contract_assay.corpus.records import (
+    CorpusRecord,
+    CorpusSplit,
+    LocatorProvenance,
+    SourcePin,
+)
 from contract_assay.evidence.solidity import SolidityUnavailable, index_source
 from contract_assay.models import VulnerabilityClass
 
@@ -69,8 +74,14 @@ __all__ = [
 ]
 
 
-SourceResolver = Callable[[str, str, str], str | None]
-"""(repo_url, commit, path) -> file contents, or None if it cannot be resolved."""
+SourceResolver = Callable[[SourcePin], str | None]
+"""(pin) -> file contents, or None if it cannot be resolved.
+
+Takes the pin rather than its parts because there is more than one kind of pin
+and they resolve from different places: a repository host for a commit, a
+verification repository for an address. A three-argument signature spelled the
+commit kind into every resolver ever written against it.
+"""
 
 
 class CheckFailure(StrEnum):
@@ -147,12 +158,12 @@ def verify_record(record: CorpusRecord, resolve: SourceResolver) -> Verification
             "checks the unmutated source and certifies the wrong bytes",
         )
 
-    source = resolve(record.pin.repo_url, record.pin.commit, record.pin.path)
+    source = resolve(record.pin)
     if source is None:
         return _reject(
             record.record_id,
             CheckFailure.SOURCE_UNRESOLVABLE,
-            f"{record.pin.repo_url}@{record.pin.commit[:12]}:{record.pin.path}",
+            record.pin.describe(),
         )
     if not source.strip():
         return _reject(record.record_id, CheckFailure.EMPTY_SOURCE)

@@ -23,12 +23,15 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 
 __all__ = [
+    "AddressPin",
+    "CommitPin",
     "CorpusRecord",
     "CorpusSplit",
     "LocatorLabel",
@@ -41,6 +44,8 @@ __all__ = [
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
+_ADDRESS = re.compile(r"^0x[0-9a-f]{40}$")
+_TX_HASH = re.compile(r"^0x[0-9a-f]{64}$")
 
 
 class Population(StrEnum):
@@ -222,28 +227,80 @@ class NegativeKind(StrEnum):
     """Manually verified as carrying no instance of this class."""
 
 
-class SourcePin(BaseModel):
-    """Exactly which bytes to analyse, and how to know they are the right ones."""
+class _Pin(BaseModel):
+    """What every kind of pin owes its consumers.
+
+    A pin answers one question -- exactly which bytes to analyse, and how to know
+    they are the right ones -- and there is more than one way for bytes to have
+    an address in the world. A repository at a commit is one. Verified source
+    for a contract deployed at an address is another, and an incident population
+    is made almost entirely of the second: 82% of a sampled incident archive has
+    retrievable verified source and none of it has a commit (§6.6).
+
+    The two are kept as one type with a common surface so that the many
+    consumers needing only `path`, `sha256` and `source_id` never learn there
+    are two kinds. Only the consumers that genuinely differ -- resolution, and
+    anything reporting coordinates -- narrow on `kind`. Two separate types would
+    push that branch into every signature that carries a pin.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    repo_url: str = Field(description="Clone URL.")
-    commit: str = Field(description="Full 40-hex commit SHA. Refs and short SHAs move.")
-    path: str = Field(description="File path within the repository at `commit`.")
+    path: str = Field(
+        description=(
+            "Which file within the pinned unit. A repository path for a commit pin and "
+            "a key into a verified-source set for an address pin -- the same role in a "
+            "different namespace, which is why it is one field. NOT necessarily a "
+            "filesystem path: see `is_filesystem_path`."
+        )
+    )
     sha256: str | None = Field(
         default=None,
-        description="Digest of the file's bytes at `commit`, recorded by verify.",
+        description="Digest of the file's bytes as resolved, recorded by verify.",
     )
-    commit_resolved_from: str | None = Field(
+    resolved_from: str | None = Field(
         default=None,
         description=(
-            "How the commit was obtained when the source did not state it, in prose. "
-            "None means the source stated it outright."
+            "How the pin's coordinates were obtained when the source did not state them, "
+            "in prose. None means the source stated them outright."
         ),
     )
 
+    @property
+    def is_stated(self) -> bool:
+        """Whether the source named these coordinates, rather than them being inferred.
+
+        An inferred pin is still reproducible -- the digest witnesses the bytes
+        either way -- but it rests on an assumption the source did not make, so
+        the assumption travels with the record and reports can stratify on it.
+        `resolved_from` states which assumption in prose, because "resolved"
+        alone does not say from what.
+        """
+        return self.resolved_from is None
+
+    @property
+    def is_filesystem_path(self) -> bool:
+        """Whether `path` may be joined to a directory on disk.
+
+        The trap this exists to close: verified source frequently arrives with
+        import-style keys -- `@openzeppelin/contracts/token/ERC20/ERC20.sol` and
+        the like -- which look exactly like repository paths and are not
+        joinable to any checkout. Code that joins `path` to a root because it
+        looked like a path reads the wrong file, or no file, and says nothing
+        about why.
+        """
+        return False
+
+
+class CommitPin(_Pin):
+    """A file in a repository at a commit."""
+
+    kind: Literal["commit"] = "commit"
+    repo_url: str = Field(description="Clone URL.")
+    commit: str = Field(description="Full 40-hex commit SHA. Refs and short SHAs move.")
+
     @model_validator(mode="after")
-    def _commit_is_a_full_sha(self) -> SourcePin:
+    def _commit_is_a_full_sha(self) -> CommitPin:
         if not _SHA1.match(self.commit):
             raise ValueError(
                 f"commit must be a full 40-character lowercase hex SHA, got {self.commit!r}; "
@@ -252,25 +309,102 @@ class SourcePin(BaseModel):
         return self
 
     @property
-    def is_commit_stated(self) -> bool:
-        """Whether the source named this commit, rather than it being inferred.
-
-        A resolved commit is reproducible -- it is a full SHA like any other, and
-        the digest still witnesses the bytes -- but it rests on an assumption the
-        source did not make. Reports frequently cite a *branch*, which names
-        whatever it currently points at and cannot be pinned; recovering one by
-        resolving the repository as it stood at the report's own date is a bounded
-        inference, where resolving it as it stands today is unbounded drift.
-
-        Bounded is not free, so the assumption travels with the record and
-        reports can stratify on it. `commit_resolved_from` states which
-        assumption in prose, because "resolved" alone does not say from what.
-        """
-        return self.commit_resolved_from is None
+    def is_filesystem_path(self) -> bool:
+        return True
 
     @property
     def source_id(self) -> str:
-        return f"{self.repo_url.rstrip('/').rsplit('/', 1)[-1]}@{self.commit[:12]}:{self.path}"
+        """An opaque key for the pinned unit. **Never parse this.**
+
+        Readable so that a log or a failure message is legible, and that is the
+        only thing its shape is for. Anything needing the repository, the commit
+        or the path reads the field, because an identifier that code takes apart
+        to recover its components is an identifier doing double duty as a data
+        structure -- and the coupling stays invisible until a second kind of pin
+        arrives.
+
+        It leads with the pin's kind for that reason: a consumer that assumed
+        one shape fails visibly on another rather than silently mis-parsing it.
+        """
+        repo = self.repo_url.rstrip("/").rsplit("/", 1)[-1]
+        return f"commit:{repo}@{self.commit[:12]}:{self.path}"
+
+    def describe(self) -> str:
+        return f"{self.repo_url}@{self.commit[:12]}:{self.path}"
+
+
+class AddressPin(_Pin):
+    """Verified source for a contract deployed at an address, at a point in a chain.
+
+    Not weaker than a commit pin. Deployed bytecode is immutable, so an address
+    plus a chain plus a fork point is at least as reproducible as a commit and
+    rather more so, since an address cannot be force-pushed. The digest
+    witnesses the bytes exactly as it does for a commit.
+
+    `fork_point` is required, and not because it pins the source -- the digest
+    does that, here as everywhere. It pins the **state**: which implementation
+    stood behind a proxy, and what the chain looked like while the defect was
+    live. Those are separate claims and a record should be able to be wrong
+    about either. It is required unconditionally rather than only for proxies
+    because proxy status cannot be known without asking a verification
+    repository, and a validator that needed a network call to decide whether a
+    field is mandatory would be the only impure validator here.
+    """
+
+    kind: Literal["address"] = "address"
+    chain_id: int = Field(gt=0, description="EIP-155 chain id. 1 is Ethereum mainnet.")
+    address: str = Field(description="Contract address, 0x-prefixed, 40 hex, lowercase.")
+    fork_point: str = Field(
+        description=(
+            "Where in the chain's history this pin applies: a decimal block number, or a "
+            "0x-prefixed 32-byte transaction hash. A transaction hash pins a block *and* "
+            "a position within it, so it is the stronger of the two forms."
+        )
+    )
+    implementation_of: str | None = Field(
+        default=None,
+        description=(
+            "The proxy this address implements, when the pin deliberately names an "
+            "implementation rather than the address users call. None means the address "
+            "is the contract itself."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _coordinates_are_canonical(self) -> AddressPin:
+        if not _ADDRESS.match(self.address):
+            raise ValueError(
+                f"address must be 0x followed by 40 lowercase hex digits, got "
+                f"{self.address!r}; mixed case is a checksum, not an identifier"
+            )
+        if self.implementation_of is not None and not _ADDRESS.match(self.implementation_of):
+            raise ValueError(
+                f"implementation_of must be a canonical address, got {self.implementation_of!r}"
+            )
+        if not (self.fork_point.isdigit() or _TX_HASH.match(self.fork_point)):
+            raise ValueError(
+                f"fork_point must be a decimal block number or a 0x-prefixed 32-byte "
+                f"transaction hash, got {self.fork_point!r}"
+            )
+        return self
+
+    @property
+    def pins_a_transaction(self) -> bool:
+        return not self.fork_point.isdigit()
+
+    @property
+    def source_id(self) -> str:
+        """An opaque key for the pinned unit. **Never parse this.** See `CommitPin`."""
+        point = self.fork_point if self.fork_point.isdigit() else self.fork_point[:14]
+        return f"address:{self.chain_id}:{self.address}@{point}:{self.path}"
+
+    def describe(self) -> str:
+        at = "tx" if self.pins_a_transaction else "block"
+        return f"chain {self.chain_id} {self.address} @{at} {self.fork_point[:14]}:{self.path}"
+
+
+SourcePin = Annotated[CommitPin | AddressPin, Field(discriminator="kind")]
+"""Exactly which bytes to analyse, and how to know they are the right ones."""
 
 
 class Provenance(BaseModel):
@@ -486,6 +620,17 @@ class CorpusRecord(BaseModel):
             if self.negative_kind is NegativeKind.POST_FIX:
                 if self.provenance.fix_commit is None:
                     raise ValueError("a post-fix negative must record the fix commit it came from")
+                if self.pin.kind != "commit":
+                    # A stated limitation, not an oversight. A post-fix negative
+                    # is the same code after the repair, and "after" is
+                    # identified by a commit; an address pin has no commit to
+                    # compare the fix against. The deployed analogue -- the
+                    # implementation behind the proxy after an upgrade -- is a
+                    # different claim and needs its own kind of negative.
+                    raise ValueError(
+                        "a post-fix negative must be pinned to a commit, because the fix it "
+                        f"is defined against is a commit; this pin is {self.pin.kind!r}"
+                    )
                 if self.pin.commit != self.provenance.fix_commit:
                     raise ValueError(
                         "a post-fix negative must be pinned to the fix commit, "

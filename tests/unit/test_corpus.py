@@ -14,6 +14,8 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.corpus.records import (
+    AddressPin,
+    CommitPin,
     CorpusRecord,
     CorpusSplit,
     LocatorLabel,
@@ -60,7 +62,7 @@ SWAP_START, SWAP_END = 11, 13
 
 
 def resolver(source: str | None = SOURCE) -> SourceResolver:
-    def _resolve(repo_url: str, commit: str, path: str) -> str | None:
+    def _resolve(pin: SourcePin) -> str | None:
         return source
 
     return _resolve
@@ -73,7 +75,7 @@ def a_pin(**over: object) -> SourcePin:
         "path": "src/Vault.sol",
         "sha256": SOURCE_SHA,
     }
-    return SourcePin(**{**base, **over})  # type: ignore[arg-type]
+    return CommitPin(**{**base, **over})  # type: ignore[arg-type]
 
 
 def a_locator(**over: object) -> Locator:
@@ -123,8 +125,10 @@ class TestSourcePin:
         with pytest.raises(ValidationError, match="40-character"):
             a_pin(commit=bad)
 
-    def test_source_id_is_stable_and_readable(self) -> None:
-        assert a_pin().source_id == f"vault@{'a' * 12}:src/Vault.sol"
+    def test_source_id_leads_with_the_pins_kind(self) -> None:
+        # Readable, and never parsed. It leads with the kind so a consumer that
+        # assumed one shape fails visibly on another instead of mis-reading it.
+        assert a_pin().source_id == f"commit:vault@{'a' * 12}:src/Vault.sol"
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +204,19 @@ class TestNegativeRecords:
         # defect as absent while measuring the code that contains it.
         with pytest.raises(ValidationError, match="must be pinned to the fix commit"):
             self._negative(pin=a_pin(commit=VULN_SHA))
+
+    def test_a_post_fix_negative_needs_a_commit_pin(self) -> None:
+        # A stated limitation rather than an oversight: "after the fix" is
+        # identified by a commit, and an address pin has no commit to compare
+        # the fix against. The deployed analogue -- the implementation behind a
+        # proxy after an upgrade -- is a different claim needing its own kind of
+        # negative, and refusing here is what keeps that visible.
+        with pytest.raises(ValidationError, match="must be pinned to a commit"):
+            self._negative(
+                pin=AddressPin(
+                    chain_id=1, address="0x" + "b" * 40, fork_point="1", path="src/Vault.sol"
+                )
+            )
 
     def test_a_post_fix_negative_must_know_its_fix_commit(self) -> None:
         with pytest.raises(ValidationError, match="must record the fix commit"):
@@ -978,3 +995,111 @@ class TestQuotedProvenance:
     def test_a_quoted_record_carries_no_anchor(self) -> None:
         with pytest.raises(ValidationError, match="anchor_line is set on"):
             a_positive(locator_provenance=LocatorProvenance.QUOTED, anchor_line=SWAP_START)
+
+
+ADDRESS = "0x" + "b" * 40
+IMPL = "0x" + "c" * 40
+TX = "0x" + "d" * 64
+
+
+def an_address_pin(**over: object) -> AddressPin:
+    base: dict[str, object] = {
+        "chain_id": 1,
+        "address": ADDRESS,
+        "fork_point": "19226508",
+        "path": "Vault.sol",
+    }
+    return AddressPin(**{**base, **over})  # type: ignore[arg-type]
+
+
+class TestAnAddressPin:
+    """Bytes whose address in the world is a deployment, not a commit.
+
+    An incident population is made almost entirely of these: 82% of a sampled
+    incident archive has retrievable verified source and none of it has a
+    commit. The pin is not weaker for that -- deployed bytecode is immutable and
+    an address cannot be force-pushed -- so what it needs is its own coordinates
+    rather than an approximation of a commit's.
+    """
+
+    def test_a_checksummed_address_is_refused(self) -> None:
+        # Mixed case in an address is a checksum, which is a property of the
+        # rendering. Two pins differing only in case would be two pins on one
+        # contract, and `source_id` would not see that they are the same unit.
+        with pytest.raises(ValidationError, match="40 lowercase hex"):
+            an_address_pin(address="0x" + "B" * 40)
+
+    def test_a_short_address_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="40 lowercase hex"):
+            an_address_pin(address="0xdeadbeef")
+
+    def test_a_block_number_is_a_fork_point(self) -> None:
+        assert an_address_pin().pins_a_transaction is False
+
+    def test_a_transaction_hash_is_a_stronger_fork_point(self) -> None:
+        # It pins a block *and* a position within it.
+        assert an_address_pin(fork_point=TX).pins_a_transaction is True
+
+    def test_a_fork_point_that_is_neither_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="decimal block number or"):
+            an_address_pin(fork_point="latest")
+
+    def test_a_fork_point_is_required(self) -> None:
+        # Not because it pins the source -- the digest does that here as
+        # everywhere -- but because it pins the state: which implementation
+        # stood behind a proxy, and what the chain looked like while the defect
+        # was live. Required unconditionally so the validator needs no network
+        # call to decide whether the field is mandatory.
+        with pytest.raises(ValidationError, match="fork_point"):
+            AddressPin(chain_id=1, address=ADDRESS, path="Vault.sol")  # type: ignore[call-arg]
+
+    def test_an_implementation_must_name_the_proxy_canonically(self) -> None:
+        assert an_address_pin(implementation_of=IMPL).implementation_of == IMPL
+        with pytest.raises(ValidationError, match="canonical address"):
+            an_address_pin(implementation_of="notanaddress")
+
+    def test_a_chain_must_be_identified(self) -> None:
+        # An address without a chain names a different contract on every chain
+        # it exists on, which is most of them.
+        with pytest.raises(ValidationError):
+            an_address_pin(chain_id=0)
+
+
+class TestTheCommonSurfaceOfAPin:
+    def test_path_is_not_joinable_for_an_address_pin(self) -> None:
+        # The trap: verified source arrives keyed by import-style names that
+        # look exactly like repository paths and join to nothing. Code asks the
+        # pin rather than the string.
+        assert a_pin().is_filesystem_path is True
+        assert (
+            an_address_pin(path="@openzeppelin/contracts/token/ERC20/ERC20.sol").is_filesystem_path
+            is False
+        )
+
+    def test_source_id_distinguishes_the_kinds(self) -> None:
+        assert an_address_pin().source_id.startswith("address:1:")
+        assert a_pin().source_id.startswith("commit:")
+
+    def test_an_inferred_pin_says_so_whatever_its_kind(self) -> None:
+        assert a_pin().is_stated is True
+        assert an_address_pin().is_stated is True
+        assert an_address_pin(resolved_from="the block the exploit ran at").is_stated is False
+
+    def test_the_kind_is_the_discriminator(self) -> None:
+        # Explicit rather than inferred from which fields are present: a schema
+        # that guesses which shape it is looking at is what a discriminator
+        # exists to avoid.
+        # `locator.file` must still equal `pin.path`, which is the invariant that
+        # survives both kinds: the record and its pin must name one file.
+        pin = an_address_pin(path="src/Vault.sol")
+        parsed = CorpusRecord.model_validate(
+            {**a_positive().model_dump(mode="json"), "pin": pin.model_dump(mode="json")}
+        )
+        assert parsed.pin.kind == "address"
+        assert parsed.pin.source_id.startswith("address:1:")
+
+    def test_a_pin_with_no_kind_is_refused(self) -> None:
+        payload = an_address_pin(path="src/Vault.sol").model_dump(mode="json")
+        del payload["kind"]
+        with pytest.raises(ValidationError):
+            CorpusRecord.model_validate({**a_positive().model_dump(mode="json"), "pin": payload})

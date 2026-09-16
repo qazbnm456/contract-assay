@@ -3,11 +3,12 @@
   "population": "audit_review",
   "split": "public",
   "pin": {
+    "kind": "commit",
     "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
     "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
     "path": "src/VotingEscrow.sol",
     "sha256": "abac20336b254ac59edb51e31babe25c82a5f5ee37202aa18348d328e57d45ca",
-    "commit_resolved_from": "repository head at the report's date, 2024-05-08"
+    "resolved_from": "repository head at the report's date, 2024-05-08"
   },
   "locator": {
     "file": "src/VotingEscrow.sol",

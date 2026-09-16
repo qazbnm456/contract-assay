@@ -20,6 +20,7 @@ from contract_assay.corpus.records import (
     LocatorProvenance,
     Population,
     Provenance,
+    SourcePin,
 )
 from contract_assay.corpus.verify import CheckFailure, SourceResolver, verify_all
 from contract_assay.models import VulnerabilityClass
@@ -59,7 +60,7 @@ contract Router {
 
 
 def resolver(source: str | None = VAULT) -> SourceResolver:
-    def _resolve(repo_url: str, commit: str, path: str) -> str | None:
+    def _resolve(pin: SourcePin) -> str | None:
         return source
 
     return _resolve

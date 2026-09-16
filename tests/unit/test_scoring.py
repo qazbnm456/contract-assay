@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from contract_assay.corpus.records import (
+    CommitPin,
     CorpusRecord,
     CorpusSplit,
     LocatorLabel,
@@ -65,8 +66,8 @@ contract Vault {
 
 
 def resolver(source: str | None = SOURCE):  # type: ignore[no-untyped-def]
-    def _resolve(repo_url: str, commit: str, path: str) -> str | None:
-        return source if path == PATH else None
+    def _resolve(pin: SourcePin) -> str | None:
+        return source if pin.path == PATH else None
 
     return _resolve
 
@@ -85,7 +86,7 @@ def a_record(
         record_id=record_id,
         population=Population.AUDIT_REVIEW,
         split=CorpusSplit.PUBLIC,
-        pin=SourcePin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
+        pin=CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
         locator=Locator(
             file=PATH, contract="Vault", function=function, start_line=start, end_line=end
         ),
@@ -336,7 +337,7 @@ class TestTheStatementNamesWhatIsThin:
             record_id="vault-clean-1",
             population=Population.AUDIT_REVIEW,
             split=CorpusSplit.PUBLIC,
-            pin=SourcePin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
+            pin=CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
             classes=[],
             negative_for=[CLS],
             vulnerable_to=[VulnerabilityClass.SLIPPAGE],

@@ -44,12 +44,12 @@ from enum import StrEnum
 
 from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.records import (
+    CommitPin,
     CorpusRecord,
     CorpusSplit,
     LocatorLabel,
     LocatorProvenance,
     Population,
-    SourcePin,
 )
 from contract_assay.corpus.verify import SourceResolver
 from contract_assay.evidence.syntax import Syntax
@@ -478,8 +478,7 @@ def _defect_key(record: CorpusRecord) -> tuple[str, ...]:
     """
     assert record.locator is not None
     return (
-        record.pin.commit,
-        record.pin.path,
+        record.pin.source_id,
         record.locator.function or "",
         ",".join(sorted(c.value for c in record.classes)),
     )
@@ -533,13 +532,18 @@ def normalize(
         skipped_by_class.update(draft.classes)
 
     for draft in drafts:
-        source = resolve(draft.repo_url, draft.commit, draft.path)
+        # The pin is built before resolution rather than after, because
+        # resolution is now asked for a pin: where bytes come from depends on
+        # what kind of coordinates name them, and only the pin knows that.
+        pin = CommitPin(
+            repo_url=draft.repo_url,
+            commit=draft.commit,
+            path=draft.path,
+            resolved_from=draft.commit_resolved_from,
+        )
+        source = resolve(pin)
         if source is None or not source.strip():
-            lose(
-                draft,
-                NormalizeCause.SOURCE_UNRESOLVABLE,
-                f"{draft.repo_url}@{draft.commit[:12]}:{draft.path}",
-            )
+            lose(draft, NormalizeCause.SOURCE_UNRESOLVABLE, pin.describe())
             continue
 
         located = _locate(draft, source)
@@ -552,15 +556,11 @@ def normalize(
                 record_id=_record_id(draft),
                 population=population,
                 split=split,
-                pin=SourcePin(
-                    repo_url=draft.repo_url,
-                    commit=draft.commit,
-                    path=draft.path,
-                    # Pinned here, not left for `verify`. For a derived span this
-                    # is the only real check that remains, and it exists only if
-                    # the digest witnesses the bytes the derivation ran against.
-                    sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                    commit_resolved_from=draft.commit_resolved_from,
+                # Digested here, not left for `verify`. For a derived span this
+                # is the only real check that remains, and it exists only if the
+                # digest witnesses the bytes the derivation ran against.
+                pin=pin.model_copy(
+                    update={"sha256": hashlib.sha256(source.encode("utf-8")).hexdigest()}
                 ),
                 locator=located.locator,
                 locator_provenance=located.provenance,
