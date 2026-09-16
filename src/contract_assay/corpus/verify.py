@@ -50,16 +50,19 @@ whole module is testable offline.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from contract_assay.corpus.records import CorpusRecord, CorpusSplit
 from contract_assay.evidence.solidity import SolidityUnavailable, index_source
+from contract_assay.models import VulnerabilityClass
 
 __all__ = [
     "CheckFailure",
     "SourceResolver",
+    "VerificationReport",
     "VerificationResult",
     "verify_all",
     "verify_record",
@@ -234,10 +237,96 @@ def verify_record(record: CorpusRecord, resolve: SourceResolver) -> Verification
     )
 
 
-def verify_all(
-    records: list[CorpusRecord], resolve: SourceResolver
-) -> tuple[list[CorpusRecord], list[VerificationResult]]:
-    """Partition records into admitted and rejected.
+@dataclass(frozen=True, slots=True)
+class VerificationReport:
+    """What was admitted, what was not, and what the survivors are a sample of.
+
+    The tallies are part of the result rather than something a caller may
+    compute, because the thing they exist to prevent is their absence.
+    Verification rejects what it cannot confirm, which is correct and is what
+    makes the corpus worth having -- and it also means the corpus is not a sample
+    of real defects but a sample of defects sitting where the declaration index
+    can parse and name them unambiguously. Assembly-heavy contracts, generated
+    code and heavily overloaded interfaces are thinner in it than in the world.
+
+    That bias cannot be removed without giving up the property that makes the
+    corpus trustworthy, so the answer is to stop it being invisible. "Recall
+    0.62" and "recall 0.62 over a corpus that rejected 11% of candidates as
+    unverifiable, concentrated in these classes" are different claims, and only
+    the second is true. See section 1.3 of docs/design.md.
+    """
+
+    admitted: tuple[CorpusRecord, ...] = ()
+    rejected: tuple[VerificationResult, ...] = ()
+    by_failure: Mapping[CheckFailure, int] = field(default_factory=dict)
+    """How many records each check turned away. A record may appear under several."""
+
+    rejected_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
+    admitted_by_class: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
+
+    @property
+    def candidates(self) -> int:
+        return len(self.admitted) + len(self.rejected)
+
+    @property
+    def rejection_rate(self) -> float:
+        """Share of candidates rejected. Zero when there were none, not undefined."""
+        return len(self.rejected) / self.candidates if self.candidates else 0.0
+
+    def rejection_rate_for(self, cls: VulnerabilityClass) -> float:
+        """Per-class rejection rate, which is where a bias shows up.
+
+        An overall rate can look tolerable while one class is decimated, and that
+        class is then quietly under-represented in everything scored against the
+        corpus.
+        """
+        seen = self.rejected_by_class.get(cls, 0) + self.admitted_by_class.get(cls, 0)
+        return self.rejected_by_class.get(cls, 0) / seen if seen else 0.0
+
+    def sampling_statement(self) -> str:
+        """One sentence a report must carry beside any number computed from this.
+
+        Provided as a method rather than left to each caller so that the sentence
+        is the same everywhere, and so that omitting it is a visible choice
+        rather than an oversight.
+        """
+        admitted = _plural(len(self.admitted), "record")
+        if not self.rejected:
+            return f"{admitted} admitted; no candidates were rejected."
+
+        failures = ", ".join(
+            f"{failure.value} {count}"
+            for failure, count in sorted(
+                self.by_failure.items(), key=lambda item: (-item[1], item[0].value)
+            )
+        )
+        worst = sorted(self.rejected_by_class.items(), key=lambda item: (-item[1], item[0].value))[
+            :3
+        ]
+        concentration = (
+            " Concentrated in " + ", ".join(f"{cls.value} ({count})" for cls, count in worst) + "."
+            if worst
+            else ""
+        )
+        return (
+            f"{admitted} admitted; {len(self.rejected)} of "
+            f"{_plural(self.candidates, 'candidate')} ({self.rejection_rate:.1%}) rejected as "
+            f"unverifiable -- {failures}.{concentration} Every number computed over "
+            "this corpus describes the admitted records only."
+        )
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
+
+def _classes_of(record: CorpusRecord) -> tuple[VulnerabilityClass, ...]:
+    """What a record is about, whichever polarity it has."""
+    return tuple(record.classes or record.negative_for)
+
+
+def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> VerificationReport:
+    """Check every record and report what survived, what did not, and why.
 
     Admitted records come back with `pin.sha256` set to the digest of the bytes
     they were verified against. Without that write-back the pin's promise is
@@ -248,16 +337,28 @@ def verify_all(
     """
     admitted: list[CorpusRecord] = []
     rejected: list[VerificationResult] = []
+    by_failure: Counter[CheckFailure] = Counter()
+    rejected_by_class: Counter[VulnerabilityClass] = Counter()
+    admitted_by_class: Counter[VulnerabilityClass] = Counter()
 
     for record in records:
         result = verify_record(record, resolve)
         if not result.ok:
             rejected.append(result)
+            by_failure.update(result.failures)
+            rejected_by_class.update(_classes_of(record))
             continue
 
         if record.pin.sha256 is None and result.computed_sha256 is not None:
             pinned = record.pin.model_copy(update={"sha256": result.computed_sha256})
             record = record.model_copy(update={"pin": pinned})
         admitted.append(record)
+        admitted_by_class.update(_classes_of(record))
 
-    return admitted, rejected
+    return VerificationReport(
+        admitted=tuple(admitted),
+        rejected=tuple(rejected),
+        by_failure=dict(by_failure),
+        rejected_by_class=dict(rejected_by_class),
+        admitted_by_class=dict(admitted_by_class),
+    )

@@ -54,6 +54,46 @@ first, and an error quietly becomes a judgement. `FailedCheck` therefore carries
 a `RejectionKind`, and `DetectorRun` refuses to be `clean` over a finding nobody
 could check.
 
+### 1.3 An instrument cannot exceed its own source of truth
+
+The general form of a failure this project keeps meeting:
+
+> When the thing that validates and the thing being validated draw on the same
+> source of truth, the validation cannot exceed that source — and the shortfall
+> is invisible, because it appears as the subject performing badly rather than as
+> the instrument being short.
+
+It is worth stating once because it has three separate instances here, and only
+one of them is fixable.
+
+**The verdict layer.** Fixable, and fixed — see §2.1. A `verdict()` that admitted
+only what the deterministic predicates already supported would cap a detector's
+recall at its predicates' recall, turning "did the model find the defect?" into
+"does the model agree with our static analysis?". It would fail hardest on the
+`Q` classes, which exist precisely because deterministic tooling cannot reach
+them.
+
+**The corpus.** Not fixable, and so stated instead — see §6.6. `verify` rejects
+what it cannot confirm, which is correct and is what makes the corpus worth
+having. It also means the corpus is not a sample of real defects but a sample of
+defects that sit where the declaration index can parse and name them
+unambiguously. Assembly-heavy contracts, generated code and heavily overloaded
+interfaces are thinner in it than in the world.
+
+**Variant confirmation.** Not fixable, and deferred with the pipeline it belongs
+to — see §6.5. Confirming that a mutation preserved a defect by comparing which
+predicates fire cannot confirm a defect the predicates never saw, so those cases
+fall to human review. Review is the expensive path, so classes needing more of it
+yield fewer confirmed variants per unit of effort, and a variant set built
+without planning against that cost skews toward the classes the predicates can
+see.
+
+The pattern generalises past this repository, and the response differs by case:
+fix it where the instrument can be decoupled from the subject, and where it
+cannot, measure the shortfall and report it. What is never acceptable is leaving
+it unstated, because the number it produces looks exactly like a number that
+does not have the problem.
+
 ## 2. Detector anatomy
 
 Each detector is a Python class in three layers. The split exists because the
@@ -477,6 +517,16 @@ Mutation moves code, so a variant's locator is recomputed against the mutated
 source rather than carried forward. The declaration index of §6.3 is what makes
 that mechanical rather than manual.
 
+One thing to plan for rather than discover, whenever the pipeline is taken up.
+Confirming that a mutation preserved a defect by comparing which predicates fire
+cannot confirm a defect the predicates never saw — §1.3 again — so those cases
+fall to human review, which is the expensive and lossy path. Classes needing
+more review therefore yield fewer confirmed variants per unit of effort, and a
+variant set sized by counting available mutations rather than by budgeting
+review time will skew toward the classes the predicates can already see. Those
+are the `S` and `M` classes, so a hidden test set built that way would
+under-represent exactly the `Q` classes the project exists to measure.
+
 A variant also cannot be stored the way every other record is. A pin identifies
 bytes in a repository and a variant's bytes exist in no repository, so a variant
 needs a **recipe** — source record, ordered operators, seed, tool version — which
@@ -487,6 +537,36 @@ derivative of somebody else's contract. Until the recipe exists, `verify` reject
 a variant outright rather than checking it against the source it was mutated
 from — which would pass, against bytes that do not contain the mutation, and
 write that source's digest onto the record as proof of reproducibility.
+
+### 6.6 What the corpus is a sample of
+
+Verification rejects what it cannot confirm (§6.3), and that is what makes the
+corpus worth having. It also has a consequence that no amount of care removes:
+the corpus is not a sample of real defects, it is a sample of defects sitting
+where the declaration index can parse and name them unambiguously.
+Assembly-heavy contracts, generated code and heavily overloaded interfaces are
+thinner in it than they are in the world.
+
+This is §1.3's third instance, and the one where the answer is not a fix.
+Admitting what cannot be verified would give up the property the corpus exists
+to have. So the bias is measured instead: `verify_all` returns a
+`VerificationReport` carrying the rejection count per `CheckFailure` and per
+class, alongside the admitted counts that give those numbers a denominator.
+
+The tallies are part of the result rather than something a caller may compute,
+because what they exist to prevent is their own absence. `sampling_statement()`
+produces the sentence a report has to carry beside any number computed from the
+corpus, and it is the same sentence everywhere so that omitting it is a visible
+choice rather than an oversight.
+
+> Recall 0.62 and *recall 0.62 over a corpus that rejected 11% of candidates as
+> unverifiable, concentrated in these classes* are different claims, and only
+> the second one is true.
+
+The per-class rate matters more than the overall one, because that is where a
+bias shows up: an aggregate can look tolerable while a single class is
+decimated, and that class is then quietly under-represented in everything scored
+against the corpus afterwards.
 
 ## 7. Scoring
 
@@ -515,6 +595,17 @@ rejects a contract declaring one signature twice.
 
 Reports are stratified by difficulty level and by evidence tier, and state
 counts of `invalid` and `skipped` alongside — never folded in.
+
+One consequence of §1.2's outcome rules has to be undone here rather than
+inherited. A run with one verified finding is `vulnerable` even if nine other
+claims failed their citation check, which is right at the outcome layer: the run
+did measure something. Carried into scoring unchanged it would make spraying
+claims free, and the cheapest strategy available to a detector would be to emit
+many and let the harness sort them. So citation-failed findings are retained in
+the record — which is why `VerifiedFinding` keeps them rather than dropping them
+— and they count against precision. It is the same treatment a claim outside the
+label space gets in §7.1, for the same reason: **output that costs nothing to
+produce must not be free to produce.**
 
 Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces

@@ -93,22 +93,25 @@ def verify_command(
             typer.echo(f"  {exc.error_count()} problem(s); first: {exc.errors()[0]['msg']}")
             raise typer.Exit(1) from exc
 
-    admitted, rejected = verify_all(parsed, _local_resolver(source_root))
+    report = verify_all(parsed, _local_resolver(source_root))
 
-    for result in rejected:
+    for result in report.rejected:
         typer.secho(f"  rejected  {result}", fg=typer.colors.RED)
-    for record in admitted:
+    for record in report.admitted:
         typer.secho(f"  admitted  {record.record_id}", fg=typer.colors.GREEN)
 
     if write_digests:
-        by_id = {r.record_id: r for r in admitted}
+        by_id = {r.record_id: r for r in report.admitted}
         for path in paths:
             record_id = json.loads(path.read_text(encoding="utf-8"))["record_id"]
             if updated := by_id.get(record_id):
                 path.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
-    typer.echo(f"\n{len(admitted)} admitted, {len(rejected)} rejected")
-    if rejected:
+    # Printed on every run, including a clean one. What the corpus is a sample of
+    # is a property of the corpus, not a warning about this invocation, and a
+    # statement that only appears on failure is one nobody reads.
+    typer.echo(f"\n{report.sampling_statement()}")
+    if report.rejected:
         raise typer.Exit(1)
 
 

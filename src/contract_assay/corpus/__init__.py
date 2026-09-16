@@ -11,6 +11,7 @@ from contract_assay.corpus.records import (
 from contract_assay.corpus.verify import (
     CheckFailure,
     SourceResolver,
+    VerificationReport,
     VerificationResult,
     verify_all,
     verify_record,
@@ -24,6 +25,7 @@ __all__ = [
     "Provenance",
     "SourcePin",
     "SourceResolver",
+    "VerificationReport",
     "VerificationResult",
     "VulnerabilityClass",
     "verify_all",

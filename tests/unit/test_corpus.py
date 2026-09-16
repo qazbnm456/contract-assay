@@ -297,7 +297,8 @@ class TestVerification:
     def test_verify_all_partitions_without_mutating(self) -> None:
         good = a_positive()
         bad = a_positive(record_id="vault-bad", locator=a_locator(start_line=900, end_line=999))
-        admitted, rejected = verify_all([good, bad], resolver())
+        report = verify_all([good, bad], resolver())
+        admitted, rejected = list(report.admitted), list(report.rejected)
 
         assert [r.record_id for r in admitted] == ["vault-slippage-1"]
         assert [r.record_id for r in rejected] == ["vault-bad"]
@@ -324,7 +325,8 @@ class TestDigestWriteBack:
 
     def test_an_admitted_record_gains_the_digest_it_was_verified_against(self) -> None:
         unpinned = a_positive(pin=a_pin(sha256=None))
-        admitted, rejected = verify_all([unpinned], resolver())
+        report = verify_all([unpinned], resolver())
+        admitted, rejected = list(report.admitted), list(report.rejected)
 
         assert not rejected
         assert admitted[0].pin.sha256 == SOURCE_SHA
@@ -335,16 +337,16 @@ class TestDigestWriteBack:
         assert unpinned.pin.sha256 is None
 
     def test_a_digest_already_pinned_is_left_alone(self) -> None:
-        admitted, _ = verify_all([a_positive()], resolver())
+        admitted = list(verify_all([a_positive()], resolver()).admitted)
         assert admitted[0].pin.sha256 == SOURCE_SHA
 
     def test_without_write_back_the_same_record_would_admit_different_bytes(self) -> None:
         # The point of the write-back, stated as the failure it prevents.
         unpinned = a_positive(pin=a_pin(sha256=None))
-        admitted, _ = verify_all([unpinned], resolver())
+        admitted = list(verify_all([unpinned], resolver()).admitted)
 
         other = SOURCE.replace("amountIn, 0,", "amountIn, minOut,")
-        _, rejected = verify_all(admitted, resolver(other))
+        rejected = list(verify_all(admitted, resolver(other)).rejected)
         assert rejected and CheckFailure.DIGEST_MISMATCH in rejected[0].failures
 
 
@@ -669,10 +671,103 @@ class TestVariantsCannotBeVerifiedAgainstAPin:
         assert verify_record(self._variant(), resolver()).computed_sha256 is None
 
     def test_a_variant_is_never_admitted_by_verify_all(self) -> None:
-        admitted, rejected = verify_all([self._variant(), a_positive()], resolver())
+        report = verify_all([self._variant(), a_positive()], resolver())
+        admitted, rejected = list(report.admitted), list(report.rejected)
         assert [r.record_id for r in admitted] == ["vault-slippage-1"]
         assert [r.record_id for r in rejected] == ["vault-slippage-1-v2"]
 
     @pytest.mark.parametrize("split", [CorpusSplit.PUBLIC, CorpusSplit.PRIVATE_HOLDOUT])
     def test_the_other_splits_still_verify(self, split: CorpusSplit) -> None:
         assert verify_record(a_positive(split=split), resolver()).ok
+
+
+class TestTheReportSaysWhatTheCorpusIsASampleOf:
+    """Rejection is correct, and it biases the corpus. Both have to be visible.
+
+    Verification turns away what it cannot confirm, which is what makes the
+    corpus worth having. It also means the corpus is a sample of defects sitting
+    where the declaration index can parse and name them, not a sample of real
+    defects. That cannot be fixed without giving up the property; it can only be
+    measured and stated.
+    """
+
+    UNPARSEABLE = "}{ not solidity ]["
+
+    def test_failures_are_tallied_by_check(self) -> None:
+        # No digest pinned, so the parse failure is the only cause and the tally
+        # can be compared exactly.
+        record = a_positive(pin=a_pin(sha256=None))
+        report = verify_all([record], resolver(self.UNPARSEABLE))
+        assert report.by_failure == {CheckFailure.UNPARSEABLE_SOURCE: 1}
+
+    def test_a_record_failing_several_checks_counts_under_each(self) -> None:
+        # Otherwise the tally would describe records rather than causes, and the
+        # causes are what says which shapes are being excluded.
+        record = a_positive(
+            pin=a_pin(sha256="0" * 64),
+            locator=a_locator(contract="Treasury", start_line=7, end_line=9),
+        )
+        report = verify_all([record], resolver())
+        assert set(report.by_failure) == {
+            CheckFailure.DIGEST_MISMATCH,
+            CheckFailure.FUNCTION_NOT_IN_SPAN,
+            CheckFailure.CONTRACT_NOT_FOUND,
+        }
+
+    def test_both_polarities_are_tallied_by_the_class_they_concern(self) -> None:
+        negative = CorpusRecord(
+            record_id="vault-not-reentrant",
+            split=CorpusSplit.PUBLIC,
+            pin=a_pin(),
+            classes=[],
+            negative_for=[VulnerabilityClass.REENTRANCY],
+            vulnerable_to=[VulnerabilityClass.SLIPPAGE],
+            negative_kind=NegativeKind.CROSS_CLASS,
+            provenance=a_provenance(),
+        )
+        report = verify_all([a_positive(), negative], resolver())
+        assert report.admitted_by_class == {
+            VulnerabilityClass.SLIPPAGE: 1,
+            VulnerabilityClass.REENTRANCY: 1,
+        }
+
+    def test_rejections_are_tallied_by_class(self) -> None:
+        report = verify_all([a_positive()], resolver(self.UNPARSEABLE))
+        assert report.rejected_by_class == {VulnerabilityClass.SLIPPAGE: 1}
+        assert report.admitted_by_class == {}
+
+    def test_the_overall_rate_is_reported(self) -> None:
+        good = a_positive()
+        bad = a_positive(record_id="vault-bad", locator=a_locator(start_line=99, end_line=99))
+        report = verify_all([good, bad], resolver())
+        assert report.candidates == 2
+        assert report.rejection_rate == 0.5
+
+    def test_a_per_class_rate_is_available_because_that_is_where_bias_shows(self) -> None:
+        # An overall rate can look tolerable while one class is decimated, and
+        # that class is then quietly under-represented in every later number.
+        report = verify_all([a_positive()], resolver(self.UNPARSEABLE))
+        assert report.rejection_rate_for(VulnerabilityClass.SLIPPAGE) == 1.0
+        assert report.rejection_rate_for(VulnerabilityClass.REENTRANCY) == 0.0
+
+    def test_an_empty_run_reports_zero_rather_than_dividing_by_zero(self) -> None:
+        report = verify_all([], resolver())
+        assert report.candidates == 0
+        assert report.rejection_rate == 0.0
+        assert report.rejection_rate_for(VulnerabilityClass.SLIPPAGE) == 0.0
+
+    def test_the_statement_names_the_causes_and_the_concentration(self) -> None:
+        report = verify_all([a_positive()], resolver(self.UNPARSEABLE))
+        statement = report.sampling_statement()
+        assert "0 records admitted" in statement
+        assert "1 of 1 candidate " in statement
+        assert "unparseable_source 1" in statement
+        assert "slippage (1)" in statement
+        assert "describes the admitted records only" in statement
+
+    def test_a_clean_run_still_makes_a_statement(self) -> None:
+        # A sentence that only appears on failure is a sentence nobody reads, and
+        # what the corpus is a sample of is a property of the corpus rather than
+        # a warning about one invocation.
+        report = verify_all([a_positive()], resolver())
+        assert report.sampling_statement() == ("1 record admitted; no candidates were rejected.")

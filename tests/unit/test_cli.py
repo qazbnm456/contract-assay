@@ -127,7 +127,8 @@ class TestVerify:
         )
         assert result.exit_code == 0, result.stdout
         assert "admitted" in result.stdout
-        assert "1 admitted, 0 rejected" in result.stdout
+        assert "1 record admitted" in result.stdout
+        assert "no candidates were rejected" in result.stdout
 
     def test_a_rejected_record_names_the_check_that_failed(self, workspace: Path) -> None:
         # Pointing at the constructor's lines while naming swapAndWithdraw.
