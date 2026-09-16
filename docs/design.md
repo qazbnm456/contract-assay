@@ -448,6 +448,31 @@ review* should be expected to map onto it poorly, and a population made of
 *exploited incidents* should map onto it well — which is a prediction, not a
 rationalisation, and it is why `Population` is recorded per record.
 
+The prediction is now measured, and it holds. Seven curated post-mortems of
+exploited incidents map to the nine classes six times — flash-loaned governance,
+oracle manipulation, reentrancy during liquidation, an unprotected callback, a
+trusted root left at zero — against 19% over 911 findings pooled from four
+review sources. The intervals do not overlap even at n=7. So the class list is
+not a poor taxonomy; it is a taxonomy of exploited patterns being applied to
+pre-deployment review output.
+
+That does not make the incident population harvestable, and the obstacle is
+structural rather than incidental. A curated incident proof of concept forks a
+chain at a block and attacks a deployed address; it carries the *attacker's*
+source and interfaces to the victim, never the victim's source. So the artefact
+pins chain state, where `SourcePin` pins a repository at a commit, and the two
+are not substitutes. Reaching a repository, a pre-fix commit, a path and a
+function from an incident is per-incident research rather than extraction —
+which places this population with hand-curation rather than with the harvest
+pipeline, and runs into §9's exclusion of unverified on-chain contracts for the
+cases where no public repository exists at all.
+
+What the population does carry that no review finding does is an executable
+demonstration: a test that exploits the defect at a pinned block. That is
+stronger ground truth than any prose, and it makes §6.4's pair-differential
+available without a detector — the same test run against the vulnerable and
+fixed states is itself the measurement.
+
 The prediction does not extend to the difficulty grades. Those come from a
 prescriptive review specification rather than from incident data, so an incident
 population should be expected to map well by class and to distribute differently
