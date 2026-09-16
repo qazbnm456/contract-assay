@@ -8,12 +8,12 @@ than whether it said something somewhere in a repository that happened to be
 labelled vulnerable.
 
 > **Status: early construction.** Built so far: the data contract, the corpus
-> record schema and its verifier, the syntactic analysis backend, the public
-> detector interface with its submission loader, and a CLI for authoring and
-> checking records. Not yet built: the detectors themselves, the predicate
-> library, the compiled analysis backend, corpus harvesting, and scoring. Nothing
-> here can measure a model yet. `docs/design.md` carries a per-component status
-> table.
+> record schema and its verifier, the syntactic analysis backend and its shape
+> queries, the public detector interface with its submission loader and runner,
+> the first batch of the predicate library, and three of the nine detectors.
+> Not yet built: the compiled analysis backend, the remaining six detectors,
+> corpus harvesting, and scoring. There is no corpus, so nothing here can
+> measure a model yet. `docs/design.md` carries a per-component status table.
 
 ## Why this exists
 

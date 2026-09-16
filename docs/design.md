@@ -85,6 +85,23 @@ This is also what makes multi-condition rules enforceable. A rule of the form
 prose inside a long prompt, its enforcement depends on the model's attention
 holding across the whole input. Expressed in `verdict()`, it is `and`.
 
+Independence has a converse, and it is the half that gets forgotten. Evidence
+must not be removable by the model — *and the verdict must not be bounded by the
+evidence*. The tempting rule is to reject any finding the deterministic
+predicates did not already support. It would invert what the benchmark measures:
+a detector's recall would be capped at its predicates' recall, so the score
+would answer "does the model agree with our static analysis?" rather than "does
+the model find defects?" — the opposite of the question §4.1 asks, and invisible
+in any aggregate afterwards.
+
+So `verdict()` re-derives its rules against the source **at the location the
+finding states**, never against the evidence list. That keeps it strict about the
+claim — a finding pointing at a line containing no call is rejected, by name —
+while leaving it blind to whether any predicate happened to fire. The predicate
+library's own documented blind spots make the difference concrete: a discarded
+`IERC20.transfer` return is a real and common defect that no predicate here can
+see, and a model that finds it scores for it.
+
 ### 2.2 Gate predicates are lenient; verdict predicates are strict
 
 These two kinds of predicate look alike and must be tuned in opposite
@@ -558,10 +575,16 @@ work in the present tense reports intentions as capabilities.
 | `detectors/loading.py` | manifest loading, the untrusted boundary (§2.4) | **built** |
 | `evidence/predicates.py` | the shape-level predicate library (§2.3) | **partly built** |
 | `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
-| `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | not started |
+| `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
+
+Three of the nine detectors exist — `unchecked_external_call`,
+`insecure_randomness` and `access_control`, the classes §4.2 marks as reachable
+at the syntactic tier. They also serve as the worked examples a submission author
+reads. The remaining six need the semantic backend, so `detectors/` is *partly*
+built and will stay that way until it exists.
 
 The predicate library is marked *partly* built rather than built, and the gap
 is worth naming precisely. Six predicates cover five of the nine classes;
