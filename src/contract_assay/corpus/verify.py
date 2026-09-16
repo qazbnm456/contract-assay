@@ -1,29 +1,43 @@
 """Corpus verification.
 
 Every record is checked against reality before it is admitted: the commit
-resolves, the file exists at that commit, the stated line span is inside the
-file, the named function is actually there, and the content digest matches what
-was recorded.
+resolves, the digest matches, the stated line span is inside the file, and the
+named function and contract are actually declared where the record says they
+are -- with the function found *within the span* and, when a contract is named,
+found inside that contract.
 
 A record that fails any check is **rejected**, not admitted with a warning. A
 corpus is ground truth. Ground truth that might be wrong is worse than a smaller
-corpus that is right, because every score computed against it inherits the doubt
-and nothing downstream can detect it.
+corpus that is right, because every later score inherits the doubt and nothing
+downstream can detect it.
+
+Two consequences of taking that seriously:
+
+*   Declaration checks go through a parser, not a pattern match. A comment
+    mentioning a function is not a declaration of it, and text matching cannot
+    tell the difference -- so a text-matching verifier certifies locations that
+    contain no code, while rejecting constructors, which carry neither the
+    `function` keyword nor a visibility modifier.
+
+*   A file that cannot be parsed is rejected rather than waved through. "I could
+    not read this" is not evidence that the record is sound. This is distinct
+    from *analysis*, where an unreadable compilation unit degrades to a weaker
+    tier and continues: there a weaker answer is still an answer, whereas an
+    unverified record would poison everything scored against it.
 
 Source resolution is injected rather than hard-wired to a network client, so the
-whole module is testable offline. The default resolver is supplied by the
-harvest layer; tests pass an in-memory one.
+whole module is testable offline.
 """
 
 from __future__ import annotations
 
 import hashlib
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
 from contract_assay.corpus.records import CorpusRecord
+from contract_assay.evidence.solidity import SolidityUnavailable, index_source
 
 __all__ = [
     "CheckFailure",
@@ -44,6 +58,12 @@ class CheckFailure(StrEnum):
     SOURCE_UNRESOLVABLE = "source_unresolvable"
     """The pinned commit or path could not be fetched."""
 
+    EMPTY_SOURCE = "empty_source"
+    """The resolved file has no content."""
+
+    UNPARSEABLE_SOURCE = "unparseable_source"
+    """No declaration could be read, so nothing about the file can be confirmed."""
+
     DIGEST_MISMATCH = "digest_mismatch"
     """The file's bytes differ from the digest recorded on the pin."""
 
@@ -51,20 +71,20 @@ class CheckFailure(StrEnum):
     """The line span extends past the end of the file."""
 
     FUNCTION_NOT_IN_SPAN = "function_not_in_span"
-    """The named function was not found within the stated line span."""
+    """The named function is not declared within the stated line span."""
 
     CONTRACT_NOT_FOUND = "contract_not_found"
     """The named contract, library or interface is not declared in the file."""
 
-    EMPTY_SOURCE = "empty_source"
-    """The resolved file has no content."""
+    FUNCTION_NOT_IN_CONTRACT = "function_not_in_contract"
+    """The function is declared, but not inside the contract the record names."""
 
 
 @dataclass(frozen=True, slots=True)
 class VerificationResult:
     record_id: str
     ok: bool
-    failures: list[CheckFailure]
+    failures: tuple[CheckFailure, ...]
     detail: str = ""
     computed_sha256: str | None = None
 
@@ -77,74 +97,85 @@ class VerificationResult:
         )
 
 
-# Declaration matching is intentionally shape-based and permissive about
-# formatting. It is looking for "is this symbol declared here at all", which is a
-# far weaker question than parsing, and must not fail because a signature wraps
-# across lines or carries unusual modifiers.
-_FUNCTION_DECL = r"""
-    \b(?:function|constructor|modifier|receive|fallback)\s+{name}\s*\(
-    |
-    \b{name}\s*\([^)]*\)\s*(?:external|public|internal|private)
-"""
-_CONTRACT_DECL = r"\b(?:contract|library|interface|abstract\s+contract)\s+{name}\b"
-
-
-def _declares_function(text: str, name: str) -> bool:
-    pattern = _FUNCTION_DECL.format(name=re.escape(name))
-    return re.search(pattern, text, re.VERBOSE | re.MULTILINE) is not None
-
-
-def _declares_contract(text: str, name: str) -> bool:
-    pattern = _CONTRACT_DECL.format(name=re.escape(name))
-    return re.search(pattern, text) is not None
+def _reject(record_id: str, failure: CheckFailure, detail: str = "") -> VerificationResult:
+    return VerificationResult(record_id, ok=False, failures=(failure,), detail=detail)
 
 
 def verify_record(record: CorpusRecord, resolve: SourceResolver) -> VerificationResult:
-    """Check one record against its pinned source."""
-    failures: list[CheckFailure] = []
-    detail_parts: list[str] = []
+    """Check one record against its pinned source.
 
+    On success the result carries the digest of the bytes checked, which
+    `verify_all` writes onto the pin.
+    """
     source = resolve(record.pin.repo_url, record.pin.commit, record.pin.path)
     if source is None:
-        return VerificationResult(
+        return _reject(
             record.record_id,
-            ok=False,
-            failures=[CheckFailure.SOURCE_UNRESOLVABLE],
-            detail=f"{record.pin.repo_url}@{record.pin.commit[:12]}:{record.pin.path}",
+            CheckFailure.SOURCE_UNRESOLVABLE,
+            f"{record.pin.repo_url}@{record.pin.commit[:12]}:{record.pin.path}",
         )
     if not source.strip():
-        return VerificationResult(record.record_id, ok=False, failures=[CheckFailure.EMPTY_SOURCE])
+        return _reject(record.record_id, CheckFailure.EMPTY_SOURCE)
 
     digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    failures: list[CheckFailure] = []
+    detail: list[str] = []
+
     if record.pin.sha256 is not None and record.pin.sha256 != digest:
         failures.append(CheckFailure.DIGEST_MISMATCH)
-        detail_parts.append(f"recorded {record.pin.sha256[:12]}, computed {digest[:12]}")
+        detail.append(f"recorded {record.pin.sha256[:12]}, computed {digest[:12]}")
+
+    try:
+        index = index_source(source)
+    except SolidityUnavailable as exc:  # pragma: no cover - requires the dep to be absent
+        return _reject(record.record_id, CheckFailure.UNPARSEABLE_SOURCE, str(exc))
+
+    if not index.parsed:
+        failures.append(CheckFailure.UNPARSEABLE_SOURCE)
+        detail.append("no declaration could be read from the file")
 
     locator = record.locator
-    if locator is not None:
-        lines = source.splitlines()
-        if locator.end_line > len(lines):
+    if locator is not None and index.parsed:
+        # Split on "\n" only. str.splitlines() also breaks on \v, \f, \x1c-\x1e
+        # and U+2028/2029, none of which a compiler or an editor treats as a line
+        # break -- one of those inside a string literal would shift every line
+        # number away from what the annotator saw.
+        line_count = len(source.split("\n"))
+
+        if locator.end_line > line_count:
             failures.append(CheckFailure.SPAN_OUT_OF_RANGE)
-            detail_parts.append(f"span ends at {locator.end_line}, file has {len(lines)} lines")
+            detail.append(f"span ends at {locator.end_line}, file has {line_count} lines")
         else:
-            span = "\n".join(lines[locator.start_line - 1 : locator.end_line])
-
-            if locator.function and not _declares_function(span, locator.function):
-                failures.append(CheckFailure.FUNCTION_NOT_IN_SPAN)
-                detail_parts.append(
-                    f"{locator.function!r} not declared in lines "
-                    f"{locator.start_line}-{locator.end_line}"
-                )
-
-            if locator.contract and not _declares_contract(source, locator.contract):
+            if locator.contract and not index.declares_type(locator.contract):
                 failures.append(CheckFailure.CONTRACT_NOT_FOUND)
-                detail_parts.append(f"{locator.contract!r} not declared in file")
+                detail.append(f"{locator.contract!r} is not declared in this file")
+
+            if locator.function:
+                in_span = index.callables(
+                    locator.function, within=(locator.start_line, locator.end_line)
+                )
+                if not in_span:
+                    failures.append(CheckFailure.FUNCTION_NOT_IN_SPAN)
+                    detail.append(
+                        f"{locator.function!r} is not declared in lines "
+                        f"{locator.start_line}-{locator.end_line}"
+                    )
+                elif locator.contract and not any(d.parent == locator.contract for d in in_span):
+                    # Declared, but inside a different type. A record naming both
+                    # must have them agree, or it does not describe the place it
+                    # claims to describe.
+                    holders = sorted({d.parent or "<file scope>" for d in in_span})
+                    failures.append(CheckFailure.FUNCTION_NOT_IN_CONTRACT)
+                    detail.append(
+                        f"{locator.function!r} is declared in {', '.join(holders)}, "
+                        f"not in {locator.contract!r}"
+                    )
 
     return VerificationResult(
         record.record_id,
         ok=not failures,
-        failures=failures,
-        detail="; ".join(detail_parts),
+        failures=tuple(failures),
+        detail="; ".join(detail),
         computed_sha256=digest,
     )
 
@@ -154,17 +185,25 @@ def verify_all(
 ) -> tuple[list[CorpusRecord], list[VerificationResult]]:
     """Partition records into admitted and rejected.
 
-    Returns the records that passed and the results for those that did not. The
-    caller decides what to do with rejections; nothing here writes or mutates.
+    Admitted records come back with `pin.sha256` set to the digest of the bytes
+    they were verified against. Without that write-back the pin's promise is
+    empty: a record carrying no digest would be admitted today against one file
+    and tomorrow against different bytes, and nothing would notice.
+
+    Inputs are never mutated; records that gain a digest are rebuilt.
     """
     admitted: list[CorpusRecord] = []
     rejected: list[VerificationResult] = []
 
     for record in records:
         result = verify_record(record, resolve)
-        if result.ok:
-            admitted.append(record)
-        else:
+        if not result.ok:
             rejected.append(result)
+            continue
+
+        if record.pin.sha256 is None and result.computed_sha256 is not None:
+            pinned = record.pin.model_copy(update={"sha256": result.computed_sha256})
+            record = record.model_copy(update={"pin": pinned})
+        admitted.append(record)
 
     return admitted, rejected

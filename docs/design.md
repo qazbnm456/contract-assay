@@ -41,6 +41,19 @@ them. Tuning against it is guesswork.
 (`vulnerable`, `clean`) and two are not (`invalid`, `skipped`). The latter must
 state a cause and are reported as harness health, separately, always.
 
+That split is not enough on its own. A finding can be turned away for two very
+different reasons, and the difference decides what the whole run is:
+
+| Rejection | Meaning | The run is |
+| --- | --- | --- |
+| `verdict` | A predicate applied its rule and concluded this is not an instance | a measurement — `clean` |
+| `citation` | The claim could not be checked against the source at all | not a measurement — `invalid` |
+
+Recorded as a bare list of strings, the second is indistinguishable from the
+first, and an error quietly becomes a judgement. `FailedCheck` therefore carries
+a `RejectionKind`, and `DetectorRun` refuses to be `clean` over a finding nobody
+could check.
+
 ## 2. Detector anatomy
 
 Each detector is a Python class in three layers. The split exists because the
@@ -142,15 +155,24 @@ Specification for per-requirement verifiability and a difficulty grade.
 
 | # | `class_id` | OWASP | Level |
 | --- | --- | --- | --- |
-| 1 | `access_control` | SC01 | S / M |
-| 2 | `oracle_integrity` | SC02 | M / Q |
+| 1 | `access_control` | SC01 | M |
+| 2 | `oracle_integrity` | SC02 | Q |
 | 3 | `slippage` | — | Q |
 | 4 | `flashloan_manipulation` | SC07 | Q |
-| 5 | `reentrancy` | SC05 | S / M |
+| 5 | `reentrancy` | SC05 | M |
 | 6 | `unchecked_external_call` | SC06 | S |
 | 7 | `denial_of_service` | SC10 | M |
-| 8 | `arithmetic_rounding` | SC08 | M / Q |
+| 8 | `arithmetic_rounding` | SC08 | Q |
 | 9 | `insecure_randomness` | SC09 | M |
+
+Instances of several of these span levels; the grade recorded is the **deepest**
+one, because it decides whether the detector may reach for the escape hatch and
+under-grading would close it on exactly the cases that need it. One grade per
+class, held in `VulnerabilityClass.level` and derived wherever difficulty is
+needed — storing it a second time alongside would permit a record that claims a
+class and contradicts its grade, with nothing able to say which to believe. Every
+row above is pinned by a test, so drift between this table and the code fails CI
+rather than going unnoticed.
 
 EthTrust requirements are referenced by identifier only. No specification text
 is reproduced in this project.
@@ -221,6 +243,12 @@ here and can carry this project's licence cleanly; no third-party code is
 redistributed, so no third-party licence attaches; and pinning commit SHAs makes
 the corpus reproducible.
 
+The digest is what makes the third one true, so `verify` writes it onto every
+record it admits. A record carrying no digest would be admitted today against
+one file and tomorrow against different bytes, and nothing would notice; a
+reproducibility guarantee that depends on an author remembering to fill a field
+is not a guarantee.
+
 Auditor-assigned severity is *provenance* — a fact about what the original
 report said. It is never mixed with anything a model produced, and no model in
 this system is asked to produce a severity at all.
@@ -236,6 +264,15 @@ A benchmark with weak negatives measures nothing. All three kinds are required:
    flat corpus never tests.
 3. **Confirmed clean** — manually verified.
 
+Each kind has to carry what makes it that kind, or it decays into the weakest
+one. A cross-class negative must name the class it *is* vulnerable to: without
+that it is an ordinary clean sample, and the hard negative it was collected to
+provide does not exist. A confirmed-clean negative must record how it was
+confirmed, because "someone checked" is neither reviewable nor reproducible. A
+post-fix negative must be pinned to the fix commit — pinned to the vulnerable
+one it would score the defect absent while measuring the code that contains it.
+All three are enforced at construction.
+
 The second kind is the reason all nine classes are built together rather than
 one at a time. It also yields two measurements a single-class corpus cannot
 produce: cross-class false-positive rate, and detector overlap.
@@ -248,9 +285,23 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
 
 - **harvest** — pull findings from public audit platforms into draft records.
 - **normalize** — resolve locations, pin commit SHAs, map to `class_id`.
-- **verify** — check every record against reality: the commit resolves, the file
-  exists at that commit, the function exists within the stated line span, the
-  content hash matches. **Verification failure rejects the record.**
+- **verify** — check every record against reality: the commit resolves, the
+  digest matches, the span lies inside the file, and the named function and
+  contract are declared where the record says — the function *within the span*,
+  and inside the named contract rather than merely somewhere in the file.
+  **Verification failure rejects the record.**
+
+Declaration checks go through a parser, never a text match. A comment mentioning
+a function is not a declaration of it, and a matcher that cannot tell the
+difference certifies locations containing no code while rejecting constructors,
+which carry neither the `function` keyword nor a visibility modifier — removing
+most access-control annotations from the corpus while the totals still look
+healthy.
+
+A file that cannot be parsed is rejected here, which is the opposite of what
+§3 does during analysis, and deliberately so. "I could not read this" is not
+evidence that a record is sound: in analysis a weaker answer is still an answer,
+whereas an unverified record poisons everything scored against it.
 
 The pipeline is code, not a manual process, because nine classes make the
 annotation volume large enough that adding a class must be data work rather than
@@ -291,21 +342,36 @@ Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.
 
-## 8. Layout
+## 8. Layout and status
+
+Status is stated per component because a design document that describes planned
+work in the present tense reports intentions as capabilities.
+
+| Component | Purpose | Status |
+| --- | --- | --- |
+| `models.py` | data contract | **built** |
+| `corpus/records.py` | record schema, the nine classes | **built** |
+| `corpus/verify.py` | verification against pinned source | **built** |
+| `evidence/solidity.py` | syntactic backend: declarations and spans | **built** |
+| `cli.py` | `verify`, `declarations` | **built** |
+| `evidence/` predicates | the shape-level predicate library (§2.3) | not started |
+| `evidence/` semantic backend | compiled IR, def-use, call graph (§3) | not started |
+| `detectors/` | `evidence()` / `task` / `verdict()` per class (§2) | not started |
+| `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
+| `report/` | scoring, match strengths, stratification (§7) | not started |
+
+Consequences worth stating plainly: §2.2's gate and verdict predicates exist as
+a rule for writing them, not as code; §3's tier degradation is represented in the
+type system but has no backend to degrade between; and §6.4 and §7 are design
+only. The only production path into `verify` today is the CLI resolving against a
+local checkout, which confirms that a record is coherent against the bytes on
+disk but not that those bytes belong to the pinned commit.
 
 ```
-src/contract_assay/
-├── models.py          data contract (see module docstring)
-├── detectors/         one module per class; each declares evidence/task/verdict
-├── evidence/          predicate library over the two analysis backends
-├── corpus/            record schema, harvest, normalize, verify
-├── report/            stratified reporting
-└── cli.py
-
 tests/
-├── unit/              data contract and predicate behaviour
-├── offline/           whole pipeline, no model, no network, no toolchain
-└── incidents/         pinned cases that must alert regardless of model verdict
+├── unit/              data contract, record invariants, declaration indexing
+├── offline/           whole pipeline, no model, no network, no toolchain   (planned)
+└── incidents/         pinned cases that must alert regardless of verdict   (planned)
 ```
 
 `tests/incidents/` deserves a note: these are reconstructed real cases wired so

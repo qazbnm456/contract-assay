@@ -18,9 +18,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "rlm-harness>=1.11.2,<2",
     "pydantic>=2.13,<3",
     "typer>=0.27,<1",
+    # The syntactic backend is the analysis floor and the verifier's only way to
+    # tell a declaration from a comment mentioning one. It needs no toolchain, so
+    # there is no configuration in which it is reasonable to do without it.
+    "tree-sitter>=0.26,<0.27",
+    "tree-sitter-solidity>=1.2.13,<2",
 ]
 
 [project.optional-dependencies]
@@ -30,12 +34,9 @@ slither = [
     "slither-analyzer>=0.11.6,<0.12",
     "crytic-compile>=0.4.2,<0.5",
 ]
-# Syntactic floor. Always usable, no toolchain required.
-syntactic = [
-    "tree-sitter>=0.26,<0.27",
-    "tree-sitter-solidity>=1.2.13,<2",
-]
-all = ["contract-assay[slither,syntactic]"]
+# The model-driven detectors. Not needed to build or verify a corpus.
+llm = ["rlm-harness>=1.11.2,<2"]
+all = ["contract-assay[slither,llm]"]
 
 [project.scripts]
 contract-assay = "contract_assay.cli:app"

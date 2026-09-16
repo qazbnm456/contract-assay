@@ -26,7 +26,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from contract_assay.models import DifficultyLevel, Locator
+from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 
 __all__ = [
     "CorpusRecord",
@@ -37,48 +37,6 @@ __all__ = [
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
-
-
-class VulnerabilityClass(StrEnum):
-    """The nine classes.
-
-    Derived from the OWASP Smart Contract Top 10 for naming and incident-oriented
-    grouping, and from the EEA EthTrust Security Levels Specification for
-    per-requirement verifiability and difficulty grading. EthTrust requirements
-    are referenced by identifier only; no specification text is reproduced here.
-    """
-
-    ACCESS_CONTROL = "access_control"
-    ORACLE_INTEGRITY = "oracle_integrity"
-    SLIPPAGE = "slippage"
-    FLASHLOAN_MANIPULATION = "flashloan_manipulation"
-    REENTRANCY = "reentrancy"
-    UNCHECKED_EXTERNAL_CALL = "unchecked_external_call"
-    DENIAL_OF_SERVICE = "denial_of_service"
-    ARITHMETIC_ROUNDING = "arithmetic_rounding"
-    INSECURE_RANDOMNESS = "insecure_randomness"
-
-    @property
-    def level(self) -> DifficultyLevel:
-        """Highest difficulty this class is normally graded at.
-
-        Used to stratify reports, and to decide whether a detector for this class
-        may reach for the escape hatch.
-        """
-        return _CLASS_LEVEL[self]
-
-
-_CLASS_LEVEL: dict[VulnerabilityClass, DifficultyLevel] = {
-    VulnerabilityClass.UNCHECKED_EXTERNAL_CALL: DifficultyLevel.S,
-    VulnerabilityClass.ACCESS_CONTROL: DifficultyLevel.M,
-    VulnerabilityClass.REENTRANCY: DifficultyLevel.M,
-    VulnerabilityClass.DENIAL_OF_SERVICE: DifficultyLevel.M,
-    VulnerabilityClass.INSECURE_RANDOMNESS: DifficultyLevel.M,
-    VulnerabilityClass.ORACLE_INTEGRITY: DifficultyLevel.Q,
-    VulnerabilityClass.ARITHMETIC_ROUNDING: DifficultyLevel.Q,
-    VulnerabilityClass.SLIPPAGE: DifficultyLevel.Q,
-    VulnerabilityClass.FLASHLOAN_MANIPULATION: DifficultyLevel.Q,
-}
 
 
 class NegativeKind(StrEnum):
@@ -183,6 +141,13 @@ class CorpusRecord(BaseModel):
     negative_for: list[VulnerabilityClass] = Field(
         default_factory=list, description="Classes this record is a confirmed negative for."
     )
+    vulnerable_to: list[VulnerabilityClass] = Field(
+        default_factory=list,
+        description=(
+            "Classes this source does carry, for a cross-class negative. It is what makes "
+            "the sample hard: the source is not clean, only clean for the class in question."
+        ),
+    )
     negative_kind: NegativeKind | None = None
     provenance: Provenance
     notes: str = ""
@@ -193,9 +158,15 @@ class CorpusRecord(BaseModel):
 
     @property
     def level(self) -> DifficultyLevel:
-        """Highest difficulty among this record's classes."""
+        """Deepest difficulty among this record's classes.
+
+        `model_copy(update=...)` bypasses validation in pydantic, so a record can
+        be handed here with neither list populated even though the validator
+        forbids it. A property on a frozen model must not raise for any reachable
+        state, so the floor is returned rather than an exception from `max`.
+        """
         pool = self.classes or self.negative_for
-        return max((c.level for c in pool), key=lambda level: "SMQ".index(level.value))
+        return max((c.level for c in pool), key=lambda lv: lv.rank, default=DifficultyLevel.S)
 
     def covers(self, cls: VulnerabilityClass) -> bool:
         """True if this record says anything about `cls`, positive or negative."""
@@ -203,15 +174,25 @@ class CorpusRecord(BaseModel):
 
     @model_validator(mode="after")
     def _record_is_coherent(self) -> CorpusRecord:
+        # Applies to both polarities: a locator naming a different file from the
+        # pin would be checked against the pinned file's bytes, so every line
+        # number in it would be meaningless.
+        if self.locator is not None and self.locator.file != self.pin.path:
+            raise ValueError(
+                f"locator.file {self.locator.file!r} does not match pin.path {self.pin.path!r}"
+            )
+
         if self.is_positive:
             if self.locator is None:
                 raise ValueError(
                     "a positive record must say where the defect is; an unlocated positive "
                     "cannot be scored at function granularity and is not ground truth"
                 )
-            if self.locator.file != self.pin.path:
+            if self.locator.function is None:
                 raise ValueError(
-                    f"locator.file {self.locator.file!r} does not match pin.path {self.pin.path!r}"
+                    "a positive record must name the function the defect is in; function "
+                    "granularity is what this benchmark scores against, and a record without "
+                    "it silently weakens every comparison made with it"
                 )
             if self.negative_kind is not None:
                 raise ValueError("a positive record is not a negative sample")
@@ -227,15 +208,32 @@ class CorpusRecord(BaseModel):
                 )
             if self.negative_kind is None:
                 raise ValueError("a negative record must state its kind")
-            if self.negative_kind is NegativeKind.POST_FIX and self.provenance.fix_commit is None:
-                raise ValueError("a post-fix negative must record the fix commit it was taken from")
-            if (
-                self.negative_kind is NegativeKind.POST_FIX
-                and self.pin.commit != self.provenance.fix_commit
-            ):
+
+            if self.negative_kind is NegativeKind.POST_FIX:
+                if self.provenance.fix_commit is None:
+                    raise ValueError("a post-fix negative must record the fix commit it came from")
+                if self.pin.commit != self.provenance.fix_commit:
+                    raise ValueError(
+                        "a post-fix negative must be pinned to the fix commit, "
+                        f"but pin.commit is {self.pin.commit[:12]} and fix_commit is "
+                        f"{self.provenance.fix_commit[:12]}"
+                    )
+
+            if self.negative_kind is NegativeKind.CROSS_CLASS and not self.vulnerable_to:
                 raise ValueError(
-                    "a post-fix negative must be pinned to the fix commit, "
-                    f"but pin.commit is {self.pin.commit[:12]} and fix_commit is "
-                    f"{(self.provenance.fix_commit or '')[:12]}"
+                    "a cross-class negative must name what it IS vulnerable to; without it "
+                    "the record is an ordinary clean sample, and the hard negative it was "
+                    "collected to provide does not exist"
                 )
+
+            if self.negative_kind is NegativeKind.CONFIRMED_CLEAN and not self.notes.strip():
+                raise ValueError(
+                    "a confirmed-clean negative must record how it was confirmed; "
+                    "'someone checked' is not reviewable and not reproducible"
+                )
+
+        if overlap := set(self.vulnerable_to) & set(self.negative_for):
+            raise ValueError(
+                f"record is both vulnerable to and clean for {sorted(c.value for c in overlap)}"
+            )
         return self

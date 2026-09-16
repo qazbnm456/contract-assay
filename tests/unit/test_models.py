@@ -15,14 +15,18 @@ from contract_assay.models import (
     CitationStatus,
     DetectorRun,
     DifficultyLevel,
+    Escalation,
     EvidenceRef,
     EvidenceTier,
+    FailedCheck,
     Finding,
     InvalidReason,
     Locator,
     Outcome,
+    RejectionKind,
     SkipReason,
     VerifiedFinding,
+    VulnerabilityClass,
 )
 
 pytestmark = pytest.mark.offline
@@ -63,19 +67,25 @@ def a_finding() -> Finding:
     )
 
 
-def a_verified(status: CitationStatus = CitationStatus.VERIFIED) -> VerifiedFinding:
+def a_check(kind: RejectionKind = RejectionKind.VERDICT) -> FailedCheck:
+    return FailedCheck(check="min_out_flows_into_guard", kind=kind)
+
+
+def a_verified(
+    status: CitationStatus = CitationStatus.VERIFIED,
+    kind: RejectionKind = RejectionKind.VERDICT,
+) -> VerifiedFinding:
     return VerifiedFinding(
         finding=a_finding(),
         status=status,
-        failed_checks=[] if status is CitationStatus.VERIFIED else ["quote_matches_source"],
+        failed_checks=[] if status is CitationStatus.VERIFIED else [a_check(kind)],
     )
 
 
 def a_run(**over: object) -> DetectorRun:
     base: dict[str, object] = {
         "detector_id": "slippage.no_min_out",
-        "class_id": "slippage",
-        "level": DifficultyLevel.Q,
+        "class_id": VulnerabilityClass.SLIPPAGE,
         "source_id": "vault@a1b2c3d",
         "outcome": Outcome.VULNERABLE,
         "evidence_tier": EvidenceTier.SEMANTIC,
@@ -124,7 +134,7 @@ class TestVerifiedFinding:
             VerifiedFinding(
                 finding=a_finding(),
                 status=CitationStatus.VERIFIED,
-                failed_checks=["quote_matches_source"],
+                failed_checks=[a_check()],
             )
 
     def test_unverified_finding_must_name_what_failed(self) -> None:
@@ -221,7 +231,7 @@ class TestValidConstructions:
             evidence_tier=None,
         )
         assert run.verified_findings == []
-        assert run.findings[0].failed_checks == ["quote_matches_source"]
+        assert run.findings[0].failed_checks[0].check == "min_out_flows_into_guard"
 
     def test_evidence_survives_a_clean_verdict(self) -> None:
         # The model declined to report; the deterministic phase still observed what
@@ -249,3 +259,147 @@ class TestSeverityIsAbsent:
                 reasoning="y",
                 severity="high",  # type: ignore[call-arg]
             )
+
+
+class TestCitationFailureIsNotAMeasurement:
+    """The subtlest way an error becomes a measurement.
+
+    A verdict predicate rejecting a claim is a judgement: the detector looked and
+    concluded this is not an instance, so `clean` is the right answer. A citation
+    that could not be checked is an error: nothing was measured at all. Recording
+    both as "a check failed" makes the second indistinguishable from the first,
+    which is how infrastructure failures come to be counted as model judgements.
+    """
+
+    def test_clean_cannot_stand_over_an_uncheckable_finding(self) -> None:
+        with pytest.raises(ValidationError, match="could not be checked"):
+            a_run(
+                outcome=Outcome.CLEAN,
+                findings=[a_verified(CitationStatus.UNVERIFIED, RejectionKind.CITATION)],
+            )
+
+    def test_clean_does_stand_over_a_verdict_rejection(self) -> None:
+        # The detector applied its rules and said no. That is a measurement.
+        run = a_run(
+            outcome=Outcome.CLEAN,
+            findings=[a_verified(CitationStatus.UNVERIFIED, RejectionKind.VERDICT)],
+        )
+        assert run.outcome.is_measurement
+        assert not run.has_citation_failure
+
+    def test_the_two_kinds_are_distinguishable_on_the_record(self) -> None:
+        verdict = a_verified(CitationStatus.UNVERIFIED, RejectionKind.VERDICT)
+        citation = a_verified(CitationStatus.UNVERIFIED, RejectionKind.CITATION)
+        assert not verdict.has_citation_failure
+        assert citation.has_citation_failure
+
+    def test_an_uncheckable_finding_belongs_to_an_invalid_run(self) -> None:
+        run = a_run(
+            outcome=Outcome.INVALID,
+            findings=[a_verified(CitationStatus.UNVERIFIED, RejectionKind.CITATION)],
+            invalid_reason=InvalidReason.CITATION_UNVERIFIED,
+            evidence_tier=None,
+        )
+        assert not run.outcome.is_measurement
+        assert run.has_citation_failure
+
+
+class TestSkippedMeansNothingWasAnalysed:
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("findings", [a_verified()], "cannot report findings"),
+            ("evidence", [an_evidence_ref()], "cannot report evidence"),
+            (
+                "escalations",
+                [Escalation(reason="r", from_model="a", to_model="b", changed_verdict=False)],
+                "cannot have escalated",
+            ),
+        ],
+    )
+    def test_a_skipped_run_reports_nothing(self, field: str, value: object, message: str) -> None:
+        kwargs: dict[str, object] = {
+            "outcome": Outcome.SKIPPED,
+            "skip_reason": SkipReason.UNPARSEABLE,
+            "evidence_tier": None,
+            "findings": [],
+            "evidence": [],
+            field: value,
+        }
+        with pytest.raises(ValidationError, match=message):
+            a_run(**kwargs)
+
+    def test_a_genuinely_skipped_run_is_accepted(self) -> None:
+        run = a_run(
+            outcome=Outcome.SKIPPED,
+            skip_reason=SkipReason.UNPARSEABLE,
+            evidence_tier=None,
+            findings=[],
+            evidence=[],
+        )
+        assert not run.outcome.is_measurement
+
+
+class TestDifficultyIsDerived:
+    def test_a_run_cannot_contradict_its_class_grade(self) -> None:
+        # Storing class and level separately permits a run that claims one class
+        # and the grade of another, with nothing able to say which to believe.
+        assert "level" not in DetectorRun.model_fields
+        assert a_run().level is DifficultyLevel.Q
+
+    def test_every_class_carries_a_grade(self) -> None:
+        for cls in VulnerabilityClass:
+            assert isinstance(cls.level, DifficultyLevel)
+
+    @pytest.mark.parametrize(
+        ("cls", "level"),
+        [
+            (VulnerabilityClass.UNCHECKED_EXTERNAL_CALL, DifficultyLevel.S),
+            (VulnerabilityClass.ACCESS_CONTROL, DifficultyLevel.M),
+            (VulnerabilityClass.REENTRANCY, DifficultyLevel.M),
+            (VulnerabilityClass.DENIAL_OF_SERVICE, DifficultyLevel.M),
+            (VulnerabilityClass.INSECURE_RANDOMNESS, DifficultyLevel.M),
+            (VulnerabilityClass.ORACLE_INTEGRITY, DifficultyLevel.Q),
+            (VulnerabilityClass.ARITHMETIC_ROUNDING, DifficultyLevel.Q),
+            (VulnerabilityClass.SLIPPAGE, DifficultyLevel.Q),
+            (VulnerabilityClass.FLASHLOAN_MANIPULATION, DifficultyLevel.Q),
+        ],
+    )
+    def test_each_grade_matches_the_design_document(
+        self, cls: VulnerabilityClass, level: DifficultyLevel
+    ) -> None:
+        # All nine pinned, so drift between docs/design.md and the code is a
+        # failing test rather than a discrepancy nobody notices.
+        assert cls.level is level
+
+    def test_grades_order_by_depth_not_by_text(self) -> None:
+        # StrEnum compares as text, which sorts M < Q < S. Ranking must not.
+        assert DifficultyLevel.S.rank < DifficultyLevel.M.rank < DifficultyLevel.Q.rank
+
+
+class TestEscalationPolicy:
+    def test_an_s_level_class_cannot_escalate(self) -> None:
+        # Static analysis is expected to handle S outright. Reaching for a larger
+        # model there is a policy violation, not a recordable event.
+        with pytest.raises(ValidationError, match="graded S"):
+            a_run(
+                class_id=VulnerabilityClass.UNCHECKED_EXTERNAL_CALL,
+                escalations=[
+                    Escalation(
+                        reason="unsure", from_model="small", to_model="large", changed_verdict=True
+                    )
+                ],
+            )
+
+    def test_a_q_level_class_may_escalate(self) -> None:
+        run = a_run(
+            escalations=[
+                Escalation(
+                    reason="needs protocol knowledge",
+                    from_model="small",
+                    to_model="large",
+                    changed_verdict=True,
+                )
+            ]
+        )
+        assert run.escalations[0].changed_verdict
