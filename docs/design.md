@@ -489,6 +489,44 @@ which places this population with hand-curation rather than with the harvest
 pipeline, and runs into §9's exclusion of unverified on-chain contracts for the
 cases where no public repository exists at all.
 
+**That obstacle was re-measured, and most of it was the schema rather than the
+data.** Two things were being counted as one. Whether an exploited contract's
+source is *reachable* is a question about the world; whether this schema can
+*express* where it lives is a question about `SourcePin`, which requires a
+repository URL and a full commit SHA and validates both. A contract that exists
+only as verified source at an address on a chain is unpinnable here by
+construction, however available it is.
+
+Measured against a maintained third-party archive of incident
+proofs-of-concept — an external denominator (§6.3), since nobody involved
+maintains it for this purpose:
+
+- The candidate pool is **849 incidents**, not the seven a hand-assembled list
+  reached. Each proof-of-concept forks a chain at a fork point and attacks
+  deployed addresses, so the chain, the fork point and the addresses are read
+  out of the artefact rather than recalled.
+- **30 of 34 sampled** state a chain and a fork point, in two forms: a block
+  number, or a transaction hash — which pins a block *and* a position within it,
+  so it is the stronger of the two rather than a weaker one.
+- **28 of 34** have at least one contract with verified source retrievable at
+  that chain, asked of a verification repository that answers with an explicit
+  match status. 82%, interval roughly [66%, 92%].
+
+An address pin is not weaker than a commit pin. Deployed bytecode is immutable,
+so an address plus a chain plus a fork point is at least as reproducible as a
+commit and arguably more so, since an address cannot be force-pushed. The digest
+witnesses the bytes exactly as it does now. Proxies are the real complication
+and they are answerable: the verification repository resolves them itself,
+reporting whether an address is a proxy and naming its implementations, so the
+pin can name the implementation rather than the proxy.
+
+§9 excludes *unverified* on-chain contracts and says nothing against verified
+ones, so this is inside the stated non-goals rather than an expansion of them.
+What it needs is a second kind of pin, not a refusal. This is the same shape as
+`VARIANT_NOT_REGENERABLE` — bytes that exist somewhere the pin cannot
+describe — and there the refusal was right because nothing could describe them.
+Here something can.
+
 What the population does carry that no review finding does is an executable
 demonstration: a test that exploits the defect at a pinned block. That is
 stronger ground truth than any prose, and it makes §6.4's pair-differential
@@ -749,6 +787,22 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
     failed, and the parser looked general. A format variant that no fixture
     exercises is a variant the code does not handle, whatever its regexes
     suggest.
+
+  The second has a sharper form, arrived at by hitting it three more times in a
+  single afternoon while measuring the incident archive. A parser reported that
+  a proof-of-concept stated no fork point; it stated one in a variable. Fixed,
+  it reported seven more as stating none; those stated one as an arithmetic
+  expression, or at a transaction hash. **Every single case investigated was a
+  form the parser did not handle, and none was genuinely absent.** So:
+
+  > When a reader reports that its input does not state something, that is a
+  > claim about the reader until a sample says otherwise.
+
+  Which is worth more than the tolerance rule it generalises, because it says
+  what to *do*: a zero is a hypothesis, and the cheapest test of it is to read
+  the inputs that produced it. Both the quarter of the archive filed as out of
+  scope and the four incident populations written off as unpinnable were zeroes
+  nobody had opened.
 
   Closing both gaps moved the in-scope population from 224 reports to 331 and
   the class-mapping rate from 11% to 17%, which lands where the other four
