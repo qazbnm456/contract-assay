@@ -69,15 +69,51 @@ from contract_assay.corpus.records import Provenance
 
 __all__ = ["ImmunefiAdapter", "ImmunefiEnumerator", "ImmunefiReport"]
 
-_TITLE = re.compile(r"^#\s+(?P<title>\S.*?)\s*$", re.M)
-_FIELD = re.compile(r"^(?P<key>Report type|Report severity|Target):\s*(?P<value>.+?)\s*$", re.M)
-_SUBMITTED = re.compile(
-    r"^Submitted on (?P<day>\d{1,2})(?:st|nd|rd|th) (?P<month>[A-Z][a-z]+) (?P<year>\d{4})"
-    r"|^Submitted on (?P<month2>[A-Z][a-z]+) (?P<day2>\d{1,2})(?:st|nd|rd|th) (?P<year2>\d{4})",
+_TITLE = re.compile(r"^#+\s+(?P<title>\S.*?)\s*$", re.M)
+
+# The archive carries the same metadata block in two renderings: plain lines,
+# and a bulleted list with the keys emboldened. The second appeared in later
+# competitions, and reading only the first cost about a quarter of the archive --
+# silently, because a field that cannot be read looks exactly like a field
+# saying the report is out of scope. Hence the tolerance for the bullet, the
+# bold markers and the key's capitalisation, and hence the separate skip cause
+# for a block that could not be read at all.
+_FIELD = re.compile(
+    r"^[ \t]*(?:[*+-][ \t]+)?\*{0,2}"
+    r"(?P<key>Report [Tt]ype|Report [Ss]everity|Target)"
+    r":?\*{0,2}:?[ \t]*(?P<value>.+?)[ \t]*$",
     re.M,
 )
+
+# Dates arrive as "2nd May 2024", "Feb 29th 2024" and
+# "Tue Aug 13 2024 04:28:52 GMT-0400", the last with a weekday and no ordinal.
+# Accepting only the first two forms is what left one competition's dates
+# unread, and an unread date means no commit can be recovered for it.
+_SUBMITTED = re.compile(
+    r"^\**Submitted on[ \t]+(?:[A-Z][a-z]{2},?[ \t]+)?"
+    r"(?:"
+    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?[ \t]+(?P<month>[A-Z][a-z]{2,})"
+    r"|"
+    r"(?P<month2>[A-Z][a-z]{2,})[ \t]+(?P<day2>\d{1,2})(?:st|nd|rd|th)?"
+    r")"
+    r",?[ \t]+(?P<year>\d{4})",
+    re.M,
+)
+
+# The platform prefixes many titles with its own report id and a bracketed
+# type/severity tag. Both are metadata, and left in place they are prose the
+# class mapping has to read past. Only a tag that names one of the platform's
+# own categories is stripped, so a title that merely contains a bracket keeps
+# it.
+_TITLE_TAG = re.compile(
+    r"^(?:\\?#\d+[ \t]*)?"
+    r"(?:.{0,60}?[ \t]*[-\u2013][ \t]*)?"
+    r"\\?\[(?P<tag>[^\]]*(?:SC|Smart Contract|Web|Blockchain|DLT|Critical|High|Medium|Low|Insight)"
+    r"[^\]]*)\][ \t]*"
+    r"(?P<rest>\S.*)$",
+)
 _MONTHS = {
-    name: number
+    name.lower()[:3]: number
     for number, name in enumerate(
         (
             "January",
@@ -115,6 +151,18 @@ class ImmunefiReport:
     def is_smart_contract(self) -> bool:
         return self.report_type.strip().lower() == "smart contract"
 
+    @property
+    def states_a_type(self) -> bool:
+        """Whether the metadata block said what kind of report this is.
+
+        Distinguished from `is_smart_contract` because the two failures are not
+        the same loss. A report the platform typed as something else is out of
+        scope and unrecoverable; a report whose type could not be read is a gap
+        in this adapter, and filing it as out of scope points investigation away
+        from the fix.
+        """
+        return bool(self.report_type.strip())
+
 
 class ImmunefiEnumerator:
     """Reads one report out of one document.
@@ -129,12 +177,15 @@ class ImmunefiEnumerator:
         title = _TITLE.search(body)
         if title is None:
             return None
-        fields = {m.group("key"): m.group("value") for m in _FIELD.finditer(body)}
+        # Keyed case-folded, because the two renderings disagree on
+        # capitalisation and a lookup that did not fold would read the tolerant
+        # pattern's match and then miss it.
+        fields = {m.group("key").lower(): m.group("value") for m in _FIELD.finditer(body)}
         return ImmunefiReport(
-            title=title.group("title"),
-            report_type=fields.get("Report type", ""),
-            severity=fields.get("Report severity", "").strip().lower(),
-            target=fields.get("Target", ""),
+            title=_untagged(title.group("title")),
+            report_type=fields.get("report type", ""),
+            severity=fields.get("report severity", "").strip().lower(),
+            target=fields.get("target", ""),
             submitted=_submission_date(body),
             body=body,
         )
@@ -192,6 +243,11 @@ class ImmunefiAdapter:
         parsed = self.enumerator.report(report.body)
         if parsed is None:
             return Skip(SkipCause.MALFORMED_REPORT, "no title in the document")
+        if not parsed.states_a_type:
+            return Skip(
+                SkipCause.MALFORMED_REPORT,
+                "no report type in the metadata block, so scope could not be decided",
+            )
         if not parsed.is_smart_contract:
             # The platform runs competitions for other targets too, and a
             # non-Solidity report is out of language scope rather than a loss
@@ -291,6 +347,14 @@ def _with_line_from_body(target: SourceCitation, body: str) -> SourceCitation:
     )
 
 
+def _untagged(title: str) -> str:
+    """The title with the platform's id and category tag removed."""
+    match = _TITLE_TAG.match(title)
+    if match is None or len(match.group("rest")) < 10:
+        return title
+    return match.group("rest")
+
+
 def _submission_date(body: str) -> str:
     """The submission date as ISO, or empty when the line cannot be read."""
     match = _SUBMITTED.search(body)
@@ -298,10 +362,11 @@ def _submission_date(body: str) -> str:
         return ""
     day = match.group("day") or match.group("day2")
     month = match.group("month") or match.group("month2")
-    year = match.group("year") or match.group("year2")
-    if not (day and month and year) or month not in _MONTHS:
+    year = match.group("year")
+    number = _MONTHS.get(month.lower()[:3])
+    if not (day and year and number):
         return ""
-    return f"{year}-{_MONTHS[month]:02d}-{int(day):02d}"
+    return f"{year}-{number:02d}-{int(day):02d}"
 
 
 def _vulnerable_excerpt(body: str) -> str | None:

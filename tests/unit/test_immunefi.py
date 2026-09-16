@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from contract_assay.corpus.adapters.immunefi import ImmunefiAdapter, ImmunefiEnumerator
-from contract_assay.corpus.harvest import RawReport, SkipCause, harvest
+from contract_assay.corpus.harvest import RawReport, Skip, SkipCause, harvest
 
 pytestmark = pytest.mark.offline
 
@@ -206,3 +206,99 @@ class TestTheAdapterSurvivesOddDocuments:
         # would locate the test.
         [draft] = harvest(ImmunefiAdapter(resolve_commit=resolver), [WELL_FORMED]).drafts
         assert draft.quoted_source is None or "test_drain" not in draft.quoted_source
+
+
+class TestTheOtherRenderingsOfTheSameBlock:
+    """The archive writes one metadata block three ways.
+
+    Reading only the first cost about a quarter of the archive, and it cost it
+    invisibly: a field that cannot be read is indistinguishable, downstream,
+    from a field saying the report is out of scope. So each rendering gets a
+    test, and an unreadable block gets its own skip cause.
+    """
+
+    BULLETED = a_report(
+        f"""\
+# #38012 \\[SC-Insight] Unused function in the adapter contract
+
+**Submitted on Dec 21st 2024 at 17:11:08 UTC by @someone for** [**Audit Comp**](https://immunefi.com/x)
+
+* **Report ID:** #38012
+* **Report Type:** Smart Contract
+* **Report severity:** Critical
+* **Target:** {REPO}/blob/main/src/Vault.sol
+* **Impacts:**
+  * Direct theft of any user funds
+"""
+    )
+
+    WEEKDAY_DATED = a_report(
+        f"""\
+# IOP \\_ Example 34455 - \\[Smart Contract - Critical] Double token drain
+
+Submitted on Tue Aug 13 2024 04:28:52 GMT-0400 (Atlantic Standard Time) by @someone for [IOP](https://immunefi.com/x)
+
+Report ID: #34455
+
+Report type: Smart Contract
+
+Report severity: Critical
+
+Target: {REPO}/blob/main/src/Vault.sol
+"""
+    )
+
+    def test_the_bulleted_rendering_is_read(self) -> None:
+        parsed = ImmunefiEnumerator().report(self.BULLETED.body)
+        assert parsed is not None
+        assert parsed.is_smart_contract
+        assert parsed.severity == "critical"
+        assert parsed.target.endswith("src/Vault.sol")
+
+    def test_an_abbreviated_month_is_read(self) -> None:
+        # Only one competition fell in a month whose name is already three
+        # letters, which is why this gap stayed hidden for a whole archive.
+        parsed = ImmunefiEnumerator().report(self.BULLETED.body)
+        assert parsed is not None
+        assert parsed.submitted == "2024-12-21"
+
+    def test_a_weekday_prefixed_date_is_read(self) -> None:
+        parsed = ImmunefiEnumerator().report(self.WEEKDAY_DATED.body)
+        assert parsed is not None
+        assert parsed.submitted == "2024-08-13"
+
+    def test_a_month_the_table_does_not_know_yields_no_date(self) -> None:
+        body = WELL_FORMED.body.replace("Submitted on May 2nd", "Submitted on Xyz 2nd")
+        parsed = ImmunefiEnumerator().report(body)
+        assert parsed is not None
+        assert parsed.submitted == ""
+
+    def test_the_platforms_own_tag_is_stripped_from_the_title(self) -> None:
+        # The tag is metadata, and left in the title it is prose the class
+        # mapping has to read past.
+        assert ImmunefiEnumerator().report(self.BULLETED.body).title == (  # type: ignore[union-attr]
+            "Unused function in the adapter contract"
+        )
+        assert ImmunefiEnumerator().report(self.WEEKDAY_DATED.body).title == (  # type: ignore[union-attr]
+            "Double token drain"
+        )
+
+    def test_a_bracket_that_is_not_a_tag_is_kept(self) -> None:
+        body = WELL_FORMED.body.replace(
+            "# Reentrancy allows draining the vault",
+            "# Reentrancy in balances[msg.sender] allows draining the vault",
+        )
+        parsed = ImmunefiEnumerator().report(body)
+        assert parsed is not None
+        assert parsed.title == "Reentrancy in balances[msg.sender] allows draining the vault"
+
+    def test_an_unreadable_type_is_not_filed_as_out_of_scope(self) -> None:
+        # We do not know it is out of scope; we failed to read the field. Filing
+        # it as out of scope points investigation away from the fix.
+        body = WELL_FORMED.body.replace("Report type: Smart Contract", "")
+        report = a_report(body)
+        adapter = ImmunefiAdapter(resolve_commit=resolver)
+        [candidate] = adapter.candidates(report)
+        outcome = adapter.extract(report, candidate)
+        assert isinstance(outcome, Skip)
+        assert outcome.cause is SkipCause.MALFORMED_REPORT

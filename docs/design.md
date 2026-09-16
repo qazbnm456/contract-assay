@@ -655,8 +655,8 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   Five independent sources have now been measured for class mapping, and they
   agree: 18% over 87 findings from one contest platform, 20% over 400 from a
   second, 32% over 19 from a third, 17% over 424 from a single researcher's
-  curated database spanning 87 reviews and 69 protocols, and 11% over 224 from a
-  bounty-competition archive. The intervals all overlap around a sixth to a
+  curated database spanning 87 reviews and 69 protocols, and 17% over 331 from a
+  bounty-competition archive read in full. The intervals all overlap around a sixth to a
   fifth. That is a property of the *population* rather than of
   any platform's format or curation, which is what the incident-derivation of the
   class list predicts (§4.3) — and it means no further review-platform adapter
@@ -714,6 +714,46 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   a record unable to say which overstates itself. Resolution is injected rather
   than performed in an adapter, so the stage stays runnable with no network —
   the treatment source resolution already gets in `verify`.
+
+  That archive has now been run end to end, and the run is worth recording for
+  what it cost rather than for what it yielded. 1002 report documents produced
+  15 drafts and 10 admitted records, against 14 commit lookups -- one per
+  (repository, date) pair that a surviving draft actually needed, which is two
+  orders of magnitude fewer requests than one per report. The 21 dates in the
+  largest competition all resolved to the **same commit**, which is the
+  submission-date assumption validating itself: had the repository moved during
+  the competition, per-date resolution would have shown it, where one lookup per
+  competition would have hidden it.
+
+  The first pass over that archive reported a *quarter of it* as out of scope,
+  and the quarter was a defect in the reader. The platform writes one metadata
+  block in three renderings -- plain lines, a bulleted list with the keys
+  emboldened, and dates as `2nd May`, `Feb 29th` or
+  `Tue Aug 13 2024 04:28:52 GMT-0400`. Reading only the first, the adapter got
+  an empty report-type field and filed each document under "the platform typed
+  this as something else".
+
+  Two lessons, and the second is the transferable one:
+
+  - **A field that cannot be read must not be indistinguishable from a field
+    that says no.** An unreadable metadata block now has its own skip cause,
+    separate from an out-of-scope report type. The counts had been complete and
+    honest the whole time; every document had exactly one outcome and nothing
+    was hidden. They were still *wrong about the cause*, and a loss filed under
+    the wrong cause points investigation away from the fix -- the third time
+    that has happened here, which is why it is now a rule and not an anecdote.
+  - **A tolerance that is never exercised is not tolerance.** The date parser
+    accepted two orderings and a table of full month names, and the one
+    competition it had been tested against happened to fall in May -- a month
+    whose name is already three letters. Every abbreviated date in the archive
+    failed, and the parser looked general. A format variant that no fixture
+    exercises is a variant the code does not handle, whatever its regexes
+    suggest.
+
+  Closing both gaps moved the in-scope population from 224 reports to 331 and
+  the class-mapping rate from 11% to 17%, which lands where the other four
+  sources already were (§4.3). The gaps had been depressing the *denominator*,
+  not the rate.
 
   Part of it is recoverable rather than merely measurable. A report naming a file
   and a function but no span can have the span looked up in the declaration
