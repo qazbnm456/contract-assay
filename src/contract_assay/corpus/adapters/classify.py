@@ -30,7 +30,18 @@ from contract_assay.models import VulnerabilityClass
 __all__ = ["CLASS_KEYWORDS", "classify_title"]
 
 CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
+    # Synonyms for a property already in the nine, added after hand-assessing 40
+    # unmapped titles. Each names the same defect in different words -- "re-enter"
+    # and "reentrancy", "truncation" and "rounding" -- which is a recall fix, not
+    # a widening of what counts. Terms that would have raised the number by
+    # admitting other properties were left out: "bypass" alone matches any
+    # circumvented rule, and "locked" alone matches locking as a feature.
     ("reentran", VulnerabilityClass.REENTRANCY),
+    ("re-entran", VulnerabilityClass.REENTRANCY),
+    ("re-enter", VulnerabilityClass.REENTRANCY),
+    ("reenter", VulnerabilityClass.REENTRANCY),
+    ("non-cei", VulnerabilityClass.REENTRANCY),
+    ("checks-effects", VulnerabilityClass.REENTRANCY),
     ("access control", VulnerabilityClass.ACCESS_CONTROL),
     ("unauthori", VulnerabilityClass.ACCESS_CONTROL),
     ("permission", VulnerabilityClass.ACCESS_CONTROL),
@@ -46,12 +57,19 @@ CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     ("flash loan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
     ("flashloan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
     ("rounding", VulnerabilityClass.ARITHMETIC_ROUNDING),
-    ("precision loss", VulnerabilityClass.ARITHMETIC_ROUNDING),
+    ("precision", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("overflow", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("underflow", VulnerabilityClass.ARITHMETIC_ROUNDING),
+    ("truncat", VulnerabilityClass.ARITHMETIC_ROUNDING),
+    ("downcast", VulnerabilityClass.ARITHMETIC_ROUNDING),
+    ("integer division", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("denial of service", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("dos", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("griefing", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("locked forever", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("locked indefinitely", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("permanently locked", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("lost forever", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("randomness", VulnerabilityClass.INSECURE_RANDOMNESS),
     ("unchecked return", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),
     ("return value", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),

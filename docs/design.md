@@ -586,6 +586,25 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   can, make the judgement runnable if you cannot, and disclose only when neither
   is available.
 
+  The class-mapping rate is measured, and it decomposes three ways rather than
+  two. Hand-assessing 40 randomly sampled unmapped titles: about 65% name a
+  defect genuinely outside the nine -- protocol invariants, standards
+  non-compliance, signature malleability, economic design. About 10% were a
+  keyword table missing a synonym for a property already in the nine, and those
+  are now caught. The remaining quarter are in the nine and **not reachable by a
+  keyword table**: "pause mechanisms can be bypassed" is access control, "loan
+  can get stuck" is denial of service, and matching them would need terms broad
+  enough to admit everything else. So the ceiling on keyword classification is
+  around 20%, with perhaps another 15% reachable only by reading the title as
+  prose.
+
+  That assessment was made by whoever wrote the classifier, which is §1.3 again:
+  the instrument judged its own misses, and the bias showed in the direction
+  predicted. The first estimate from it was roughly double what disciplined
+  synonyms then delivered -- 40% claimed against 20% measured -- because
+  "a human would map this" was counted as "the table could map this". The number
+  wants an independent pass before anything rests on it.
+
   Two platforms are read, and comparing them isolates which constraint actually
   binds. One publishes consolidated reports where a location is stated in about
   one finding in nine; the other publishes a submission template with a
