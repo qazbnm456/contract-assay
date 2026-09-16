@@ -699,12 +699,21 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   worse per finding than a platform pinning half. But a commit identifies the
   *competition's* audited snapshot, not the finding, so establishing it is one
   lookup per competition rather than one per finding — forty lookups for a
-  thousand findings. Where a platform declares its scope commit, substituting it
-  for a branch reference is a bounded inference with a stateable assumption: that
-  the repository did not move within scope during the competition. Resolving the
-  branch as it stands today is unbounded drift instead, with no assumption anyone
-  can write down, which is why §6.3 refuses branch references now rather than
-  resolving them.
+  thousand findings. No such archive was found to declare a scope commit,
+  though. What one does state, per report, is the **submission date** — which
+  supports the same recovery by a different route: resolve the repository as it
+  stood when the report was submitted, assuming the reviewed code is the code
+  that was there then. Resolving the branch as it stands today rests on no
+  assumption anyone can write down, which is why an adapter without a resolver
+  refuses branch references rather than following them.
+
+  The assumption is recorded on the pin. `SourcePin.commit_resolved_from` states
+  in prose how a commit was obtained when the source did not state it, and
+  `is_commit_stated` distinguishes the two. The digest witnesses the bytes either
+  way; what differs is whether anybody claimed those were the *right* bytes, and
+  a record unable to say which overstates itself. Resolution is injected rather
+  than performed in an adapter, so the stage stays runnable with no network —
+  the treatment source resolution already gets in `verify`.
 
   Part of it is recoverable rather than merely measurable. A report naming a file
   and a function but no span can have the span looked up in the declaration
@@ -1079,7 +1088,7 @@ work in the present tense reports intentions as capabilities.
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
 | `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **built** |
-| `corpus/adapters/` | shared markdown and label readers; two platforms | **partly built** |
+| `corpus/adapters/` | shared markdown and label readers; three platforms | **partly built** |
 | `corpus/normalize.py` | location resolution, span derivation, digest pinning (§6.3) | **built** |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
