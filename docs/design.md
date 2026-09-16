@@ -137,6 +137,45 @@ derivation ran, and assert the rejection.
 The two questions are complementary. The first asks whether a mechanism can see
 past itself. The second asks whether it exists.
 
+A third rule belongs here rather than in any one subsystem's section, because it
+now governs three of them and the next person to record a cause somewhere new
+will not think to look under harvest:
+
+> **A cause recorded wrongly points investigation away from the fix.**
+
+It is not about counts being complete. Every instance below had complete,
+honest counts and named the wrong reason, which is worse than an aggregate:
+an aggregate admits it knows nothing, while a wrong cause asserts something
+false and is acted on.
+
+- **A harvest loss.** A branch reference filed as a malformed report; a missing
+  line filed as a missing location; a metadata block that could not be read
+  filed as the platform declaring the report out of scope; an explorer address
+  filed as no location stated (§6.3).
+- **A verification failure.** A variant checked against unmutated source
+  reported as a location mismatch rather than as a regeneration failure, which
+  sent the investigation to the locator.
+- **A detector's account of its own limits.** The first register entry written
+  here attributed a predicate's silence to one shape when two conditions were
+  independently sufficient (§7.3). Same rule, arriving from the instrument's
+  side rather than the input's.
+
+The companion check is cheap and is the one that caught all three: **for each
+cause, one input that produced it.** A cause with no example behind it is a
+guess about why, and a guess about why survives review because the count beside
+it is right.
+
+**Absence as evidence needs a control; absence as a prompt does not.** The
+distinction matters because "pair every absence with a presence" would be
+over-applied, and the boundary is the useful part. §7.3's register uses an
+absence as *evidence* of a property — this predicate cannot see this shape — and
+without a paired sighting the silence is equally consistent with a predicate
+that never fires at all, so a control fixture is mandatory. §6.3's zero rule
+uses an absence as a *prompt* to investigate, and needs no control: a wholly
+broken reader reports everything as not-stated, the samples are opened, and the
+conclusion "the reader is broken" is correct. The rule resolves rightly even in
+the degenerate case, which is what makes it a procedure rather than a claim.
+
 ## 2. Detector anatomy
 
 Each detector is a Python class in three layers. The split exists because the
@@ -908,9 +947,9 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
     that says no.** An unreadable metadata block now has its own skip cause,
     separate from an out-of-scope report type. The counts had been complete and
     honest the whole time; every document had exactly one outcome and nothing
-    was hidden. They were still *wrong about the cause*, and a loss filed under
-    the wrong cause points investigation away from the fix -- the third time
-    that has happened here, which is why it is now a rule and not an anecdote.
+    was hidden. They were still *wrong about the cause* -- §1.3's third rule,
+    whose first three instances were all harvest losses and which has since
+    turned up in verification and in a detector's account of its own limits.
   - **A tolerance that is never exercised is not tolerance.** The date parser
     accepted two orderings and a table of full month names, and the one
     competition it had been tested against happened to fall in May -- a month
@@ -1454,6 +1493,28 @@ what closed it once something has. The last field makes the register a work list
 rather than a graveyard: when a tier lands and an entry closes, the entry names
 the change that closed it and stops excusing a miss, so a regression resurfaces
 as an unexplained one.
+
+**The register cannot be summed**, and that is what `isolated` is really for. A
+record can trip several independently sufficient blindnesses: close any one of
+them and the record stays invisible. So a count of open entries is not a count
+of remaining work, and printing one hands a reader a number whose arithmetic
+does not hold — the failure this document keeps catching in other forms. The
+entries are therefore named and never totalled, the relation between entries and
+the records they name is recorded, and a figure for work remaining, if one is
+ever wanted, is computed over **records made visible** rather than over entries
+closed. Collapsing entries or summing them would encode a policy in a number,
+which is the ruling the caller/callee duplicates got (§6.7) for the same reason.
+
+**Declaring has to read better than not declaring**, and this is the first
+mechanism here whose adversary is a stranger rather than a mistake. If a reader
+took a register of three entries as weakness, a submission wanting to look good
+would declare nothing, its misses would land in the unaccounted count, and the
+mechanism would have produced exactly the silence it exists to prevent. So the
+sign is built rather than hoped for: declaring moves a miss from unaccounted to
+accounted, and adds no figure that grows, because the entries are named and not
+counted. The report says which number is the weakness in its own text, since an
+incentive design that is correct by accident stops being correct the first time
+somebody reformats the output.
 
 The `isolated` field earned its place immediately. The first register entry
 written here attributed a detector's silence to one shape. Four minimal cases

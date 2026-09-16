@@ -228,6 +228,28 @@ class ScoreReport:
     """
 
     @property
+    def blindness_by_record(self) -> Mapping[str, tuple[KnownBlindness, ...]]:
+        """Which open entries name each record, because entries do not add up.
+
+        A record can trip several independently sufficient blindnesses. Closing
+        any one of them leaves it invisible, so a count of open entries is not a
+        count of remaining work, and printing one hands a reader a number whose
+        arithmetic does not hold. The relation is recorded and the consumer
+        decides the policy -- the same treatment the caller/callee duplicates
+        get (§6.7) and for the same reason: collapsing the entries or summing
+        them would encode a policy in a number.
+
+        A figure for work remaining, if a report ever wants one, is computed
+        over **records made visible** and never over entries closed.
+        """
+        out: dict[str, list[KnownBlindness]] = {}
+        for entries in self.blindness.values():
+            for entry in entries:
+                if not entry.closed_by:
+                    out.setdefault(entry.demonstrated_by, []).append(entry)
+        return {record: tuple(v) for record, v in sorted(out.items())}
+
+    @property
     def unexplained_misses(self) -> Mapping[VulnerabilityClass, int]:
         """Records missed with no declared blindness naming them.
 
@@ -314,14 +336,29 @@ class ScoreReport:
                 for cls, entry in open_entries
             )
             unexplained = sum(self.unexplained_misses.values())
+            shared = sum(1 for entries in self.blindness_by_record.values() if len(entries) > 1)
+            # Deliberately no count of open entries. A record can trip several
+            # independently sufficient blindnesses, so entries are not units of
+            # work and a total would be a number whose arithmetic fails. It
+            # would also invert the incentive below by giving a submission a
+            # figure that grows when it declares.
+            arithmetic = (
+                f" Entries are not units of work: {_plural(shared, 'record')} above "
+                f"{'is' if shared == 1 else 'are'} named by more than one independently "
+                "sufficient entry, so closing one of those entries does not make it "
+                "visible."
+                if shared
+                else ""
+            )
             parts.append(
-                f"{_plural(len(open_entries), 'known blindness', 'known blindnesses')} "
-                f"declared and unpatched -- {named}. These are facts about the detectors "
-                "rather than estimates from this sample: a score moves as records are "
-                f"added and a blindness does not. Among classes something ran against, "
-                f"{_plural(unexplained, 'miss', 'misses')} "
+                f"Declared and unpatched blindnesses -- {named}. These are facts about "
+                "the detectors rather than estimates from this sample: a score moves as "
+                f"records are added and a blindness does not.{arithmetic} Among classes "
+                f"something ran against, {_plural(unexplained, 'miss', 'misses')} "
                 f"{'is' if unexplained == 1 else 'are'} accounted for by no declared "
-                "blindness."
+                "blindness -- which is the figure to read as a weakness. Declaring a "
+                "blindness moves a miss out of it and adds no count that grows, so a "
+                "submission reports its own limits by preferring to."
             )
 
         invalid = sum(s.invalid_runs for s in self.by_class.values())

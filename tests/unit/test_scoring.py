@@ -465,7 +465,7 @@ class TestADeclaredBlindness:
 
     def test_it_gets_its_own_sentence(self) -> None:
         statement = self._report().statement()
-        assert "1 known blindness declared and unpatched" in statement
+        assert "Declared and unpatched blindnesses" in statement
         assert "a guard that is present and unsound" in statement
         assert "vault-reentrancy-1" in statement
         assert "a score moves as records are added and a blindness does not" in statement
@@ -491,3 +491,115 @@ class TestADeclaredBlindness:
         report = score([], [a_record()], resolver())
         assert report.by_class[CLS].false_negatives == 1
         assert report.unexplained_misses == {}
+
+
+class TestDeclaringReadsBetterThanNotDeclaring:
+    """The incentive, pinned rather than left emergent.
+
+    This is the first mechanism here whose adversary is a stranger rather than a
+    mistake. If a reader took "three declared blindnesses" as weakness, a
+    submission wanting to look good would declare nothing, its misses would land
+    in the unaccounted count, and the mechanism would produce exactly the silence
+    it exists to prevent. So declaring must move a number that reads badly and
+    must not add one that grows -- and an incentive that is correct by accident
+    stops being correct the first time somebody reformats the output.
+    """
+
+    ENTRY = KnownBlindness(
+        shape="a guard that is present and unsound",
+        demonstrated_by="vault-reentrancy-1",
+        unpatched_because="soundness needs caller-taint",
+    )
+
+    def _report(self, *, declaring: bool):  # type: ignore[no-untyped-def]
+        run = a_run([])
+        if declaring:
+            run = run.model_copy(update={"known_blindness": [self.ENTRY]})
+        return score([run], [a_record()], resolver())
+
+    def test_declaring_reduces_the_unaccounted_misses(self) -> None:
+        assert self._report(declaring=False).unexplained_misses == {CLS: 1}
+        assert self._report(declaring=True).unexplained_misses == {CLS: 0}
+
+    def test_declaring_adds_no_count_that_grows(self) -> None:
+        # The entries are named, never totalled. A total would be the figure a
+        # submission is punished for, and it would also be arithmetic that does
+        # not hold, since entries are not units of work.
+        statement = self._report(declaring=True).statement()
+        assert "1 known blindness" not in statement
+        assert "blindnesses declared" not in statement
+        assert "Declared and unpatched blindnesses" in statement
+
+    def test_the_statement_says_which_figure_is_the_weakness(self) -> None:
+        # In the report's own text, so a later reader does not have to infer the
+        # sign from the structure.
+        statement = self._report(declaring=True).statement()
+        assert "the figure to read as a weakness" in statement
+        assert "moves a miss out of it" in statement
+
+    def test_not_declaring_leaves_the_miss_visible_as_unaccounted(self) -> None:
+        # The silence still costs something, which is the whole point: it is not
+        # punished less than honesty, it is punished more.
+        assert sum(self._report(declaring=False).unexplained_misses.values()) == 1
+
+
+class TestTheRegisterCannotBeSummed:
+    """A record can trip several independently sufficient blindnesses.
+
+    Close any one and the record stays invisible, so a count of open entries is
+    not a count of remaining work. The relation is recorded and the consumer
+    decides the policy -- the same ruling the caller/callee duplicates got
+    (§6.7), for the same reason: collapsing or summing encodes a policy in a
+    number whose arithmetic then fails.
+    """
+
+    def _two_entries(self):  # type: ignore[no-untyped-def]
+        shapes = ("a guard that is present and unsound", "a state change through a call")
+        entries = [
+            KnownBlindness(
+                shape=shape,
+                demonstrated_by="vault-reentrancy-1",
+                unpatched_because="needs the semantic tier",
+                isolated=False,
+            )
+            for shape in shapes
+        ]
+        run = a_run([]).model_copy(update={"known_blindness": entries})
+        return score([run], [a_record()], resolver())
+
+    def test_the_relation_is_recorded(self) -> None:
+        report = self._two_entries()
+        assert len(report.blindness_by_record["vault-reentrancy-1"]) == 2
+
+    def test_the_statement_says_the_entries_do_not_add_up(self) -> None:
+        statement = self._two_entries().statement()
+        assert "Entries are not units of work" in statement
+        assert "1 record above is named by more than one" in statement
+
+    def test_one_record_is_still_accounted_for_once(self) -> None:
+        # Two entries naming one record do not excuse two misses.
+        assert self._two_entries().unexplained_misses == {CLS: 0}
+
+    def test_a_closed_entry_leaves_the_relation(self) -> None:
+        # Only open entries are work; a closed one stops accounting and stops
+        # appearing, so a record whose other entry is still open is not silently
+        # promoted to visible.
+        entries = [
+            KnownBlindness(
+                shape="a",
+                demonstrated_by="vault-reentrancy-1",
+                unpatched_because="r",
+                isolated=False,
+                closed_by="abc1234",
+            ),
+            KnownBlindness(
+                shape="b",
+                demonstrated_by="vault-reentrancy-1",
+                unpatched_because="r",
+                isolated=False,
+            ),
+        ]
+        run = a_run([]).model_copy(update={"known_blindness": entries})
+        report = score([run], [a_record()], resolver())
+        assert len(report.blindness_by_record["vault-reentrancy-1"]) == 1
+        assert report.unexplained_misses == {CLS: 0}
