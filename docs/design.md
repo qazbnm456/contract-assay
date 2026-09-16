@@ -605,6 +605,15 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   "a human would map this" was counted as "the table could map this". The number
   wants an independent pass before anything rests on it.
 
+  Four independent sources have now been measured for class mapping, and they
+  agree: 18% over 87 findings from one contest platform, 18% over 400 from a
+  second, 32% over 19 from a third, and 17% over 424 from a single researcher's
+  curated database spanning 87 reviews and 69 protocols. The intervals all
+  overlap around a fifth. That is a property of the *population* rather than of
+  any platform's format or curation, which is what the incident-derivation of the
+  class list predicts (§4.3) — and it means no further review-platform adapter
+  will move it.
+
   Two platforms are read, and comparing them isolates which constraint actually
   binds. One publishes consolidated reports where a location is stated in about
   one finding in nine; the other publishes a submission template with a
