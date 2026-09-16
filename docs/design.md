@@ -409,13 +409,29 @@ backend is wired up.
 | --- | --- | --- |
 | `unchecked_external_call` | shallow def-use | mostly |
 | `insecure_randomness` | shallow def-use | mostly |
-| `access_control` | modifiers, visibility | partly |
+| `access_control` | modifiers, visibility, caller-taint | partly |
 | `slippage` | def-use through call arguments | no |
 | `oracle_integrity` | def-use into guards | no |
 | `denial_of_service` | storage/dynamic array types | no |
 | `arithmetic_rounding` | types, decimals, evaluation order | no |
 | `reentrancy` | control flow + state-write ordering | no |
 | `flashloan_manipulation` | interprocedural reachability | no |
+
+The "partly" against `access_control` has a measured instance behind it, and it
+arrived from the incident population rather than from review findings. The
+syntactic predicate's proxy for "is the caller checked?" is "is `msg.sender`
+referenced?". One record is a function whose authorisation check reads `owner()`
+from a **caller-supplied address** and compares the result to `msg.sender`: the
+reference is present, the check is worthless, and the predicate is silent. The
+blindness is systematic — every defective guard that mentions `msg.sender` is
+invisible — and closing it means deciding whether the other side of the
+comparison is caller-controlled, which is def-use through an external call.
+
+Two things follow. It is the first defect the incident population has shown that
+no review record in the corpus did, which is the complementarity §6.6 predicts
+being observed rather than argued. And it is a recall gap now *measurable*
+rather than asserted: the record exists, the detector is silent on it, and the
+score says 33% where it would otherwise have said nothing.
 
 ### 4.3 What nine classes means for the claim
 

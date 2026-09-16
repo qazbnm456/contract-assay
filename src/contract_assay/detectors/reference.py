@@ -278,7 +278,25 @@ class InsecureRandomnessDetector(_SyntacticDetector):
 
 
 class AccessControlDetector(_SyntacticDetector):
-    """State reachable from outside with nothing restricting who may change it."""
+    """State reachable from outside with nothing restricting who may change it.
+
+    What it cannot see, stated because a real record made it measurable rather
+    than arguable: **a guard that is present and unsound.** The predicate's
+    proxy for "is the caller checked?" is "is `msg.sender` referenced?", and one
+    corpus record is a function whose authorisation check reads
+    `owner()` from a caller-supplied address and compares it to `msg.sender`.
+    The reference is there, the check is worthless, and the predicate is silent.
+
+    The blindness is systematic rather than a missed case: every defective guard
+    that mentions `msg.sender` is invisible to it. Deciding soundness means
+    knowing whether the other side of the comparison is caller-controlled, which
+    is def-use through an external call -- the semantic tier, which is why §4.2
+    grades this class "partly" at the syntactic tier rather than "mostly".
+
+    Left as a stated gap rather than patched. A predicate that guessed at
+    soundness from syntax would fire on sound guards too, and a detector that
+    trades a silent miss for a confident false positive has not improved.
+    """
 
     detector_id = "reference-access-control"
     class_id = VulnerabilityClass.ACCESS_CONTROL
