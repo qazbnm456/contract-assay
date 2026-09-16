@@ -47,6 +47,7 @@ from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
     LocatorProvenance,
+    Population,
     SourcePin,
 )
 from contract_assay.corpus.verify import SourceResolver
@@ -62,6 +63,71 @@ __all__ = [
 ]
 
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
+_COMMENT = re.compile(r"//.*?$|/\*.*?\*/", re.M | re.S)
+_LINE_PREFIX = re.compile(r"^\s*\d+:\s?")
+_ELISION = frozenset({"...", "\u2026", "..", "/* ... */"})
+
+MIN_QUOTE_LINES = 3
+"""Shortest excerpt worth matching.
+
+A one- or two-line snippet is too easily duplicated elsewhere in a file to
+locate anything, and a match that is unique by accident is a wrong record
+waiting to happen.
+"""
+
+
+def _normalised_lines(text: str) -> list[str]:
+    """Code lines with comments, line-number prefixes and elisions removed.
+
+    Comments go because reviewers annotate the code they quote. Line-number
+    prefixes go because some report tooling adds them. Whitespace collapses
+    because indentation is not semantic -- the same reasoning `check_citation`
+    applies to a detector's quote, and for consistency the same treatment.
+    """
+    stripped = _COMMENT.sub("", text)
+    out: list[str] = []
+    for raw in stripped.split("\n"):
+        line = " ".join(_LINE_PREFIX.sub("", raw).split())
+        if line and line not in _ELISION:
+            out.append(line)
+    return out
+
+
+def _match_quote(quote: str, source: str) -> tuple[int, int] | NormalizeCause | None:
+    """Where a quoted excerpt uniquely occurs in a file, as 1-indexed lines.
+
+    Matching is exact and contiguous over normalised lines. That is deliberately
+    strict: an excerpt with an elision removed is no longer contiguous in the
+    source, so it will not match, and it becomes a counted loss rather than a
+    fuzzy match placed somewhere plausible. A wrong record scores every
+    submission against a lie, where a missing one costs a single test item.
+
+    Uniqueness is required. An excerpt occurring twice locates nothing, and
+    taking the first would be a wrong record that no contiguity test catches,
+    because a wrong match can be perfectly contiguous.
+
+    Returns None when the excerpt is too short to be worth matching, so the
+    caller can fall through to a weaker route rather than record a loss.
+    """
+    want = _normalised_lines(quote)
+    if len(want) < MIN_QUOTE_LINES:
+        return None
+
+    numbered = [
+        (n, " ".join(_LINE_PREFIX.sub("", raw).split()))
+        for n, raw in enumerate(_COMMENT.sub("", source).split("\n"), 1)
+    ]
+    kept = [(n, line) for n, line in numbered if line and line not in _ELISION]
+    haystack = [line for _, line in kept]
+
+    hits = [i for i in range(len(haystack) - len(want) + 1) if haystack[i : i + len(want)] == want]
+    if not hits:
+        return NormalizeCause.QUOTE_NOT_FOUND
+    if len(hits) > 1:
+        return NormalizeCause.QUOTE_AMBIGUOUS
+    start = kept[hits[0]][0]
+    end = kept[hits[0] + len(want) - 1][0]
+    return start, end
 
 
 class NormalizeCause(StrEnum):
@@ -84,6 +150,15 @@ class NormalizeCause(StrEnum):
 
     FUNCTION_AMBIGUOUS = "function_ambiguous"
     """The name resolves to several declarations, so it identifies none of them."""
+
+    QUOTE_NOT_FOUND = "quote_not_found"
+    """The excerpt the report quoted does not occur in the pinned file."""
+
+    QUOTE_AMBIGUOUS = "quote_ambiguous"
+    """The excerpt occurs more than once, so it locates nothing."""
+
+    QUOTE_CONTRADICTS_SPAN = "quote_contradicts_span"
+    """The report's stated span and its quoted excerpt point at different code."""
 
     NO_DECLARATION_AT_ANCHOR = "no_declaration_at_anchor"
     """The line the report pointed at is not inside any function-like declaration."""
@@ -213,20 +288,53 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     containing it, and a function named in prose.
     """
     lines = len(source.split("\n"))
+    quoted: tuple[int, int] | NormalizeCause | None = None
+    if draft.quoted_source and draft.quoted_source.strip():
+        quoted = _match_quote(draft.quoted_source, source)
 
     if draft.start_line is not None and draft.end_line is not None:
         if draft.end_line > lines:
             return NormalizeCause.SPAN_OUT_OF_RANGE
+        if isinstance(quoted, tuple) and not (
+            draft.start_line <= quoted[1] and quoted[0] <= draft.end_line
+        ):
+            # Two assertions from the report, adjudicated by the repository's
+            # bytes, and they disagree about where the defect is. Neither is
+            # obviously the wrong one, so the record is refused rather than
+            # decided by preference.
+            return NormalizeCause.QUOTE_CONTRADICTS_SPAN
+        # The span is the report's, and stays the report's. Only the labels are
+        # filled in where it gave none: a report citing a line range without
+        # naming the function is common, and a record with no function cannot be
+        # scored at function granularity -- so it would be lost for the sake of a
+        # name the index can read off the span it was already given.
+        enclosing = parsed_contract_of(source, draft.start_line)
         return Located(
             Locator(
                 file=draft.path,
-                contract=draft.contract,
-                function=draft.function,
+                contract=draft.contract or enclosing[0],
+                function=draft.function or enclosing[1],
                 start_line=draft.start_line,
                 end_line=draft.end_line,
             ),
             LocatorProvenance.STATED,
         )
+
+    if isinstance(quoted, tuple):
+        start, end = quoted
+        enclosing = parsed_contract_of(source, start)
+        return Located(
+            Locator(
+                file=draft.path,
+                contract=draft.contract or enclosing[0],
+                function=draft.function or enclosing[1],
+                start_line=start,
+                end_line=end,
+            ),
+            LocatorProvenance.QUOTED,
+        )
+    if quoted is not None:
+        return quoted
 
     parsed = Syntax.of(source)
     if parsed is None:
@@ -285,17 +393,30 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     )
 
 
+def parsed_contract_of(source: str, line: int) -> tuple[str | None, str | None]:
+    """The contract and function containing a line, for labelling a matched span."""
+    parsed = Syntax.of(source)
+    if parsed is None:
+        return None, None
+    host = parsed.host_at(line)
+    return host.contract, host.function
+
+
 def normalize(
     drafts: Iterable[DraftRecord],
     resolve: SourceResolver,
     *,
     split: CorpusSplit,
+    population: Population,
 ) -> NormalizeReport:
     """Resolve every draft's location and pin the bytes it was resolved against.
 
-    `split` is a parameter because it is a policy decision about what the corpus
-    is for, not a fact recoverable from a report. There is no default: a
-    forgotten split would publish a record meant to be withheld.
+    `split` and `population` are parameters because neither is recoverable from a
+    report: the first is a policy decision about what the corpus is for, and the
+    second is a property of the body of work the reports came from. Neither has a
+    default -- a forgotten split would publish a record meant to be withheld, and
+    a forgotten population would put records from two oppositely-skewed bodies of
+    work into one undifferentiated count.
     """
     records: list[CorpusRecord] = []
     skipped: list[NormalizedSkip] = []
@@ -327,6 +448,7 @@ def normalize(
         records.append(
             CorpusRecord(
                 record_id=_record_id(draft),
+                population=population,
                 split=split,
                 pin=SourcePin(
                     repo_url=draft.repo_url,

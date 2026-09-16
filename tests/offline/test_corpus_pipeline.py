@@ -21,7 +21,12 @@ from contract_assay.corpus.harvest import (
     harvest,
 )
 from contract_assay.corpus.normalize import NormalizeCause, normalize
-from contract_assay.corpus.records import CorpusSplit, LocatorProvenance, Provenance
+from contract_assay.corpus.records import (
+    CorpusSplit,
+    LocatorProvenance,
+    Population,
+    Provenance,
+)
 from contract_assay.corpus.verify import verify_all
 from contract_assay.models import VulnerabilityClass
 
@@ -135,7 +140,12 @@ def resolver(source: str | None = VAULT):  # type: ignore[no-untyped-def]
 
 def pipeline(source: str | None = VAULT):  # type: ignore[no-untyped-def]
     harvested = harvest(MiniAdapter(), [REPORT])
-    normalized = normalize(harvested.drafts, resolver(source), split=CorpusSplit.PUBLIC)
+    normalized = normalize(
+        harvested.drafts,
+        resolver(source),
+        split=CorpusSplit.PUBLIC,
+        population=Population.AUDIT_REVIEW,
+    )
     verified = verify_all(list(normalized.records), resolver(source))
     return harvested, normalized, verified
 

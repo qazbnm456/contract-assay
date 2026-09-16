@@ -441,6 +441,19 @@ And the claim it must never be allowed to drift into is *can a model audit a
 smart contract*. Nothing here supports the second, and an 18% mapping rate
 against real audit output is the evidence for why.
 
+One consequence worth stating, because it explains the mismatch rather than
+merely absorbing it. The class list is incident-derived: OWASP's ranking is built
+from what has actually been exploited. So a population made of *pre-deployment
+review* should be expected to map onto it poorly, and a population made of
+*exploited incidents* should map onto it well — which is a prediction, not a
+rationalisation, and it is why `Population` is recorded per record.
+
+The prediction does not extend to the difficulty grades. Those come from a
+prescriptive review specification rather than from incident data, so an incident
+population should be expected to map well by class and to distribute differently
+by grade than the grades' own source would suggest. Neither is a defect in
+either.
+
 **A tenth catch-all class is refused**, and written down because the proposal
 recurs whenever coverage is measured. "Protocol logic" or "business logic error"
 would lift the mapping rate immediately and add nothing measurable: no
@@ -725,6 +738,22 @@ choice rather than an oversight.
 > unverifiable, concentrated in these classes* are different claims, and only
 > the second one is true.
 
+Every record also states which **population** it came from (§4.3), because the
+two bodies of work available skew in close to opposite directions and a figure
+computed across a mixture describes neither. Pre-deployment review output is
+dominated by protocol-specific logic, because that is what reviewers find in code
+nobody has attacked. Exploited incidents are dominated by patterns that were
+reachable *and* worth the trouble, which over-represents profitable manipulation
+and under-represents everything caught before deployment, everything
+unprofitable, and everything in code that never held enough value to attack.
+
+Neither is unbiased, and they are not substitutable — which is the point. The
+classes one is thin in are the classes the other is thick in, so a class carried
+entirely by one population is legible as such rather than averaged. And a
+detector scoring differently across populations on the same class is a finding
+about the detector rather than noise: it says whether it recognises exploited
+patterns or reviewed ones.
+
 Records per class matter more than records in total, and a shortfall there is
 not reported by averaging. A hundred records spread unevenly across nine classes
 may leave a class with two — and a class with two supports no claim at all while
@@ -739,14 +768,43 @@ decimated, and that class is then quietly under-represented in everything scored
 against the corpus afterwards.
 
 The report also splits admitted records by `LocatorProvenance`, for a different
-reason: not everything admitted was admitted on equal evidence. A stated span is
-cross-checked against the declaration index; a *derived* span came from that
-index, so asking it the same question is a tautology. What still does work for a
-derived locator is the digest check, which establishes the file is byte-identical
-to the one the derivation ran against, and the ambiguity check. What does not is
-the span check that carries the weight for a stated locator — so a derived record
-rests on the original report's prose naming the right function, with nothing
-available to contradict it.
+reason: not everything admitted was admitted on equal evidence. There are four
+kinds, and what confirms each differs:
+
+| Provenance | Where the span came from | Confirmed by |
+| --- | --- | --- |
+| `quoted` | matching the report's own excerpt in the pinned file | the repository's bytes containing the report's text, uniquely |
+| `stated` | line numbers the report gave | the declaration index, asked whether the named function is declared inside them |
+| `anchored` | the declaration containing a line the report gave | nothing independent — see below |
+| `derived` | the declaration matching a function the report named in prose | nothing independent |
+
+The first two are cross-checked and the last two are not, and the distinction is
+about *who answered*. For `quoted` and `stated` a third party adjudicates two
+assertions the report made — the bytes in one case, the index in the other — and
+neither got its answer from the report. For `anchored` and `derived` the span was
+produced by the index, so re-checking it asks the index about its own answer:
+that confirms the derivation was reproducible, not that it was right, which is
+the guarantee the digest already gives.
+
+`quoted` and `stated` fail differently rather than better, and are recorded
+rather than ranked. A stated line number goes stale when the report numbered a
+different commit than the one pinned; a matched quote cannot. A matched quote can
+land in the wrong place when the code is unremarkable; a stated line cannot. So a
+quoted match is required to be **unique** in the file — an excerpt occurring
+twice locates nothing, and taking the first would be a wrong record that no
+contiguity test catches, because a wrong match can be perfectly contiguous.
+
+`anchored` has one real check that the flag above does not cover. Where the
+report names a contract *and* points at a line, neither signal came from the
+index, so their disagreement is disqualifying. Where a report gives both a span
+and an excerpt, the same applies: they must point at the same code or the record
+is refused rather than decided by preference.
+
+Only the labels are ever filled in from the index for a stated span, never the
+span itself. A report citing a line range without naming a function is common,
+and a record with no function cannot be scored at function granularity — so it
+would otherwise be lost for want of a name the index can read off the span the
+report already gave.
 
 **One repair for this is rejected rather than merely unbuilt**, and it is written
 down because it is a good idea that will be proposed again. A derived locator

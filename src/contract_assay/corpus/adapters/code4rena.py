@@ -81,6 +81,18 @@ _FILE_BLOCK = re.compile(
 )
 _NUMBERED_LINE = re.compile(r"^[ \t]*(\d+):", re.M)
 
+# Findings quote the vulnerable code inline far more often than they cite it.
+# The quote is not a location by itself, but `normalize` can locate it by
+# matching it against the pinned file -- deterministically, with no judgement.
+# Blocks that are clearly a test harness are excluded: a proof of concept
+# exercises the defect rather than containing it, so matching one would locate
+# the test.
+_FENCE = re.compile(r"```(\w*)\n(.*?)```", re.S)
+_LOOKS_LIKE_SOURCE = re.compile(
+    r"\b(function|require|modifier|mapping|uint\d*|address|emit|return)\b"
+)
+_LOOKS_LIKE_HARNESS = re.compile(r"\bfunction\s+test\w*\s*\(|\bvm\.|\bconsole\.log")
+
 _BACKTICK_QUALIFIED = re.compile(r"`([A-Z]\w*)\.(\w+)\(?\)?`")
 _BACKTICK_CALL = re.compile(r"`(\w+)\(\)`")
 
@@ -265,12 +277,13 @@ class Code4renaAdapter:
                 "no stated location, and the finding cites either no Solidity file or several",
             )
         named = _named_function(finding.title, finding.body)
-        if named is None:
+        quoted = _quoted_source(finding.body)
+        if named is None and quoted is None:
             return Skip(
                 SkipCause.NO_LOCATION,
-                f"cites {file.path} but names no function for it",
+                f"cites {file.path} but neither quotes source nor names a function for it",
             )
-        contract, function = named
+        contract, function = named or (None, None)
         return DraftRecord(
             candidate_id=finding.ident,
             repo_url=file.repo_url,
@@ -278,6 +291,7 @@ class Code4renaAdapter:
             path=file.path,
             contract=contract,
             function=function,
+            quoted_source=quoted,
             classes=candidate.classes,
             provenance=Provenance(
                 platform=report.platform,
@@ -330,6 +344,10 @@ class Code4renaAdapter:
             start_line=citation.start_line if ranged else None,
             end_line=citation.end_line if ranged else None,
             anchor_line=None if ranged else citation.start_line,
+            # Carried even alongside a stated span: `normalize` cross-checks the
+            # two against the repository's bytes and refuses the record if they
+            # point at different code.
+            quoted_source=_quoted_source(finding.body),
             classes=candidate.classes,
             provenance=Provenance(
                 platform=report.platform,
@@ -351,6 +369,22 @@ def _contest_snapshot(report_body: str) -> tuple[str, str] | None:
 
     seen = Counter((citation.repo_url, citation.commit) for citation in _permalinks(report_body))
     return seen.most_common(1)[0][0] if seen else None
+
+
+def _quoted_source(body: str) -> str | None:
+    """The longest fenced block that looks like contract source, if any.
+
+    Longest because an excerpt carrying more lines is both likelier to locate
+    uniquely and likelier to be the passage under discussion rather than an
+    aside.
+    """
+    candidates = [
+        match.group(2)
+        for match in _FENCE.finditer(body)
+        if _LOOKS_LIKE_SOURCE.search(match.group(2))
+        and not _LOOKS_LIKE_HARNESS.search(match.group(2))
+    ]
+    return max(candidates, key=len) if candidates else None
 
 
 def _named_function(title: str, body: str) -> tuple[str | None, str] | None:

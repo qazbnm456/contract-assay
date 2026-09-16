@@ -14,7 +14,12 @@ from pydantic import ValidationError
 
 from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.normalize import NormalizeCause, normalize
-from contract_assay.corpus.records import CorpusSplit, LocatorProvenance, Provenance
+from contract_assay.corpus.records import (
+    CorpusSplit,
+    LocatorProvenance,
+    Population,
+    Provenance,
+)
 from contract_assay.corpus.verify import CheckFailure, SourceResolver, verify_all
 from contract_assay.models import VulnerabilityClass
 
@@ -74,7 +79,12 @@ def a_draft(**over: object) -> DraftRecord:
 
 
 def run(*drafts: DraftRecord, source: str | None = VAULT):  # type: ignore[no-untyped-def]
-    return normalize(drafts, resolver(source), split=CorpusSplit.PUBLIC)
+    return normalize(
+        drafts,
+        resolver(source),
+        split=CorpusSplit.PUBLIC,
+        population=Population.AUDIT_REVIEW,
+    )
 
 
 class TestAStatedSpanIsKept:
@@ -243,7 +253,7 @@ class TestSplitIsAPolicyDecision:
 
     @pytest.mark.parametrize("split", [CorpusSplit.PUBLIC, CorpusSplit.PRIVATE_HOLDOUT])
     def test_the_split_reaches_the_record(self, split: CorpusSplit) -> None:
-        report = normalize([a_draft()], resolver(), split=split)
+        report = normalize([a_draft()], resolver(), split=split, population=Population.AUDIT_REVIEW)
         assert report.records[0].split is split
 
 
@@ -340,3 +350,173 @@ class TestADraftStatesOneKindOfLocation:
     def test_an_anchor_alone_is_a_valid_draft(self) -> None:
         draft = self._draft(function=None, contract=None, anchor_line=8)
         assert draft.has_anchor and not draft.has_stated_span
+
+
+class TestQuoteMatching:
+    """Locating a report's own excerpt in the pinned file.
+
+    The strongest confirmation available and the only one produced by two
+    sources neither of which derived from the other: the text came from the
+    report, the bytes from the repository, and the span is where they agree.
+    """
+
+    TWICE = """\
+contract Vault {
+    address owner;
+
+    function withdraw(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+        balances[msg.sender] -= amount;
+    }
+
+    function rescue(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+        balances[msg.sender] -= amount;
+    }
+}
+"""
+
+    UNIQUE = """
+    function withdraw(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+        balances[msg.sender] -= amount;
+    }
+"""
+
+    REPEATED = """
+        payable(msg.sender).transfer(amount);
+        balances[msg.sender] -= amount;
+    }
+"""
+
+    def test_a_unique_excerpt_locates_and_is_cross_checked(self) -> None:
+        [record] = run(
+            a_draft(quoted_source=self.UNIQUE, contract=None, function=None), source=self.TWICE
+        ).records
+        assert record.locator_provenance is LocatorProvenance.QUOTED
+        assert (record.locator.start_line, record.locator.end_line) == (4, 7)
+        assert record.locator_provenance.is_cross_checked
+        assert record.locator_provenance.supports_exact_match
+
+    def test_the_host_is_recovered_from_the_matched_span(self) -> None:
+        [record] = run(
+            a_draft(quoted_source=self.UNIQUE, contract=None, function=None), source=self.TWICE
+        ).records
+        assert (record.locator.contract, record.locator.function) == ("Vault", "withdraw")
+
+    def test_an_excerpt_occurring_twice_locates_nothing(self) -> None:
+        # Taking the first would be a wrong record that no contiguity test
+        # catches, because a wrong match can be perfectly contiguous.
+        report = run(
+            a_draft(quoted_source=self.REPEATED, contract=None, function=None), source=self.TWICE
+        )
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.QUOTE_AMBIGUOUS: 1}
+
+    def test_an_excerpt_that_is_not_there_is_a_counted_loss(self) -> None:
+        report = run(
+            a_draft(
+                quoted_source="function absent() external {\n  revert();\n  return;\n}",
+                contract=None,
+                function=None,
+            ),
+            source=self.TWICE,
+        )
+        assert report.by_cause == {NormalizeCause.QUOTE_NOT_FOUND: 1}
+
+    def test_comments_and_elisions_in_an_excerpt_are_ignored(self) -> None:
+        # Reviewers annotate the code they quote, and excerpt it with ellipses.
+        annotated = """
+    function withdraw(uint256 amount) external {   // <-- entry point
+        payable(msg.sender).transfer(amount);      // external call first
+        ...
+        balances[msg.sender] -= amount;
+    }
+"""
+        [record] = run(
+            a_draft(quoted_source=annotated, contract=None, function=None), source=self.TWICE
+        ).records
+        assert (record.locator.start_line, record.locator.end_line) == (4, 7)
+
+    def test_line_number_prefixes_are_ignored(self) -> None:
+        numbered = """
+    4:    function withdraw(uint256 amount) external {
+    5:        payable(msg.sender).transfer(amount);
+    6:        balances[msg.sender] -= amount;
+    7:    }
+"""
+        [record] = run(
+            a_draft(quoted_source=numbered, contract=None, function=None), source=self.TWICE
+        ).records
+        assert record.locator_provenance is LocatorProvenance.QUOTED
+
+    def test_an_excerpt_too_short_to_locate_falls_through(self) -> None:
+        # One or two lines duplicate too easily, and a match unique by accident
+        # is a wrong record waiting to happen. It falls through to a weaker
+        # route rather than being recorded as a loss.
+        [record] = run(
+            a_draft(quoted_source="    }", function="withdraw", contract="Vault"),
+            source=self.TWICE,
+        ).records
+        assert record.locator_provenance is LocatorProvenance.DERIVED
+
+    def test_a_stated_span_the_excerpt_agrees_with_stays_stated(self) -> None:
+        [record] = run(
+            a_draft(
+                quoted_source=self.UNIQUE, start_line=4, end_line=7, function=None, contract=None
+            ),
+            source=self.TWICE,
+        ).records
+        assert record.locator_provenance is LocatorProvenance.STATED
+
+    def test_a_stated_span_the_excerpt_contradicts_is_refused(self) -> None:
+        # Two assertions from the report, adjudicated by the repository's bytes,
+        # disagreeing about where the defect is. Neither is obviously wrong, so
+        # the record is refused rather than decided by preference.
+        report = run(
+            a_draft(
+                quoted_source=self.UNIQUE, start_line=9, end_line=12, function=None, contract=None
+            ),
+            source=self.TWICE,
+        )
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.QUOTE_CONTRADICTS_SPAN: 1}
+
+    def test_quoted_records_are_counted_by_provenance(self) -> None:
+        report = run(
+            a_draft(quoted_source=self.UNIQUE, contract=None, function=None), source=self.TWICE
+        )
+        assert report.records_by_provenance == {LocatorProvenance.QUOTED: 1}
+
+
+class TestPopulationIsRecorded:
+    def test_the_population_must_be_supplied(self) -> None:
+        # Not recoverable from a report, and the two bodies of work skew in
+        # opposite directions, so a mixture counted as one describes neither.
+        with pytest.raises(TypeError):
+            normalize([a_draft()], resolver(), split=CorpusSplit.PUBLIC)  # type: ignore[call-arg]
+
+    @pytest.mark.parametrize("population", [Population.AUDIT_REVIEW, Population.EXPLOITED_INCIDENT])
+    def test_the_population_reaches_the_record(self, population: Population) -> None:
+        report = normalize([a_draft()], resolver(), split=CorpusSplit.PUBLIC, population=population)
+        assert report.records[0].population is population
+
+
+class TestAStatedSpanGetsItsLabels:
+    """A report giving a range but no function name is common, and usable."""
+
+    def test_the_function_is_read_off_the_span(self) -> None:
+        # The span stays the report's; only the labels are filled in. Without
+        # this the record has no function, cannot be scored at function
+        # granularity, and is lost for the sake of a name the index can read
+        # off the span it was already handed.
+        [record] = run(a_draft(start_line=7, end_line=9, contract=None, function=None)).records
+        assert record.locator_provenance is LocatorProvenance.STATED
+        assert (record.locator.contract, record.locator.function) == ("Vault", "setOwner")
+        assert (record.locator.start_line, record.locator.end_line) == (7, 9)
+
+    def test_a_name_the_report_gave_is_not_overwritten(self) -> None:
+        [record] = run(
+            a_draft(start_line=7, end_line=9, contract="Vault", function="setOwner")
+        ).records
+        assert record.locator.function == "setOwner"

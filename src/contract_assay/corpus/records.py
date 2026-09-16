@@ -33,12 +33,44 @@ __all__ = [
     "CorpusSplit",
     "LocatorProvenance",
     "NegativeKind",
+    "Population",
     "Provenance",
     "SourcePin",
     "VulnerabilityClass",
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
+
+
+class Population(StrEnum):
+    """Which body of work a record was drawn from.
+
+    A stratification axis like difficulty and evidence tier, and required for the
+    same reason: the two populations are not samples of one thing, and a figure
+    computed across a mixture describes neither.
+
+    They skew in close to opposite directions. Pre-deployment review output is
+    dominated by protocol-specific logic -- accounting that deflates a reported
+    total, a balance that stops tracking one-to-one -- because that is what
+    reviewers find in code nobody has attacked yet. Exploited incidents are
+    dominated by patterns that were reachable *and* worth the trouble, which
+    over-represents profitable manipulation and under-represents everything
+    caught before deployment, everything unprofitable, and everything in code
+    that never held enough value to attack.
+
+    So neither is unbiased and they are not substitutable. What makes recording
+    it worth a field is that the classes one population is thin in are the
+    classes the other is thick in -- and that a detector scoring differently
+    across populations on the same class is a finding about the detector rather
+    than noise. It says whether it recognises exploited patterns or reviewed
+    ones.
+    """
+
+    AUDIT_REVIEW = "audit_review"
+    """Found by review before deployment. Reported, not necessarily exploited."""
+
+    EXPLOITED_INCIDENT = "exploited_incident"
+    """Exploited in the wild and written up afterwards."""
 
 
 class LocatorProvenance(StrEnum):
@@ -69,6 +101,24 @@ class LocatorProvenance(StrEnum):
     STATED = "stated"
     """The source report gave the line span. `verify` cross-checks it."""
 
+    QUOTED = "quoted"
+    """The report quoted the code; the span is where that text uniquely occurs.
+
+    The strongest confirmation available, and the only one in this set produced
+    by two sources neither of which was derived from the other: the text came
+    from the report, the bytes came from the repository, and the span is where
+    they agree. The match is required to be unique -- a normalised snippet
+    occurring twice in the file locates nothing, and taking the first would be a
+    wrong record that the contiguity guard cannot catch, because a wrong match
+    can be perfectly contiguous.
+
+    It fails differently from `STATED` rather than better, and the two are
+    recorded rather than ranked. A stated line number goes stale when the report
+    numbered a different commit than the one pinned; a matched quote cannot go
+    stale. A matched quote can land in the wrong place when the code is
+    unremarkable; a stated line cannot.
+    """
+
     ANCHORED = "anchored"
     """The report gave a single line; the span is the declaration containing it.
 
@@ -84,16 +134,27 @@ class LocatorProvenance(StrEnum):
 
     @property
     def is_cross_checked(self) -> bool:
-        """Whether verification independently confirms the span.
+        """Whether the span was confirmed by a source that did not produce it.
 
-        True only for `STATED`. For `ANCHORED` the span was produced by finding
-        what encloses the anchor, so re-checking that the anchor falls inside it
-        confirms the derivation was reproducible, not that it was right -- the
-        same guarantee the digest already gives, arriving a second time. Calling
-        that cross-checked would invite somebody to lean on it harder than it can
-        bear.
+        True for `STATED` and `QUOTED`, and the confirming party differs. A
+        stated span is checked against the declaration index, which is asked
+        whether the function the report named is declared inside the span the
+        report gave -- two assertions from the report, adjudicated by a third
+        party that got its answer from the source. A quoted span is confirmed by
+        the repository's bytes containing the report's text, uniquely.
+
+        False for `ANCHORED` and `DERIVED`, where the span was produced by the
+        declaration index and re-checking it asks the index about its own answer.
+        That confirms the derivation was reproducible, not that it was right --
+        the guarantee the digest already gives, arriving a second time.
+
+        `ANCHORED` has one real check available that this flag does not cover:
+        where the report names a contract *and* points at a line, neither came
+        from the index, so their disagreement is disqualifying. That is enforced
+        in `normalize`, not here, because it depends on the report having
+        supplied both.
         """
-        return self is LocatorProvenance.STATED
+        return self in (LocatorProvenance.STATED, LocatorProvenance.QUOTED)
 
     @property
     def supports_exact_match(self) -> bool:
@@ -240,6 +301,13 @@ class CorpusRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_id: str = Field(pattern=r"^[a-z0-9][a-z0-9\-]{2,63}$")
+    population: Population = Field(
+        description=(
+            "Which body of work this was drawn from. Required, with no default: the two "
+            "populations skew in opposite directions and a figure computed across a "
+            "mixture describes neither."
+        )
+    )
     split: CorpusSplit = Field(
         description=(
             "Which corpus this belongs to. Required, with no default: a forgotten split "

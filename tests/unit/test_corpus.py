@@ -18,6 +18,7 @@ from contract_assay.corpus.records import (
     CorpusSplit,
     LocatorProvenance,
     NegativeKind,
+    Population,
     Provenance,
     SourcePin,
     VulnerabilityClass,
@@ -97,6 +98,7 @@ def a_provenance(**over: object) -> Provenance:
 def a_positive(**over: object) -> CorpusRecord:
     base: dict[str, object] = {
         "record_id": "vault-slippage-1",
+        "population": Population.AUDIT_REVIEW,
         "split": CorpusSplit.PUBLIC,
         "pin": a_pin(),
         "locator": a_locator(),
@@ -173,6 +175,7 @@ class TestNegativeRecords:
     def _negative(self, **over: object) -> CorpusRecord:
         base: dict[str, object] = {
             "record_id": "vault-slippage-fixed",
+            "population": Population.AUDIT_REVIEW,
             "split": CorpusSplit.PUBLIC,
             "pin": a_pin(commit=FIX_SHA),
             "locator": None,
@@ -270,6 +273,7 @@ class TestVerification:
         record = CorpusRecord(
             record_id="vault-not-reentrant",
             split=CorpusSplit.PUBLIC,
+            population=Population.AUDIT_REVIEW,
             pin=a_pin(),
             classes=[],
             negative_for=[VulnerabilityClass.REENTRANCY],
@@ -365,6 +369,7 @@ class TestGroundTruthMustBeScoreable:
         with pytest.raises(ValidationError, match=r"does not match pin\.path"):
             CorpusRecord(
                 record_id="vault-neg-mismatch",
+                population=Population.AUDIT_REVIEW,
                 split=CorpusSplit.PUBLIC,
                 pin=a_pin(),
                 locator=a_locator(file="src/Elsewhere.sol"),
@@ -380,6 +385,7 @@ class TestNegativeKindsCarryTheirEvidence:
     def _neg(self, **over: object) -> CorpusRecord:
         base: dict[str, object] = {
             "record_id": "vault-neg",
+            "population": Population.AUDIT_REVIEW,
             "split": CorpusSplit.PUBLIC,
             "pin": a_pin(),
             "classes": [],
@@ -424,6 +430,7 @@ class TestLevelIsTotal:
         record = CorpusRecord(
             record_id="vault-neg-level",
             split=CorpusSplit.PUBLIC,
+            population=Population.AUDIT_REVIEW,
             pin=a_pin(),
             classes=[],
             negative_for=[VulnerabilityClass.FLASHLOAN_MANIPULATION],
@@ -587,6 +594,7 @@ contract Router {
     def _record(self, start: int, end: int, **over: object) -> CorpusRecord:
         base: dict[str, object] = {
             "record_id": "router-slippage-1",
+            "population": Population.AUDIT_REVIEW,
             "split": CorpusSplit.PUBLIC,
             "pin": a_pin(path="src/Router.sol", sha256=None),
             "locator": Locator(
@@ -721,6 +729,7 @@ class TestTheReportSaysWhatTheCorpusIsASampleOf:
         negative = CorpusRecord(
             record_id="vault-not-reentrant",
             split=CorpusSplit.PUBLIC,
+            population=Population.AUDIT_REVIEW,
             pin=a_pin(),
             classes=[],
             negative_for=[VulnerabilityClass.REENTRANCY],
@@ -798,6 +807,7 @@ class TestLocatorProvenanceIsRecorded:
         with pytest.raises(ValidationError, match="describes nothing"):
             CorpusRecord(
                 record_id="vault-neg-prov",
+                population=Population.AUDIT_REVIEW,
                 split=CorpusSplit.PUBLIC,
                 pin=a_pin(),
                 classes=[],
@@ -902,3 +912,44 @@ class TestAnchoredLocators:
             LocatorProvenance.STATED: 1,
         }
         assert report.derived_locator_count == 0
+
+
+class TestPopulationIsAStratificationAxis:
+    """Two bodies of work with close to opposite skews, recorded per record."""
+
+    def test_a_record_must_state_its_population(self) -> None:
+        with pytest.raises(ValidationError, match="population"):
+            CorpusRecord(
+                record_id="vault-no-population",
+                split=CorpusSplit.PUBLIC,
+                pin=a_pin(),
+                locator=a_locator(),
+                locator_provenance=LocatorProvenance.STATED,
+                classes=[VulnerabilityClass.SLIPPAGE],
+                provenance=a_provenance(),
+            )
+
+    def test_both_populations_are_representable(self) -> None:
+        for population in Population:
+            record = a_positive(population=population)
+            assert record.population is population
+
+
+class TestQuotedProvenance:
+    def test_a_quoted_span_is_cross_checked_and_a_derived_one_is_not(self) -> None:
+        # The confirming parties differ: a stated span is adjudicated by the
+        # declaration index, a quoted one by the repository's bytes. An anchored
+        # or derived span was produced by the index, so asking the index about it
+        # confirms reproducibility rather than correctness.
+        assert LocatorProvenance.QUOTED.is_cross_checked
+        assert LocatorProvenance.STATED.is_cross_checked
+        assert not LocatorProvenance.ANCHORED.is_cross_checked
+        assert not LocatorProvenance.DERIVED.is_cross_checked
+
+    def test_every_provenance_but_the_prose_one_supports_exact_match(self) -> None:
+        assert LocatorProvenance.QUOTED.supports_exact_match
+        assert not LocatorProvenance.DERIVED.supports_exact_match
+
+    def test_a_quoted_record_carries_no_anchor(self) -> None:
+        with pytest.raises(ValidationError, match="anchor_line is set on"):
+            a_positive(locator_provenance=LocatorProvenance.QUOTED, anchor_line=SWAP_START)

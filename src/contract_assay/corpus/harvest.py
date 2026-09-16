@@ -152,6 +152,14 @@ class DraftRecord(BaseModel):
     function: str | None = None
     start_line: int | None = Field(default=None, ge=1)
     end_line: int | None = Field(default=None, ge=1)
+    quoted_source: str | None = Field(
+        default=None,
+        description=(
+            "Source the report quoted, for `normalize` to locate by matching. Carried in "
+            "transit only: storing it on a record would vendor source text, which §6.1 "
+            "forbids, so only the span it produces survives."
+        ),
+    )
     anchor_line: int | None = Field(
         default=None,
         ge=1,
@@ -169,11 +177,16 @@ class DraftRecord(BaseModel):
             raise ValueError(
                 f"commit must be a full 40-character lowercase hex SHA, got {self.commit!r}"
             )
-        if self.start_line is None and self.anchor_line is None and self.function is None:
+        if (
+            self.start_line is None
+            and self.anchor_line is None
+            and self.function is None
+            and not (self.quoted_source or "").strip()
+        ):
             raise ValueError(
-                "a draft needs a line span, an anchor line, or a function name; with none "
-                "of the three there is nothing for normalize to resolve, and the candidate "
-                "should have been skipped as no_location instead"
+                "a draft needs a line span, an anchor line, a quoted excerpt or a function "
+                "name; with none of the four there is nothing for normalize to resolve, and "
+                "the candidate should have been skipped as no_location instead"
             )
         if self.start_line is not None and self.anchor_line is not None:
             raise ValueError(
