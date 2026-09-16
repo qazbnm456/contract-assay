@@ -42,6 +42,13 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from contract_assay.corpus.adapters.classify import classify_title
+from contract_assay.corpus.adapters.markdown import (
+    SourceCitation,
+    contest_snapshot,
+    permalinks,
+    quoted_source,
+)
 from contract_assay.corpus.harvest import (
     Candidate,
     DraftRecord,
@@ -50,7 +57,6 @@ from contract_assay.corpus.harvest import (
     SkipCause,
 )
 from contract_assay.corpus.records import Provenance
-from contract_assay.models import VulnerabilityClass
 
 __all__ = ["Code4renaAdapter", "Code4renaEnumerator", "EnumeratedFinding"]
 
@@ -88,55 +94,10 @@ _NUMBERED_LINE = re.compile(r"^[ \t]*(\d+):", re.M)
 # exercises the defect rather than containing it, so matching one would locate
 # the test.
 _FENCE = re.compile(r"```(\w*)\n(.*?)```", re.S)
-_LOOKS_LIKE_SOURCE = re.compile(
-    r"\b(function|require|modifier|mapping|uint\d*|address|emit|return)\b"
-)
 _LOOKS_LIKE_HARNESS = re.compile(r"\bfunction\s+test\w*\s*\(|\bvm\.|\bconsole\.log")
 
 _BACKTICK_QUALIFIED = re.compile(r"`([A-Z]\w*)\.(\w+)\(?\)?`")
 _BACKTICK_CALL = re.compile(r"`(\w+)\(\)`")
-
-_PERMALINK = re.compile(
-    r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)"
-    r"/blob/(?P<commit>[0-9a-f]{40})/(?P<path>[^\s>)#]+)"
-    r"(?:#L(?P<start>\d+)(?:-L?(?P<end>\d+))?)?"
-)
-
-# Report titles carry no vulnerability taxonomy -- Code4rena classifies by
-# severity only -- so a class has to be read out of English prose. This table is
-# deliberately small, explicit and conservative: a title matching nothing is
-# skipped as `unmapped_class` rather than guessed at, which turns "how much of
-# this platform do our nine classes even cover" into a number the harvest report
-# reports rather than a question nobody asked.
-#
-# Keyword matching on prose is not the thing §2.3 forbids. That rule is about
-# predicates over *code*, where an identifier is the author's to rename and a
-# name match is therefore evidence that can be manufactured. Nobody renames the
-# English word "reentrancy" to defeat a harvester.
-_CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
-    ("reentran", VulnerabilityClass.REENTRANCY),
-    ("access control", VulnerabilityClass.ACCESS_CONTROL),
-    ("unauthori", VulnerabilityClass.ACCESS_CONTROL),
-    ("permission", VulnerabilityClass.ACCESS_CONTROL),
-    ("only owner", VulnerabilityClass.ACCESS_CONTROL),
-    ("slippage", VulnerabilityClass.SLIPPAGE),
-    ("min amount out", VulnerabilityClass.SLIPPAGE),
-    ("oracle", VulnerabilityClass.ORACLE_INTEGRITY),
-    ("stale price", VulnerabilityClass.ORACLE_INTEGRITY),
-    ("price feed", VulnerabilityClass.ORACLE_INTEGRITY),
-    ("flash loan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
-    ("flashloan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
-    ("rounding", VulnerabilityClass.ARITHMETIC_ROUNDING),
-    ("precision loss", VulnerabilityClass.ARITHMETIC_ROUNDING),
-    ("overflow", VulnerabilityClass.ARITHMETIC_ROUNDING),
-    ("underflow", VulnerabilityClass.ARITHMETIC_ROUNDING),
-    ("denial of service", VulnerabilityClass.DENIAL_OF_SERVICE),
-    ("dos", VulnerabilityClass.DENIAL_OF_SERVICE),
-    ("griefing", VulnerabilityClass.DENIAL_OF_SERVICE),
-    ("randomness", VulnerabilityClass.INSECURE_RANDOMNESS),
-    ("unchecked return", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),
-    ("return value", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,17 +109,6 @@ class EnumeratedFinding:
     title: str
     issue_url: str
     body: str
-
-
-@dataclass(frozen=True, slots=True)
-class SourceCitation:
-    """A source location a report stated outright."""
-
-    repo_url: str
-    commit: str
-    path: str
-    start_line: int | None
-    end_line: int | None
 
 
 class Code4renaEnumerator:
@@ -247,13 +197,13 @@ class Code4renaAdapter:
         if block is None:
             return None
         numbers = [int(n) for n in _NUMBERED_LINE.findall(block.group("lines"))]
-        snapshot = _contest_snapshot(report.body)
+        snapshot = contest_snapshot(report.body)
         if not numbers or snapshot is None:
             return None
         repo_url, commit = snapshot
         return SourceCitation(
             repo_url=repo_url,
-            commit=commit,
+            ref=commit,
             path=block.group("path").lstrip("/"),
             start_line=min(numbers),
             end_line=max(numbers),
@@ -277,7 +227,7 @@ class Code4renaAdapter:
                 "no stated location, and the finding cites either no Solidity file or several",
             )
         named = _named_function(finding.title, finding.body)
-        quoted = _quoted_source(finding.body)
+        quoted = quoted_source(finding.body)
         if named is None and quoted is None:
             return Skip(
                 SkipCause.NO_LOCATION,
@@ -287,7 +237,7 @@ class Code4renaAdapter:
         return DraftRecord(
             candidate_id=finding.ident,
             repo_url=file.repo_url,
-            commit=file.commit,
+            commit=file.ref,
             path=file.path,
             contract=contract,
             function=function,
@@ -307,7 +257,7 @@ class Code4renaAdapter:
         return [
             Candidate(
                 candidate_id=finding.ident,
-                classes=_classify(finding.title),
+                classes=classify_title(finding.title),
                 raw_labels=(finding.severity,),
                 title=finding.title,
             )
@@ -325,6 +275,15 @@ class Code4renaAdapter:
             return Skip(SkipCause.UNMAPPED_CLASS, f"title: {finding.title[:80]}")
 
         citation = _cite(finding.body) or self._from_excerpt(report, finding)
+        if citation is not None and not citation.is_pinned:
+            # A branch or tag names whatever it currently points at, so the
+            # location is not reproducible. Counted rather than resolved:
+            # resolving one today gives today's target, and whether that is the
+            # audited state is a separate question with its own uncertainty.
+            return Skip(
+                SkipCause.NO_COMMIT,
+                f"cites {citation.path} at {citation.ref!r}, which names a moving target",
+            )
         if citation is None:
             return self._by_name(report, candidate, finding)
         if not citation.path.endswith(".sol"):
@@ -339,7 +298,7 @@ class Code4renaAdapter:
         return DraftRecord(
             candidate_id=finding.ident,
             repo_url=citation.repo_url,
-            commit=citation.commit,
+            commit=citation.ref,
             path=citation.path,
             start_line=citation.start_line if ranged else None,
             end_line=citation.end_line if ranged else None,
@@ -347,7 +306,7 @@ class Code4renaAdapter:
             # Carried even alongside a stated span: `normalize` cross-checks the
             # two against the repository's bytes and refuses the record if they
             # point at different code.
-            quoted_source=_quoted_source(finding.body),
+            quoted_source=quoted_source(finding.body),
             classes=candidate.classes,
             provenance=Provenance(
                 platform=report.platform,
@@ -355,36 +314,6 @@ class Code4renaAdapter:
                 reported_severity=finding.severity,
             ),
         )
-
-
-def _contest_snapshot(report_body: str) -> tuple[str, str] | None:
-    """The repository and commit the contest audited, from anywhere in the report.
-
-    A commit identifies the snapshot under audit, so any permalink in the report
-    establishes it -- unlike a *location*, which is specific to one finding and
-    cannot be borrowed from another. The most frequently cited pair wins, so a
-    stray link to an unrelated repository does not decide it.
-    """
-    from collections import Counter
-
-    seen = Counter((citation.repo_url, citation.commit) for citation in _permalinks(report_body))
-    return seen.most_common(1)[0][0] if seen else None
-
-
-def _quoted_source(body: str) -> str | None:
-    """The longest fenced block that looks like contract source, if any.
-
-    Longest because an excerpt carrying more lines is both likelier to locate
-    uniquely and likelier to be the passage under discussion rather than an
-    aside.
-    """
-    candidates = [
-        match.group(2)
-        for match in _FENCE.finditer(body)
-        if _LOOKS_LIKE_SOURCE.search(match.group(2))
-        and not _LOOKS_LIKE_HARNESS.search(match.group(2))
-    ]
-    return max(candidates, key=len) if candidates else None
 
 
 def _named_function(title: str, body: str) -> tuple[str | None, str] | None:
@@ -404,30 +333,15 @@ def _named_function(title: str, body: str) -> tuple[str | None, str] | None:
     return None
 
 
-def _classify(title: str) -> tuple[VulnerabilityClass, ...]:
-    """Map a finding title onto the nine classes, or onto none.
-
-    First match wins and only one class is assigned. A title mentioning two
-    concepts is usually about one of them, and multi-labelling from prose would
-    put confidence in a keyword table that does not deserve it -- §6.1 permits
-    multi-labelled records because one *location* can host several classes, which
-    is a different claim from one title matching several words.
-    """
-    lowered = title.lower()
-    for keyword, cls in _CLASS_KEYWORDS:
-        if keyword in lowered:
-            return (cls,)
-    return ()
-
-
 def _sole_solidity_file(body: str) -> SourceCitation | None:
     """The one Solidity file a finding cites, ignoring which lines it cites in it.
 
     A finding citing several lines of one file has not stated a span, but it has
-    stated a file -- and a file plus a name the prose supplies is enough for
-    `normalize` to resolve. A finding citing several files has stated neither.
+    stated a file -- and a file plus a name the prose supplies, or an excerpt it
+    quotes, is enough for `normalize` to resolve. A finding citing several files
+    has stated neither.
     """
-    cited = [c for c in _permalinks(body) if c.path.endswith(".sol")]
+    cited = [c for c in permalinks(body) if c.is_solidity and c.is_pinned]
     paths = {c.path for c in cited}
     return cited[0] if len(paths) == 1 else None
 
@@ -442,27 +356,10 @@ def _cite(body: str) -> SourceCitation | None:
     """
     section = _LINES_OF_CODE.search(body)
     if section is not None:
-        cited = _permalinks(section.group(1))
+        cited = permalinks(section.group(1))
         if cited:
             return cited[0]
 
-    cited = _permalinks(body)
-    distinct = {(c.repo_url, c.commit, c.path, c.start_line, c.end_line) for c in cited}
+    cited = permalinks(body)
+    distinct = {(c.repo_url, c.ref, c.path, c.start_line, c.end_line) for c in cited}
     return cited[0] if len(distinct) == 1 else None
-
-
-def _permalinks(text: str) -> list[SourceCitation]:
-    found: list[SourceCitation] = []
-    for match in _PERMALINK.finditer(text):
-        start = int(match.group("start")) if match.group("start") else None
-        end = int(match.group("end")) if match.group("end") else start
-        found.append(
-            SourceCitation(
-                repo_url=f"https://github.com/{match.group('owner')}/{match.group('repo')}",
-                commit=match.group("commit"),
-                path=match.group("path"),
-                start_line=start,
-                end_line=end,
-            )
-        )
-    return found

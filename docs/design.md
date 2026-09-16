@@ -586,6 +586,17 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   can, make the judgement runnable if you cannot, and disclose only when neither
   is available.
 
+  Two platforms are read, and comparing them isolates which constraint actually
+  binds. One publishes consolidated reports where a location is stated in about
+  one finding in nine; the other publishes a submission template with a
+  structured severity and a section whose purpose is to say where the defect is,
+  and a location was readable in every sampled document. So report *format* is
+  not the limiting factor. Class mapping is: measured at 18% on 87 findings from
+  the first platform and 13% on 8 from the second, which is the same number
+  within the noise of those samples. A second platform of the same kind
+  multiplies the pool without moving the constraint, which is worth knowing
+  before a third is built.
+
   A fourth route is **measured but not implemented**, recorded here because
   reproducing the measurement costs network access. Findings quote the vulnerable
   code inline far more often than they cite it: across 87 accepted findings, 82%
@@ -978,7 +989,7 @@ work in the present tense reports intentions as capabilities.
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
 | `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **built** |
-| `corpus/adapters/` | one module per platform; Code4rena only | **partly built** |
+| `corpus/adapters/` | shared markdown and label readers; two platforms | **partly built** |
 | `corpus/normalize.py` | location resolution, span derivation, digest pinning (§6.3) | **built** |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |

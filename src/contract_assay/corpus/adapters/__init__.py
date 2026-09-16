@@ -12,10 +12,37 @@ format's structure, and an adapter is validated against real reports outside the
 tree.
 """
 
+from contract_assay.corpus.adapters.classify import CLASS_KEYWORDS, classify_title
 from contract_assay.corpus.adapters.code4rena import (
     Code4renaAdapter,
     Code4renaEnumerator,
     EnumeratedFinding,
 )
+from contract_assay.corpus.adapters.markdown import (
+    SourceCitation,
+    contest_snapshot,
+    permalinks,
+    quoted_source,
+    section,
+)
+from contract_assay.corpus.adapters.sherlock import (
+    SherlockAdapter,
+    SherlockEnumerator,
+    SherlockIssue,
+)
 
-__all__ = ["Code4renaAdapter", "Code4renaEnumerator", "EnumeratedFinding"]
+__all__ = [
+    "CLASS_KEYWORDS",
+    "Code4renaAdapter",
+    "Code4renaEnumerator",
+    "EnumeratedFinding",
+    "SherlockAdapter",
+    "SherlockEnumerator",
+    "SherlockIssue",
+    "SourceCitation",
+    "classify_title",
+    "contest_snapshot",
+    "permalinks",
+    "quoted_source",
+    "section",
+]
