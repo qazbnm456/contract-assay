@@ -193,6 +193,25 @@ class ScoreReport:
     by_provenance: Mapping[LocatorProvenance, int] = field(default_factory=dict)
     by_population: Mapping[Population, int] = field(default_factory=dict)
     matches: tuple[Match, ...] = ()
+    unscoreable_claims: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
+    """Verified findings in classes the corpus holds no record for.
+
+    Found by running three detectors against eleven real records: 90 verified
+    findings went in and 2 came out, because the class-keyed loop visited only
+    the classes the *records* carried. The other 88 were emitted, verified
+    against source, and then dropped -- which is §7.2's own failure mode, on
+    §7.2's own metric. A detector for a class the corpus does not cover could
+    emit any number of claims for nothing.
+
+    They are counted here and enter no confusion matrix, the treatment `invalid`
+    and `skipped` runs already get. Scoring them as false positives would be the
+    opposite overclaim: the corpus holds no record for that class, so it has no
+    standing to call them wrong. What it can say is how many there were, and
+    that it could not adjudicate them.
+    """
+
+    unscoreable_runs: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
+    """Measured runs in classes the corpus holds no record for."""
 
     @property
     def thin_classes(self) -> tuple[VulnerabilityClass, ...]:
@@ -228,6 +247,18 @@ class ScoreReport:
             parts.append(
                 f"{_plural(unavailable_fn, 'comparison')} could not resolve a signature, so "
                 "function-strength matching was unavailable there."
+            )
+
+        unscoreable = sum(self.unscoreable_claims.values())
+        if unscoreable:
+            named = ", ".join(
+                f"{cls.value} ({n})" for cls, n in sorted(self.unscoreable_claims.items())
+            )
+            parts.append(
+                f"{_plural(unscoreable, 'verified finding')} could not be adjudicated "
+                f"because the corpus holds no record of their class: {named}. Counted "
+                "here and in no confusion matrix -- the corpus cannot call them wrong, "
+                "only unscored."
             )
 
         invalid = sum(s.invalid_runs for s in self.by_class.values())
@@ -368,14 +399,31 @@ def score(
             parsed_cache[key] = Syntax.of(source) if source else None
         return parsed_cache[key]
 
-    for cls in {c for record in truths for c in record.classes}:
+    # Every measured run is stratified, including runs in classes no record
+    # covers. Restricting these tables to scoreable classes made them describe
+    # the corpus's coverage while appearing to describe the submission.
+    for run in runs:
+        if not run.outcome.is_measurement:
+            continue
+        by_level[run.level] += 1
+        if run.evidence_tier is not None:
+            by_tier[run.evidence_tier] += 1
+
+    scoreable = {c for record in truths for c in record.classes}
+    unscoreable_claims: Counter[VulnerabilityClass] = Counter()
+    unscoreable_runs: Counter[VulnerabilityClass] = Counter()
+    for run in runs:
+        if run.class_id in scoreable:
+            continue
+        if run.outcome.is_measurement:
+            unscoreable_runs[run.class_id] += 1
+        unscoreable_claims[run.class_id] += sum(
+            1 for f in run.findings if f.status is CitationStatus.VERIFIED
+        )
+
+    for cls in scoreable:
         class_records = [r for r in truths if cls in r.classes]
         class_runs = [run for run in runs if run.class_id is cls]
-
-        for run in class_runs:
-            by_level[run.level] += 1
-            if run.evidence_tier is not None:
-                by_tier[run.evidence_tier] += 1
 
         predictions = [
             finding.finding.locator
@@ -442,4 +490,6 @@ def score(
         by_provenance=dict(by_provenance),
         by_population=dict(by_population),
         matches=tuple(all_matches),
+        unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},
+        unscoreable_runs=dict(sorted(unscoreable_runs.items())),
     )

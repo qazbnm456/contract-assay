@@ -1184,6 +1184,29 @@ must not rank alongside one that does not.
 The common shape: wherever the harness tidies away output a detector should not
 have produced, it also removes the incentive not to produce it.
 
+A fourth instance was found by running three detectors against eleven records
+rather than by reading the code, and it was the one this rule missed. 90
+verified findings went in and 2 came out: the per-class loop visited only the
+classes the *ground-truth records* carried, so 88 findings in a class the
+corpus does not cover were emitted, checked against source, and dropped. A
+detector for an uncovered class could emit any number of claims for nothing --
+the exact thing the rule above forbids, arrived at from the corpus side instead
+of the detector side.
+
+Counting them as false positives is the opposite overclaim. With no record of
+that class, the corpus has no standing to call a claim wrong; what it can say is
+how many there were and that it could not adjudicate them. So they are counted
+and disclosed, entering no confusion matrix -- the treatment `invalid` and
+`skipped` runs already get. The stratification tables were restricted the same
+way, and are not any more: those tables describe the submission, and restricting
+them to scoreable classes made them describe the corpus's coverage while
+appearing to describe the submission.
+
+The general form, which is not about scoring: **a loop keyed on one collection
+silently drops everything in the other.** The key was the class, the collections
+were records and runs, and the join looked total because every class in the
+records was present in the runs.
+
 Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.

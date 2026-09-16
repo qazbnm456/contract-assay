@@ -382,3 +382,52 @@ class TestOneFindingSatisfiesOneRecord:
         # act on -- it distorts one side of it.
         for records in (1, 2, 4):
             assert self._score(records).precision(MatchStrength.EXACT) == 1.0
+
+
+class TestAClassTheCorpusDoesNotCover:
+    """Findings the corpus cannot adjudicate are counted, not dropped.
+
+    Found by running three detectors against eleven real records: 90 verified
+    findings went in and 2 came out. The class-keyed loop visited only the
+    classes the records carried, so 88 findings were emitted, verified against
+    source, and tidied away -- §7.2's failure mode on §7.2's own metric. Nothing
+    failed when that was the behaviour, which is why these tests exist.
+    """
+
+    OTHER = VulnerabilityClass.INSECURE_RANDOMNESS
+
+    def _report(self):  # type: ignore[no-untyped-def]
+        return score(
+            [a_run([(4, 7)]), a_run([(4, 7), (9, 12), (14, 16)], cls=self.OTHER)],
+            [a_record()],
+            resolver(),
+        )
+
+    def test_the_claims_are_counted(self) -> None:
+        assert self._report().unscoreable_claims == {self.OTHER: 3}
+
+    def test_the_runs_are_counted(self) -> None:
+        assert self._report().unscoreable_runs == {self.OTHER: 1}
+
+    def test_they_enter_no_confusion_matrix(self) -> None:
+        # Scoring them as false positives is the opposite overclaim: with no
+        # record of that class the corpus has no standing to call them wrong.
+        report = self._report()
+        assert self.OTHER not in report.by_class
+        assert report.by_class[CLS].precision(MatchStrength.EXACT) == 1.0
+
+    def test_the_statement_says_so(self) -> None:
+        statement = self._report().statement()
+        assert "3 verified findings could not be adjudicated" in statement
+        assert "insecure_randomness (3)" in statement
+
+    def test_every_measured_run_is_stratified(self) -> None:
+        # These tables describe the submission. Restricted to scoreable classes
+        # they described the corpus's coverage instead, while looking the same.
+        assert sum(self._report().by_level.values()) == 2
+        assert sum(self._report().by_tier.values()) == 2
+
+    def test_a_clean_run_in_an_uncovered_class_adds_no_claims(self) -> None:
+        report = score([a_run([], cls=self.OTHER)], [a_record()], resolver())
+        assert report.unscoreable_claims == {}
+        assert report.unscoreable_runs == {self.OTHER: 1}
