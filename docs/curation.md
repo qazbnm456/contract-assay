@@ -156,3 +156,57 @@ it by choosing a dedup key would bury a scoring policy inside a normalisation
 rule. When the scorer settles that policy, the repair is to record the *relation*
 between the two records and let the scorer apply the policy to it; this section
 goes away then.
+
+## Curating from an exploited incident
+
+The same six steps, with two of them replaced. Use this when the victim has no
+canonical repository — which is most of them — and exists as verified source at
+an address.
+
+### 1'. Find the fork point and the address, in the artefact
+
+A proof of concept states both: a chain, a block number or a transaction hash,
+and the addresses it attacks. **Read them out of the artefact.** Do not recall
+an address from a post-mortem; a 40-hex string is exactly where memory fails
+silently, and the artefact is the reproducible source.
+
+A transaction hash is the better fork point when the artefact gives one. It pins
+a block *and* a position within it.
+
+### 3'. Fetch the verified source, and keep it as a map
+
+Ask a verification repository for the address on that chain. It answers with an
+explicit match status — no match means no record, and that is a fact about what
+has been verified rather than about the incident.
+
+The answer is a **set of named files**, and the names are import specifiers
+(`@openzeppelin/contracts/token/ERC20/ERC20.sol`). Store it as a manifest,
+`<root>/<chain_id>/<address>.json` holding `{"sources": {name: content}}`, which
+is the shape `contract-assay verify --source-root` reads for an address pin.
+Writing those names into directories would make them look joinable, which they
+are not.
+
+Ask the same request whether the address is a proxy. If it is, pin the
+implementation and set `implementation_of` to the address users call. Bear in
+mind that the answer names a *recognised* proxy standard: a bespoke proxy comes
+back as "not a proxy", so a contract whose own name ends in `Proxy` deserves a
+second look regardless of what the field says.
+
+### 4. Read the function. Do not trust the write-up's phrasing
+
+Unchanged, and it matters more here. A worked example: one incident's write-ups
+describe an unchecked external call. The interface declares
+`function delegatedTransferERC20(address, address, uint256) external;` — no
+return value, so there is nothing for anybody to have failed to check, and
+`unchecked_external_call` does not apply. What the code actually does is ask the
+*subject of an authorisation check* for the answer: `from` is caller-supplied
+and the guard reads `owner()` from it, so an attacker's own contract satisfies
+the guard by construction. That is `access_control`, and only reading the
+interface distinguished them.
+
+### What an incident record cannot yet claim
+
+A **post-fix negative**, because "after the fix" is identified by a commit and
+an address pin has none (§6.2). The positive half of §6.4 survives — the proof
+of concept demonstrates the defect executably, which no prose record can — but
+the control does not. Record the positive and do not improvise a negative.

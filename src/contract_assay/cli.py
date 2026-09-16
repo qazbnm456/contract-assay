@@ -43,6 +43,31 @@ def main(
     """Benchmark infrastructure for LLM smart contract auditing."""
 
 
+def _source_from_manifest(root: Path, pin: SourcePin) -> str | None:
+    """Verified source for an address pin, from a manifest laid out by chain.
+
+    `<root>/<chain_id>/<address>.json`, holding `{"sources": {key: content}}` --
+    the shape a verification repository answers with. A manifest rather than a
+    directory tree because that is what the thing being represented *is*: a set
+    of named files, whose names are import specifiers rather than paths. Writing
+    them into directories would make `path` joinable by accident and lose the
+    distinction the pin exists to carry.
+    """
+    if pin.kind != "address":
+        return None
+    manifest = root / str(pin.chain_id) / f"{pin.address}.json"
+    if not manifest.is_file():
+        return None
+    try:
+        sources = json.loads(manifest.read_text(encoding="utf-8")).get("sources", {})
+    except (json.JSONDecodeError, OSError):
+        return None
+    entry = sources.get(pin.path)
+    if isinstance(entry, dict):
+        entry = entry.get("content")
+    return entry if isinstance(entry, str) else None
+
+
 def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
     """Resolve pinned paths against a checkout on disk.
 
@@ -54,17 +79,18 @@ def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
 
     def resolve(pin: SourcePin) -> str | None:
         # `path` is a key into the pinned unit, and only some kinds of unit are
-        # directories. Verified source arrives keyed by import-style names --
-        # `@openzeppelin/contracts/token/ERC20/ERC20.sol` and the like -- which
-        # look exactly like repository paths and join to nothing. Joining a key
-        # to a root because it looked like a path reads the wrong file, or no
-        # file, and says nothing about why; so the pin is asked instead.
-        if not pin.is_filesystem_path:
-            return None
-        candidate = root / pin.path
-        if not candidate.is_file():
-            return None
-        return candidate.read_text(encoding="utf-8", errors="replace")
+        # directories. Verified source arrives as a *map* of import-style names
+        # to contents -- `@openzeppelin/contracts/token/ERC20/ERC20.sol` and the
+        # like -- which look exactly like repository paths and join to nothing.
+        # Joining a key to a root because it looked like a path reads the wrong
+        # file, or no file, and says nothing about why; so the pin is asked, and
+        # the two kinds are read from the two shapes they actually have.
+        if pin.is_filesystem_path:
+            candidate = root / pin.path
+            if not candidate.is_file():
+                return None
+            return candidate.read_text(encoding="utf-8", errors="replace")
+        return _source_from_manifest(root, pin)
 
     return resolve
 

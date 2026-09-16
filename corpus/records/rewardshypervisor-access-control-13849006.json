@@ -1,0 +1,35 @@
+{
+  "record_id": "rewardshypervisor-access-control-13849006",
+  "population": "exploited_incident",
+  "split": "public",
+  "pin": {
+    "path": "contracts/RewardsHypervisor.sol",
+    "sha256": "a21c2cb94041b5e444aaaa750cef7264e2c7adc8b348d02a5a9ef0a166588ef2",
+    "kind": "address",
+    "chain_id": 1,
+    "address": "0xc9f27a50f82571c1c8423a42970613b8dbda14ef",
+    "fork_point": "13849006"
+  },
+  "locator": {
+    "file": "contracts/RewardsHypervisor.sol",
+    "contract": "RewardsHypervisor",
+    "function": "deposit",
+    "start_line": 41,
+    "end_line": 65
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "derived",
+  "asserted_labels": [
+    "contract",
+    "function"
+  ],
+  "provenance": {
+    "platform": "incident-poc",
+    "report_url": "https://github.com/SunWeb3Sec/DeFiHackLabs/blob/main/src/test/2021-12/Visor_exp.sol"
+  },
+  "notes": "The authorisation check asks the subject of the check for the answer: `from` is caller-supplied, and `require(IVisor(from).owner() == msg.sender)` reads `owner()` from a contract the caller may have deployed, so the guard is satisfiable by construction. Not unchecked_external_call: `delegatedTransferERC20` is declared `external` returning nothing, so there is no return value to inspect -- the class the post-mortem phrasing suggests does not apply, which reading the interface settled."
+}

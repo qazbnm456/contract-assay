@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from contract_assay.cli import app
+from contract_assay.cli import _local_resolver, app
+from contract_assay.corpus.records import AddressPin, CommitPin
 
 pytestmark = pytest.mark.offline
 
@@ -236,3 +237,59 @@ class TestVerify:
         assert result.exit_code == 1
         assert "digest_mismatch" in result.stdout
         assert path.exists()
+
+
+class TestResolvingAnAddressPin:
+    """Verified source is a map of names to contents, not a directory tree.
+
+    So the local form is a manifest per (chain, address), and `path` is looked
+    up in it rather than joined to anything. Writing those keys into
+    directories would make `path` joinable by accident and lose the distinction
+    the pin exists to carry -- and the keys are import specifiers
+    (`@openzeppelin/contracts/...`), which is what makes joining wrong rather
+    than merely unusual.
+    """
+
+    ADDRESS = "0x" + "c" * 40
+
+    def _manifest(self, root: Path, sources: dict[str, object]) -> None:
+        chain = root / "1"
+        chain.mkdir(parents=True, exist_ok=True)
+        (chain / f"{self.ADDRESS}.json").write_text(json.dumps({"sources": sources}))
+
+    def _pin(self, path: str = "contracts/Vault.sol") -> AddressPin:
+        return AddressPin(chain_id=1, address=self.ADDRESS, fork_point="13849006", path=path)
+
+    def test_a_key_is_looked_up_not_joined(self, tmp_path: Path) -> None:
+        self._manifest(tmp_path, {"contracts/Vault.sol": {"content": "contract Vault {}"}})
+        assert _local_resolver(tmp_path)(self._pin()) == "contract Vault {}"
+
+    def test_an_import_specifier_resolves(self, tmp_path: Path) -> None:
+        key = "@openzeppelin/contracts/token/ERC20/ERC20.sol"
+        self._manifest(tmp_path, {key: {"content": "contract ERC20 {}"}})
+        assert _local_resolver(tmp_path)(self._pin(key)) == "contract ERC20 {}"
+
+    def test_a_plain_string_entry_is_accepted(self, tmp_path: Path) -> None:
+        self._manifest(tmp_path, {"contracts/Vault.sol": "contract Vault {}"})
+        assert _local_resolver(tmp_path)(self._pin()) == "contract Vault {}"
+
+    def test_a_missing_manifest_resolves_to_nothing(self, tmp_path: Path) -> None:
+        assert _local_resolver(tmp_path)(self._pin()) is None
+
+    def test_a_missing_key_resolves_to_nothing(self, tmp_path: Path) -> None:
+        self._manifest(tmp_path, {"contracts/Other.sol": "contract Other {}"})
+        assert _local_resolver(tmp_path)(self._pin()) is None
+
+    def test_a_corrupt_manifest_is_not_a_traceback(self, tmp_path: Path) -> None:
+        chain = tmp_path / "1"
+        chain.mkdir(parents=True)
+        (chain / f"{self.ADDRESS}.json").write_text("{not json")
+        assert _local_resolver(tmp_path)(self._pin()) is None
+
+    def test_a_commit_pin_does_not_read_the_manifest(self, tmp_path: Path) -> None:
+        # The two kinds are read from the two shapes they actually have, and
+        # neither falls back to the other: a silent fallback would resolve a
+        # commit pin against whatever manifest happened to be there.
+        self._manifest(tmp_path, {"src/Vault.sol": "contract Vault {}"})
+        pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
+        assert _local_resolver(tmp_path)(pin) is None
