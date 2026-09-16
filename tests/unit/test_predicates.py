@@ -192,12 +192,12 @@ class TestProducerControlledValueRead:
         assert ref.detail["source"] == "block.timestamp"
 
 
-class TestStateChangeReachableWithoutGuard:
+class TestStateChangeReachableWithoutModifierOrSenderReference:
     def test_an_unguarded_external_setter_is_reported(self) -> None:
         source = contract(
             "    address owner;\n    function setOwner(address o) external { owner = o; }"
         )
-        [ref] = fired(source, "state_change_reachable_without_guard")
+        [ref] = fired(source, "state_change_reachable_without_modifier_or_sender_reference")
         assert ref.detail["visibility"] == "external"
         assert ref.detail["state_write_count"] == 1
         assert ref.locator.function == "setOwner"
@@ -206,7 +206,7 @@ class TestStateChangeReachableWithoutGuard:
         source = contract(
             "    address owner;\n    function setOwner(address o) external onlyOwner { owner = o; }"
         )
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     def test_reading_msg_sender_is_taken_as_a_guard(self) -> None:
         source = contract("""\
@@ -216,42 +216,42 @@ class TestStateChangeReachableWithoutGuard:
         owner = o;
     }
 """)
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     @pytest.mark.parametrize("visibility", ["internal", "private"])
     def test_an_unreachable_function_is_not_reported(self, visibility: str) -> None:
         source = contract(
             f"    address owner;\n    function setOwner(address o) {visibility} {{ owner = o; }}"
         )
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     def test_absent_visibility_is_reported_as_unspecified_and_still_reachable(self) -> None:
         # Before 0.5 an omitted visibility defaulted to public. Reading the
         # absence as restrictive would exempt the most exposed functions in
         # exactly the oldest code, which is where the hardest defects live.
         source = contract("    address owner;\n    function setOwner(address o) { owner = o; }")
-        [ref] = fired(source, "state_change_reachable_without_guard")
+        [ref] = fired(source, "state_change_reachable_without_modifier_or_sender_reference")
         assert ref.detail["visibility"] == "unspecified"
 
     def test_a_constructor_is_not_reported(self) -> None:
         # It runs once at deployment, so an unguarded write in it is not an
         # instance of this property.
         source = contract("    address owner;\n    constructor(address o) { owner = o; }")
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     def test_a_modifier_definition_is_not_reported(self) -> None:
         source = contract("    uint256 n;\n    modifier m() { n = 1; _; }")
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     def test_a_function_writing_no_state_is_not_reported(self) -> None:
         source = contract("    function f(uint256 a) external { uint256 scratch = a; }")
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
     def test_a_view_function_is_not_reported(self) -> None:
         source = contract(
             "    uint256 n;\n    function f() external view returns (uint256) { return n; }"
         )
-        assert fired(source, "state_change_reachable_without_guard") == []
+        assert fired(source, "state_change_reachable_without_modifier_or_sender_reference") == []
 
 
 class TestStateWriteAfterRawExternalCall:
@@ -472,3 +472,34 @@ class TestCallsOutsideAnyFunction:
         assert ref.predicate == "producer_controlled_value_read"
         assert ref.locator.function is None
         assert ref.locator.contract == "C"
+
+
+class TestTheSenderConditionIsCoarseOnPurpose:
+    """Both directions of the coarseness are pinned, because both are deliberate."""
+
+    NAME = "state_change_reachable_without_modifier_or_sender_reference"
+
+    def test_a_sender_reference_used_only_for_logging_suppresses_the_fact(self) -> None:
+        # A false negative, accepted knowingly. Tightening the condition to
+        # "appears in a require or an if" would catch this one and then fire on
+        # every permissionless-by-design function, of which there are far more.
+        source = contract("""\
+    address owner;
+    event Changed(address by);
+    function setOwner(address o) external {
+        emit Changed(msg.sender);
+        owner = o;
+    }
+""")
+        assert fired(source, self.NAME) == []
+
+    def test_a_permissionless_per_sender_write_is_not_reported(self) -> None:
+        # The case that pays for the leniency: a deposit guards nothing and is
+        # meant to guard nothing, so reporting it would be a false fact.
+        source = contract("""\
+    mapping(address => uint256) balances;
+    function deposit() external payable {
+        balances[msg.sender] += msg.value;
+    }
+""")
+        assert fired(source, self.NAME) == []

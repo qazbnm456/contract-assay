@@ -280,11 +280,36 @@ def _producer_controlled_value_read(syntax: Syntax, path: str) -> list[EvidenceR
 
 
 @_register(
-    "state_change_reachable_without_guard",
+    "state_change_reachable_without_modifier_or_sender_reference",
     VulnerabilityClass.ACCESS_CONTROL,
-    summary="An externally reachable function writes state with no modifier and no sender read.",
+    summary="An externally reachable function writes state, carries no modifier, and never "
+    "mentions msg.sender.",
 )
-def _state_change_reachable_without_guard(syntax: Syntax, path: str) -> list[EvidenceRef]:
+def _state_change_reachable_without_modifier_or_sender_reference(
+    syntax: Syntax, path: str
+) -> list[EvidenceRef]:
+    """Named for the two absences it observes, not for "unguarded".
+
+    A `msg.sender` reference is not the same thing as a guard, so a name
+    claiming one would overclaim. What this establishes is narrower and exactly
+    stateable: externally reachable, writes state, no modifier, no mention of
+    `msg.sender` anywhere in the body.
+
+    The sender condition is deliberately coarse, and tightening it would make
+    the predicate worse rather than better. Requiring the reference to sit in a
+    `require` or an `if` would distinguish a check from a log -- and would then
+    fire on every permissionless-by-design function, because
+    `balances[msg.sender] += msg.value` writes state and reads the sender
+    without guarding anything. Those are non-findings, and there would be far
+    more of them than of the case tightening would catch.
+
+    Two things it therefore misses, both worth knowing before trusting a zero:
+
+    *   A sender reference used only for logging -- `emit Changed(msg.sender)`
+        beside an unguarded write -- suppresses the fact.
+    *   A guard implemented as an internal helper, `_checkOwner()`, is invisible:
+        distinguishing that call from any other internal call needs types.
+    """
     found: list[EvidenceRef] = []
     for function in syntax.functions:
         declaration = function.declaration
@@ -310,7 +335,7 @@ def _state_change_reachable_without_guard(syntax: Syntax, path: str) -> list[Evi
             continue
         found.append(
             EvidenceRef(
-                predicate="state_change_reachable_without_guard",
+                predicate="state_change_reachable_without_modifier_or_sender_reference",
                 tier=_SYNTACTIC,
                 locator=function.site.locator(path),
                 detail={
