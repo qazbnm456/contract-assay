@@ -1,0 +1,363 @@
+"""Core data contract.
+
+Every type here exists to make a specific failure mode structurally impossible
+rather than merely discouraged. Benchmarks in this space fail in characteristic
+ways -- scoring at the wrong granularity, counting infrastructure errors as
+model judgements, letting a required field be invented when it goes missing.
+None of those failures crash; they produce plausible numbers. Each docstring
+below names the one its invariant forecloses.
+
+The two load-bearing rules:
+
+1.  A finding is a *citation*. It carries a locator and the exact source text at
+    that locator, and it is re-verified against the source after the model
+    returns -- unconditionally, every run. A finding that cannot be re-verified
+    becomes `unverified`; it is neither silently dropped nor silently accepted.
+
+2.  Evidence is produced by deterministic predicates and is independent of the
+    model's verdict. A model may decline to report, or report wrongly; it cannot
+    remove a piece of evidence from the record.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+__all__ = [
+    "CitationStatus",
+    "DetectorRun",
+    "DifficultyLevel",
+    "Escalation",
+    "EvidenceRef",
+    "EvidenceTier",
+    "Finding",
+    "InvalidReason",
+    "Locator",
+    "Outcome",
+    "SkipReason",
+    "VerifiedFinding",
+]
+
+
+class _Frozen(BaseModel):
+    """Records are immutable once built: a run artifact must not be edited in place."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+# ---------------------------------------------------------------------------
+# Localization
+# ---------------------------------------------------------------------------
+
+
+class Locator(_Frozen):
+    """Where a finding lives.
+
+    A location is only worth recording if something checks it. Carrying a
+    function name that no scorer ever reads is worse than carrying nothing: it
+    lends the appearance of precision while a finding anywhere in a repository
+    still scores as a hit for a finding anywhere else. This type exists to be
+    verified at the point of production, which is what `contract_assay.verify`
+    does.
+
+    Line numbers are 1-indexed and inclusive, matching every compiler and editor
+    a reader will cross-check against.
+    """
+
+    file: str = Field(description="Path relative to the compilation root.")
+    contract: str | None = Field(default=None, description="Enclosing contract/library/interface.")
+    function: str | None = Field(default=None, description="Enclosing function, if any.")
+    start_line: int = Field(ge=1)
+    end_line: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _span_is_ordered(self) -> Locator:
+        if self.end_line < self.start_line:
+            raise ValueError(f"end_line {self.end_line} precedes start_line {self.start_line}")
+        return self
+
+    def __str__(self) -> str:
+        span = (
+            f"{self.start_line}"
+            if self.start_line == self.end_line
+            else f"{self.start_line}-{self.end_line}"
+        )
+        qualifier = ":".join(p for p in (self.contract, self.function) if p)
+        return f"{self.file}:{span}" + (f" ({qualifier})" if qualifier else "")
+
+
+# ---------------------------------------------------------------------------
+# Evidence
+# ---------------------------------------------------------------------------
+
+
+class EvidenceTier(StrEnum):
+    """How much analytical depth was available for a source unit.
+
+    Not every repository compiles. When the semantic backend cannot build a
+    compilation unit, analysis degrades to the syntactic tier and says so, rather
+    than dropping the unit. The tier travels with every result so that reports can
+    stratify by it -- a `clean` verdict reached on syntactic evidence alone is a
+    weaker claim than one reached with def-use and call-graph information, and the
+    two must never be averaged together silently.
+    """
+
+    SEMANTIC = "semantic"
+    """Compiled: def-use chains, control flow, call graph."""
+
+    SYNTACTIC = "syntactic"
+    """Parsed only: syntax tree, no types, no data flow."""
+
+
+class EvidenceRef(_Frozen):
+    """One deterministic predicate that fired, with where it fired.
+
+    Produced by a detector's `evidence()` phase, never by a model. This is the
+    part of the record a model cannot influence: it may sway the verdict, but it
+    cannot remove an evidence item, and a verdict asserted against the evidence
+    is visible as exactly that.
+    """
+
+    predicate: str = Field(description="Stable predicate id, e.g. 'swap_call_min_out_is_literal'.")
+    tier: EvidenceTier
+    locator: Locator
+    detail: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Findings
+# ---------------------------------------------------------------------------
+
+
+class Finding(_Frozen):
+    """What a detector claims, in a form that can be checked.
+
+    `quote` is the exact source text spanned by `locator`. It is what makes the
+    claim falsifiable: the verifier re-reads the source and compares. A quote that
+    does not match is not a formatting problem, it is an unverified claim.
+    """
+
+    detector_id: str
+    locator: Locator
+    quote: str = Field(min_length=1, description="Exact source text at `locator`.")
+    reasoning: str = Field(min_length=1)
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+
+class CitationStatus(StrEnum):
+    VERIFIED = "verified"
+    """`quote` matches the source at `locator`, and every verdict predicate passed."""
+
+    UNVERIFIED = "unverified"
+    """Re-verification failed. Retained in the record with the reason, never dropped."""
+
+
+class VerifiedFinding(_Frozen):
+    """A finding after re-verification, carrying the reasons it failed if it did.
+
+    When a verdict predicate rejects a finding, it must name itself.
+
+    A rule that lives only in prompt text and silently yields an empty result
+    teaches nobody anything: the rejection becomes indistinguishable from the
+    model never having looked, and the recall cost of tightening the rule is
+    invisible. Here a rejection is a named, counted, reportable event, which
+    makes strictness tunable rather than a matter of faith.
+    """
+
+    finding: Finding
+    status: CitationStatus
+    failed_checks: list[str] = Field(
+        default_factory=list,
+        description="Verdict predicates that rejected this finding. Empty iff verified.",
+    )
+
+    @model_validator(mode="after")
+    def _status_matches_checks(self) -> VerifiedFinding:
+        if self.status is CitationStatus.VERIFIED and self.failed_checks:
+            raise ValueError("a verified finding cannot carry failed checks")
+        if self.status is CitationStatus.UNVERIFIED and not self.failed_checks:
+            raise ValueError("an unverified finding must name what failed")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Outcomes
+# ---------------------------------------------------------------------------
+
+
+class Outcome(StrEnum):
+    """The result of running one detector against one source unit.
+
+    Collapsing model misses, schema-parse failures, transport errors and missing
+    corpus paths into a single negative label yields a false-negative count that
+    is a blend of unrelated causes, attributable to none of them. Only the first
+    two members below are measurements; the others must state a cause, are
+    reported separately as harness health, and never enter a confusion matrix.
+    """
+
+    VULNERABLE = "vulnerable"
+    """At least one finding survived re-verification. Enters the matrix."""
+
+    CLEAN = "clean"
+    """The detector ran to completion and claimed nothing. Enters the matrix."""
+
+    INVALID = "invalid"
+    """The run did not produce a usable answer. Excluded from the matrix."""
+
+    SKIPPED = "skipped"
+    """The source could not be analysed at all. Excluded from the matrix."""
+
+    @property
+    def is_measurement(self) -> bool:
+        """True iff this outcome may be scored. Excluded outcomes are reported, not scored."""
+        return self in (Outcome.VULNERABLE, Outcome.CLEAN)
+
+
+class InvalidReason(StrEnum):
+    """Why a run produced no usable answer. Never conflated with `clean`."""
+
+    SCHEMA_VIOLATION = "schema_violation"
+    CITATION_UNVERIFIED = "citation_unverified"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    TRANSPORT_FAILURE = "transport_failure"
+    SANDBOX_FAILURE = "sandbox_failure"
+
+
+class SkipReason(StrEnum):
+    """Why a source was not analysed.
+
+    Deliberately short. These are the only conditions under which a source may be
+    passed over, and both mean "there is provably nothing here to read" -- not "this
+    looks unpromising". Gate predicates are lenient by construction: when in doubt
+    they admit the source and let the detector spend a cheap call on it, because a
+    wasted call costs a fraction of a cent and a wrong skip costs a true positive.
+    """
+
+    UNPARSEABLE = "unparseable"
+    """Neither the semantic nor the syntactic backend could read the source."""
+
+    NO_CONTRACT_DECLARATION = "no_contract_declaration"
+    """The unit declares no contract, library or interface."""
+
+
+class Escalation(_Frozen):
+    """One hand-off from the working model to a larger one.
+
+    The escape hatch is metered. Recording every escalation -- and whether it moved
+    the verdict -- turns "how much did the large model actually contribute?" from an
+    article of faith into a number: escalation rate, and verdict-flip rate given
+    escalation, per difficulty level.
+    """
+
+    reason: str
+    from_model: str
+    to_model: str
+    changed_verdict: bool
+
+
+class DifficultyLevel(StrEnum):
+    """Expected analytical depth, after the EEA EthTrust Security Levels taxonomy.
+
+    Used to stratify reports. A single aggregate score averages together classes
+    that static analysis has handled for years and classes it cannot reach in
+    principle, producing a number that answers no question anyone has. Reported
+    per level, the results answer the one that matters: does the model earn its
+    keep where deterministic tooling cannot follow?
+
+    The taxonomy is referenced by identifier only; no specification text is
+    reproduced in this project.
+    """
+
+    S = "S"
+    """Static analysis is expected to detect it."""
+
+    M = "M"
+    """Manual review, or static analysis with stronger assumptions."""
+
+    Q = "Q"
+    """Requires business-logic understanding. The frontier."""
+
+
+# ---------------------------------------------------------------------------
+# Run record
+# ---------------------------------------------------------------------------
+
+
+class DetectorRun(_Frozen):
+    """One detector, one source unit, one result.
+
+    The validators below are the point of this module. Each forecloses a record
+    that is easy to produce by accident and impossible to detect afterwards:
+
+    * a `clean` verdict that actually carried a failure
+    * an `invalid` result with no stated cause
+    * a `vulnerable` verdict with nothing verified
+    * a severity invented by code when none was supplied -- foreclosed by the
+      absence of any severity field on this model at all
+
+    Severity is deliberately not represented. It is a value judgement, not an
+    observation; the model is asked only for facts it can point at. Ground-truth
+    severity assigned by the original auditors travels with corpus records as
+    provenance, and is never mixed with anything a model produced.
+    """
+
+    detector_id: str
+    class_id: str = Field(description="Vulnerability class, one of the nine (see docs/rfc-002).")
+    level: DifficultyLevel
+    source_id: str = Field(description="Stable id of the analysed unit.")
+
+    outcome: Outcome
+    evidence_tier: EvidenceTier | None = None
+    findings: list[VerifiedFinding] = Field(default_factory=list)
+    evidence: list[EvidenceRef] = Field(
+        default_factory=list,
+        description="Everything the deterministic phase observed, reported whatever the verdict.",
+    )
+
+    invalid_reason: InvalidReason | None = None
+    skip_reason: SkipReason | None = None
+    escalations: list[Escalation] = Field(default_factory=list)
+    trace_path: str | None = Field(default=None, description="Path to the run's JSONL trajectory.")
+
+    @property
+    def verified_findings(self) -> list[VerifiedFinding]:
+        return [f for f in self.findings if f.status is CitationStatus.VERIFIED]
+
+    @model_validator(mode="after")
+    def _outcome_is_self_consistent(self) -> DetectorRun:
+        verified = any(f.status is CitationStatus.VERIFIED for f in self.findings)
+
+        match self.outcome:
+            case Outcome.VULNERABLE:
+                if not verified:
+                    raise ValueError(
+                        "'vulnerable' requires at least one verified finding; "
+                        "unverified claims are not results"
+                    )
+            case Outcome.CLEAN:
+                if verified:
+                    raise ValueError("'clean' contradicts a verified finding")
+                if self.invalid_reason is not None or self.skip_reason is not None:
+                    raise ValueError(
+                        "'clean' must not carry a failure reason -- that is the exact "
+                        "conflation this type exists to prevent"
+                    )
+            case Outcome.INVALID:
+                if self.invalid_reason is None:
+                    raise ValueError("'invalid' must state its cause")
+            case Outcome.SKIPPED:
+                if self.skip_reason is None:
+                    raise ValueError("'skipped' must state its cause")
+                if self.evidence_tier is not None:
+                    raise ValueError("a skipped source has no evidence tier")
+
+        if self.outcome is not Outcome.INVALID and self.invalid_reason is not None:
+            raise ValueError(f"invalid_reason set on a {self.outcome.value} outcome")
+        if self.outcome is not Outcome.SKIPPED and self.skip_reason is not None:
+            raise ValueError(f"skip_reason set on a {self.outcome.value} outcome")
+        if self.outcome.is_measurement and self.evidence_tier is None:
+            raise ValueError("a scored outcome must record the evidence tier it was reached on")
+
+        return self

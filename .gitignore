@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Corpus working area (pointer-based records are tracked; fetched sources are not)
+corpus/_fetched/
+corpus/_build/
+
+# Run artifacts
+runs/
+*.jsonl
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

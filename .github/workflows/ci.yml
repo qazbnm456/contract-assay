@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # The offline gate: no model, no network, no sandbox runtime, no solc.
+    # It must stay fast and deterministic, because a gate that is slow or flaky
+    # gets bypassed, and a bypassed gate is the reason broken detectors survive.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --group dev
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Types
+        run: mypy
+
+      - name: Tests
+        run: pytest -m offline --cov=contract_assay --cov-report=term-missing
