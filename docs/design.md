@@ -341,6 +341,12 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   and inside the named contract rather than merely somewhere in the file.
   **Verification failure rejects the record.**
 
+A function name is not a function. Solidity permits overloading, so a name that
+resolves to several declarations inside the span is rejected as ambiguous rather
+than checked against whichever one happens to be found first. A record that
+cannot say which overload it means is not function-granular ground truth, which
+is the only granularity this benchmark accepts.
+
 Declaration checks go through a parser, never a text match. A comment mentioning
 a function is not a declaration of it, and a matcher that cannot tell the
 difference certifies locations containing no code while rejecting constructors,
@@ -419,6 +425,14 @@ disagreement is legible rather than hidden in a threshold:
 | exact | same file, same function, line spans overlap |
 | function | same file, same function |
 | file | same file only |
+
+"Same function" compares declared signatures, not names. `swap(uint256)` and
+`swap(uint256,address)` share a name and are two different functions, so
+matching on the name alone would score a detector that pointed at the wrong
+overload as having found the right one — §1.1's failure again, one scale down.
+`Declaration.signature` supplies the comparison; it is the declared form rather
+than the ABI-canonical one, which is sufficient here because the compiler
+rejects a contract declaring one signature twice.
 
 Reports are stratified by difficulty level and by evidence tier, and state
 counts of `invalid` and `skipped` alongside — never folded in.

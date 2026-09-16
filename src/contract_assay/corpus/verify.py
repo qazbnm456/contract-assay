@@ -19,6 +19,12 @@ Two consequences of taking that seriously:
     contain no code, while rejecting constructors, which carry neither the
     `function` keyword nor a visibility modifier.
 
+*   A function name is not a function. Solidity permits overloading, so a record
+    naming `swap` in a contract declaring two of them has not said which one it
+    means -- and the span cannot always settle it. Admitting such a record means
+    verifying it against an overload the annotator may not have intended, so it
+    is rejected as ambiguous instead.
+
 *   A file that cannot be parsed is rejected rather than waved through. "I could
     not read this" is not evidence that the record is sound. This is distinct
     from *analysis*, where an unreadable compilation unit degrades to a weaker
@@ -78,6 +84,9 @@ class CheckFailure(StrEnum):
 
     FUNCTION_NOT_IN_CONTRACT = "function_not_in_contract"
     """The function is declared, but not inside the contract the record names."""
+
+    FUNCTION_AMBIGUOUS_IN_SPAN = "function_ambiguous_in_span"
+    """Several overloads of the named function fall in the span, so it identifies none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +179,23 @@ def verify_record(record: CorpusRecord, resolve: SourceResolver) -> Verification
                         f"{locator.function!r} is declared in {', '.join(holders)}, "
                         f"not in {locator.contract!r}"
                     )
+                else:
+                    # Overloads share a name, so resolving to more than one means
+                    # the record has not identified a function. Picking either
+                    # would verify it against an overload nobody chose.
+                    candidates = (
+                        [d for d in in_span if d.parent == locator.contract]
+                        if locator.contract
+                        else in_span
+                    )
+                    if len(candidates) > 1:
+                        failures.append(CheckFailure.FUNCTION_AMBIGUOUS_IN_SPAN)
+                        overloads = ", ".join(sorted(d.signature for d in candidates))
+                        detail.append(
+                            f"{locator.function!r} resolves to several overloads in lines "
+                            f"{locator.start_line}-{locator.end_line} ({overloads}); the "
+                            "record does not say which one it means"
+                        )
 
     return VerificationResult(
         record.record_id,

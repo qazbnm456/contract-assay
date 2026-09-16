@@ -100,6 +100,13 @@ class TestDeclarations:
         # Constructors are declarations, and a text matcher would miss this one.
         assert "constructor" in result.stdout
 
+    def test_it_shows_parameter_types_so_overloads_can_be_told_apart(self, workspace: Path) -> None:
+        # Diagnosing a record rejected as ambiguous is what this command is for,
+        # and a bare name cannot distinguish one overload from another.
+        result = runner.invoke(app, ["declarations", str(workspace / "src" / "Vault.sol")])
+        assert "swapAndWithdraw(uint256,address[])" in result.stdout
+        assert "constructor(address)" in result.stdout
+
     def test_an_unreadable_file_exits_nonzero(self, workspace: Path) -> None:
         junk = workspace / "src" / "Junk.sol"
         junk.write_text("}{ not solidity ][", encoding="utf-8")

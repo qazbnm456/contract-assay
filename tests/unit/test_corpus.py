@@ -560,3 +560,83 @@ class TestCorpusSplit:
     def test_only_a_variant_may_be_derived_from_another_record(self) -> None:
         with pytest.raises(ValidationError, match="only a synthetic variant is derived"):
             a_positive(split=CorpusSplit.PUBLIC, derived_from="vault-slippage-1")
+
+
+class TestOverloadedFunctionsAreAmbiguous:
+    """A record naming an overloaded function has not identified a function."""
+
+    SOURCE = """\
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Router {
+    function swap(uint256 amountIn) external returns (uint256) {
+        return amountIn;
+    }
+
+    function swap(uint256 amountIn, address recipient) external returns (uint256) {
+        return amountIn;
+    }
+}
+"""
+
+    def _record(self, start: int, end: int, **over: object) -> CorpusRecord:
+        base: dict[str, object] = {
+            "record_id": "router-slippage-1",
+            "split": CorpusSplit.PUBLIC,
+            "pin": a_pin(path="src/Router.sol", sha256=None),
+            "locator": Locator(
+                file="src/Router.sol",
+                contract="Router",
+                function="swap",
+                start_line=start,
+                end_line=end,
+            ),
+            "classes": [VulnerabilityClass.SLIPPAGE],
+            "provenance": a_provenance(),
+        }
+        return CorpusRecord(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_a_span_covering_two_overloads_is_rejected(self) -> None:
+        # Admitting it would verify the record against whichever overload was
+        # found first, which is not the one the annotator necessarily meant.
+        result = verify_record(self._record(5, 11), resolver(self.SOURCE))
+        assert not result.ok
+        assert CheckFailure.FUNCTION_AMBIGUOUS_IN_SPAN in result.failures
+        assert "swap(uint256)" in result.detail
+        assert "swap(uint256,address)" in result.detail
+
+    @pytest.mark.parametrize(("start", "end"), [(5, 7), (9, 11)])
+    def test_a_span_covering_one_overload_is_admitted(self, start: int, end: int) -> None:
+        assert verify_record(self._record(start, end), resolver(self.SOURCE)).ok
+
+    TWO_CONTRACTS = """\
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Router {
+    function swap(uint256 amountIn) external {}
+}
+
+contract Other {
+    function swap(uint256 amountIn) external {}
+}
+"""
+
+    def test_naming_the_contract_disambiguates_a_shared_function_name(self) -> None:
+        # Lines 5-9 span a `swap` in each contract. Naming one of them narrows
+        # the candidates to a single declaration, so the record is not ambiguous.
+        result = verify_record(self._record(5, 9), resolver(self.TWO_CONTRACTS))
+        assert result.ok, result.detail
+
+    def test_without_a_contract_the_same_span_is_ambiguous(self) -> None:
+        # Same file, same span, same function name -- the only thing removed is
+        # the contract that was doing the disambiguating.
+        record = self._record(
+            5,
+            9,
+            locator=Locator(file="src/Router.sol", function="swap", start_line=5, end_line=9),
+        )
+        result = verify_record(record, resolver(self.TWO_CONTRACTS))
+        assert not result.ok
+        assert CheckFailure.FUNCTION_AMBIGUOUS_IN_SPAN in result.failures

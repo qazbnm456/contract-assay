@@ -129,6 +129,11 @@ def declarations_command(
     for decl in index.declarations:
         scope = f"{decl.parent}." if decl.parent else ""
         names = "/".join(decl.names)
+        # Parameter types are shown for anything function-like, because a name on
+        # its own does not identify an overloaded function -- and diagnosing a
+        # record rejected as ambiguous is exactly what this command is for.
+        if not decl.kind.is_type:
+            names += f"({','.join(decl.parameter_types)})"
         typer.echo(
             f"  {decl.start_line:>5}-{decl.end_line:<5} {decl.kind.value:<20} {scope}{names}"
         )

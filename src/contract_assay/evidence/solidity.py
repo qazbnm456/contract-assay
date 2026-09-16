@@ -24,6 +24,16 @@ cases most worth annotating are the ones it turns away.
 The parser is error-tolerant. A file with a syntax error still yields the
 declarations it could read, which matters because corpus sources are pinned at
 historical commits and may predate or postdate any given grammar revision.
+
+Why a name is not an identity
+-----------------------------
+Solidity permits overloading, so a function name does not identify a function.
+A contract declaring both ``swap(uint256)`` and ``swap(uint256,address)`` has two
+different functions that a name-keyed index cannot tell apart, and every
+consequence of that confusion runs in the direction this project exists to
+prevent: a record can be verified against the overload it did not mean, and a
+detector pointing at the wrong overload matches ground truth on the name it
+shares. Declarations therefore carry their parameter types.
 """
 
 from __future__ import annotations
@@ -97,9 +107,37 @@ class Declaration:
     start_line: int
     end_line: int
     parent: str | None
+    parameter_types: tuple[str, ...] = ()
+    """Declared parameter types, in order. Empty for a type declaration."""
 
     def is_named(self, name: str) -> bool:
         return name in self.names
+
+    @property
+    def arity(self) -> int:
+        """Number of declared parameters."""
+        return len(self.parameter_types)
+
+    @property
+    def signature(self) -> str:
+        """The declaration as written, e.g. ``swap(uint256,address)``.
+
+        This is the *declared* form, not the ABI-canonical one. `uint` and
+        `uint256` are the same ABI type but different declared text, so this
+        string must not be fed to a selector computation, which needs real
+        canonicalisation (`uint` widened, enums to `uint8`, structs to tuples).
+
+        It is nonetheless sufficient for the job it is used for -- telling two
+        declarations in the same file apart -- because the compiler rejects a
+        contract that declares the same signature twice. Two overloads that
+        survive compilation necessarily differ in their parameter types, and
+        therefore in this string.
+
+        Degenerate for a type declaration, which has no parameters: a contract
+        named `Vault` yields `Vault()`. Reach for it through `callables`, which
+        only ever returns function-like declarations.
+        """
+        return f"{self.names[0]}({','.join(self.parameter_types)})"
 
     def spans(self, start_line: int, end_line: int) -> bool:
         """True if this declaration's span intersects the given one."""
@@ -152,18 +190,27 @@ class DeclarationIndex:
         *,
         within: tuple[int, int] | None = None,
         inside_type: str | None = None,
+        signature: str | None = None,
     ) -> list[Declaration]:
         """Function-like declarations matching `name`, optionally constrained.
 
         `within` restricts to declarations whose span intersects a line range;
         `inside_type` restricts to those lexically inside a named contract,
-        library or interface.
+        library or interface; `signature` restricts to one overload, given as
+        the declared form (see `Declaration.signature`).
+
+        More than one result means the name is overloaded across whatever
+        constraints were given. A caller that needs to identify a single
+        function must narrow further or treat the name as ambiguous -- picking
+        the first would silently choose an overload.
         """
         found = [d for d in self.declarations if not d.kind.is_type and d.is_named(name)]
         if within is not None:
             found = [d for d in found if d.spans(*within)]
         if inside_type is not None:
             found = [d for d in found if d.parent == inside_type]
+        if signature is not None:
+            found = [d for d in found if d.signature == signature]
         return found
 
 
@@ -174,6 +221,36 @@ def _name_of(node: Node, source: bytes, kind: DeclarationKind) -> tuple[str, ...
     if name_node is None:
         return ()
     return (source[name_node.start_byte : name_node.end_byte].decode("utf-8", "replace"),)
+
+
+def _parameter_types(node: Node, source: bytes) -> tuple[str, ...]:
+    """Declared parameter types, in order.
+
+    The grammar hangs `parameter` nodes directly off the definition rather than
+    wrapping them in a parameter list, so they are read from the children.
+
+    Runs of whitespace inside a type are collapsed to one space rather than
+    removed. Removing them would fuse adjacent keywords in a function type into
+    a single token, and collapsing is enough: the two spellings this leaves
+    distinct, `mapping(address => uint256)` and `mapping(address=>uint256)`,
+    cannot both appear as overloads of one function, because the compiler sees
+    one signature and rejects the duplicate.
+    """
+    found: list[str] = []
+    for child in node.children:
+        if child.type != "parameter":
+            continue
+        type_node = child.child_by_field_name("type")
+        if type_node is None:  # pragma: no cover - no current grammar path reaches it
+            # Unreachable with the pinned grammar, which attaches a type to every
+            # `parameter` node it emits -- even on malformed input, where it reads
+            # a bare name as a type. Kept because this module promises never to
+            # raise on malformed input, and corpus sources are pinned at
+            # historical commits across grammar revisions.
+            continue
+        text = source[type_node.start_byte : type_node.end_byte].decode("utf-8", "replace")
+        found.append(" ".join(text.split()))
+    return tuple(found)
 
 
 def index_source(source: str) -> DeclarationIndex:
@@ -207,6 +284,7 @@ def index_source(source: str) -> DeclarationIndex:
                         start_line=node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         parent=parent,
+                        parameter_types=() if kind.is_type else _parameter_types(node, data),
                     )
                 )
             if kind.is_type and names:

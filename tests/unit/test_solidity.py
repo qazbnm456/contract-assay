@@ -229,3 +229,115 @@ contract AlsoGood { function fine() external {} }
         index = index_source("pragma solidity ^0.8.0;\n\ncontract A {\n    uint256 x;\n}\n")
         decl = index.types("A")[0]
         assert (decl.start_line, decl.end_line) == (3, 5)
+
+
+class TestOverloadsAreDistinguishable:
+    """A function name is not a function.
+
+    Solidity permits overloading, so an index keyed on names alone returns
+    several declarations with nothing to select between them. Both consequences
+    run in the direction this project exists to prevent: a record verified
+    against the overload it did not mean, and a detector matching ground truth
+    on a name it merely shares.
+    """
+
+    SOURCE = """\
+contract Router {
+    function swap(uint256 amountIn) external returns (uint256) {
+        return amountIn;
+    }
+
+    function swap(uint256 amountIn, address recipient) external returns (uint256) {
+        return amountIn;
+    }
+
+    function swap(uint256 amountIn, address[] calldata path, MyStruct memory s) external {}
+
+    constructor(address owner) {}
+
+    receive() external payable {}
+}
+"""
+
+    def test_overloads_differ_by_signature(self) -> None:
+        index = index_source(self.SOURCE)
+        signatures = sorted(d.signature for d in index.callables("swap"))
+        assert signatures == [
+            "swap(uint256)",
+            "swap(uint256,address)",
+            "swap(uint256,address[],MyStruct)",
+        ]
+
+    def test_overloads_are_no_longer_identical_apart_from_their_span(self) -> None:
+        index = index_source(self.SOURCE)
+        first, second, _ = index.callables("swap")
+        assert first.parameter_types != second.parameter_types
+
+    def test_arity_counts_declared_parameters(self) -> None:
+        index = index_source(self.SOURCE)
+        assert sorted(d.arity for d in index.callables("swap")) == [1, 2, 3]
+
+    def test_a_signature_selects_one_overload(self) -> None:
+        index = index_source(self.SOURCE)
+        [only] = index.callables("swap", signature="swap(uint256,address)")
+        assert only.arity == 2
+
+    def test_a_signature_that_matches_nothing_returns_nothing(self) -> None:
+        index = index_source(self.SOURCE)
+        assert index.callables("swap", signature="swap(bytes32)") == []
+
+    def test_a_constructor_carries_its_parameter_types(self) -> None:
+        # Constructors host a large share of the access-control cases worth
+        # annotating, so their parameters matter as much as any function's.
+        index = index_source(self.SOURCE)
+        [ctor] = index.callables("constructor")
+        assert ctor.signature == "constructor(address)"
+
+    def test_receive_takes_no_parameters(self) -> None:
+        index = index_source(self.SOURCE)
+        [recv] = index.callables("receive")
+        assert recv.arity == 0
+
+    def test_a_type_declaration_has_no_parameters(self) -> None:
+        index = index_source(self.SOURCE)
+        [router] = index.types("Router")
+        assert router.parameter_types == ()
+
+    def test_whitespace_inside_a_type_is_collapsed_not_removed(self) -> None:
+        # Removing it would fuse adjacent keywords in a function type into one
+        # token; collapsing is enough, because two spellings of one signature
+        # cannot both appear as overloads -- the compiler rejects the duplicate.
+        source = """\
+contract C {
+    function f(mapping(address   =>   uint256) storage m) internal {}
+}
+"""
+        index = index_source(source)
+        [decl] = index.callables("f")
+        assert decl.signature == "f(mapping(address => uint256))"
+
+
+class TestMalformedParameterListsDoNotRaise:
+    """The index promises never to raise on malformed input, parameters included."""
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "contract C { function f(, uint256 b) external {} }",
+            "contract C { function f(uint256 a,) external {} }",
+            "contract C { function f(amountIn) external {} }",
+            "contract C { function f(uint256",
+        ],
+    )
+    def test_a_broken_parameter_list_still_indexes(self, source: str) -> None:
+        index_source(source)
+
+    def test_a_bare_name_is_read_as_a_type_rather_than_dropped(self) -> None:
+        # Pinned because it is surprising: the grammar cannot tell `f(amountIn)`
+        # -- which does not compile -- from a parameter of some type `amountIn`,
+        # so the recovered signature is nonsense rather than absent. Harmless
+        # here, since such a file never compiles and so is never ground truth,
+        # but a caller comparing signatures should not assume they are valid
+        # Solidity types.
+        [decl] = index_source("contract C { function f(amountIn) external {} }").callables("f")
+        assert decl.signature == "f(amountIn)"
