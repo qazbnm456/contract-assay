@@ -318,6 +318,41 @@ Firing on both is not a detection — it is a detector that reacts to the shape 
 the code rather than the defect. A flat confusion matrix cannot see the
 difference; this can.
 
+### 6.5 Splits
+
+Every record declares which corpus it belongs to, and the field is required from
+the first record rather than added once annotation is under way. Retrofitting a
+split leaks: whatever criterion divides an existing set is itself a signal about
+that set, and applying it after the fact leaves the division visible in the
+annotation history even when it is absent from the data.
+
+| Split | Distributed? | Why it is its own value |
+| --- | --- | --- |
+| `public` | yes | Published with the corpus; nothing scored against it is secret |
+| `private_holdout` | no | Ordinary annotation, withheld by decision |
+| `synthetic_variant` | never | A derivative work of the contract it came from |
+
+Three values rather than two, because the third obeys distribution rules matching
+neither of the others. A held-out record could be published tomorrow by changing
+one field. A variant could not: structure-preserving mutation of a contract
+produces a derivative of that contract, and a derivative carries the original's
+licence however thoroughly its identifiers were changed. Executing one
+server-side distributes nothing; publishing the variant set would relicense
+somebody else's code. A single `private` value would leave nothing in the schema
+able to tell those two situations apart.
+
+A variant carries two further obligations, both enforced at construction. It must
+name the record it was mutated from, or neither its licence nor its ground truth
+has a source. And it must record how the defect was confirmed to have survived
+mutation, because a structure-preserving edit can repair the bug by accident. An
+unconfirmed variant is a negative labelled positive, which is the worst record a
+corpus can hold: every detector that correctly stays silent on it is scored as
+having missed something.
+
+Mutation moves code, so a variant's locator is recomputed against the mutated
+source rather than carried forward. The declaration index of §6.3 is what makes
+that mechanical rather than manual.
+
 ## 7. Scoring
 
 The scorer is a separate component and does not run inside the harness. Trace
@@ -359,11 +394,12 @@ work in the present tense reports intentions as capabilities.
 | `detectors/` | `evidence()` / `task` / `verdict()` per class (§2) | not started |
 | `corpus/harvest.py`, `normalize.py` | the first two pipeline stages (§6.3) | not started |
 | `report/` | scoring, match strengths, stratification (§7) | not started |
+| `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
 
 Consequences worth stating plainly: §2.2's gate and verdict predicates exist as
 a rule for writing them, not as code; §3's tier degradation is represented in the
-type system but has no backend to degrade between; and §6.4 and §7 are design
-only. The only production path into `verify` today is the CLI resolving against a
+type system but has no backend to degrade between; and §6.4, the mutation stage
+of §6.5 and all of §7 are design only. The only production path into `verify` today is the CLI resolving against a
 local checkout, which confirms that a record is coherent against the bytes on
 disk but not that those bytes belong to the pinned commit.
 

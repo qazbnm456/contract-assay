@@ -43,6 +43,7 @@ COMMIT = "a" * 40
 def a_record(**over: object) -> dict[str, object]:
     base: dict[str, object] = {
         "record_id": "vault-slippage-1",
+        "split": "public",
         "pin": {
             "repo_url": "https://github.com/example/vault",
             "commit": COMMIT,

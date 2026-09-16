@@ -30,6 +30,7 @@ from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 
 __all__ = [
     "CorpusRecord",
+    "CorpusSplit",
     "NegativeKind",
     "Provenance",
     "SourcePin",
@@ -37,6 +38,41 @@ __all__ = [
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
+
+
+class CorpusSplit(StrEnum):
+    """Which corpus a record belongs to, and therefore what may be done with it.
+
+    Carried from the first record rather than added once annotation is under way.
+    Retrofitting a split leaks: whatever criterion is used to divide an existing
+    set is itself a signal about the set, and applying it after the fact means
+    the division is visible in the annotation history even when it is absent from
+    the data.
+
+    Three members, not two, because the third obeys distribution rules that match
+    neither of the others. A held-out record is ordinary annotation that is
+    merely withheld, so it could be published tomorrow by changing one field. A
+    synthetic variant could not: structure-preserving mutation of a contract
+    produces a derivative of that contract, and a derivative carries the
+    original's licence however thoroughly the identifiers were changed. Executing
+    one server-side distributes nothing and is fine; publishing the variant set
+    would relicense somebody else's code. Collapsing the two into a single
+    "private" value would leave nothing in the schema able to tell the difference.
+    """
+
+    PUBLIC = "public"
+    """Published with the corpus. Anyone may read it, so nothing may be scored secretly."""
+
+    PRIVATE_HOLDOUT = "private_holdout"
+    """Real annotation, withheld. Publishable by decision, not blocked by licence."""
+
+    SYNTHETIC_VARIANT = "synthetic_variant"
+    """Mutated from a real record. Never distributed: it is a derivative work."""
+
+    @property
+    def is_distributable(self) -> bool:
+        """True only for `PUBLIC`. The others are executed, never shipped."""
+        return self is CorpusSplit.PUBLIC
 
 
 class NegativeKind(StrEnum):
@@ -130,6 +166,13 @@ class CorpusRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_id: str = Field(pattern=r"^[a-z0-9][a-z0-9\-]{2,63}$")
+    split: CorpusSplit = Field(
+        description=(
+            "Which corpus this belongs to. Required, with no default: a forgotten split "
+            "would publish a record that was meant to be withheld, and the mistake is "
+            "unrecoverable once the record is out."
+        )
+    )
     pin: SourcePin
     locator: Locator | None = Field(
         default=None,
@@ -149,6 +192,11 @@ class CorpusRecord(BaseModel):
         ),
     )
     negative_kind: NegativeKind | None = None
+    derived_from: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9][a-z0-9\-]{2,63}$",
+        description="record_id this was mutated from. Required for a synthetic variant.",
+    )
     provenance: Provenance
     notes: str = ""
 
@@ -235,5 +283,26 @@ class CorpusRecord(BaseModel):
         if overlap := set(self.vulnerable_to) & set(self.negative_for):
             raise ValueError(
                 f"record is both vulnerable to and clean for {sorted(c.value for c in overlap)}"
+            )
+
+        if self.split is CorpusSplit.SYNTHETIC_VARIANT:
+            if self.derived_from is None:
+                raise ValueError(
+                    "a synthetic variant must name the record it was mutated from; without "
+                    "it the variant cannot be traced back to the finding that justifies it, "
+                    "and neither its licence nor its ground truth has a source"
+                )
+            if self.derived_from == self.record_id:
+                raise ValueError("a synthetic variant cannot be derived from itself")
+            if not self.notes.strip():
+                raise ValueError(
+                    "a synthetic variant must record how the defect was confirmed to have "
+                    "survived mutation; a structure-preserving edit can repair the bug by "
+                    "accident, and an unconfirmed variant is a negative labelled positive"
+                )
+        elif self.derived_from is not None:
+            raise ValueError(
+                f"derived_from is set on a {self.split.value!r} record; only a synthetic "
+                "variant is derived from another record"
             )
         return self

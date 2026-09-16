@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from contract_assay.corpus.records import (
     CorpusRecord,
+    CorpusSplit,
     NegativeKind,
     Provenance,
     SourcePin,
@@ -95,6 +96,7 @@ def a_provenance(**over: object) -> Provenance:
 def a_positive(**over: object) -> CorpusRecord:
     base: dict[str, object] = {
         "record_id": "vault-slippage-1",
+        "split": CorpusSplit.PUBLIC,
         "pin": a_pin(),
         "locator": a_locator(),
         "classes": [VulnerabilityClass.SLIPPAGE],
@@ -169,6 +171,7 @@ class TestNegativeRecords:
     def _negative(self, **over: object) -> CorpusRecord:
         base: dict[str, object] = {
             "record_id": "vault-slippage-fixed",
+            "split": CorpusSplit.PUBLIC,
             "pin": a_pin(commit=FIX_SHA),
             "locator": None,
             "classes": [],
@@ -264,6 +267,7 @@ class TestVerification:
     def test_a_negative_record_needs_no_locator_to_verify(self) -> None:
         record = CorpusRecord(
             record_id="vault-not-reentrant",
+            split=CorpusSplit.PUBLIC,
             pin=a_pin(),
             classes=[],
             negative_for=[VulnerabilityClass.REENTRANCY],
@@ -357,6 +361,7 @@ class TestGroundTruthMustBeScoreable:
         with pytest.raises(ValidationError, match=r"does not match pin\.path"):
             CorpusRecord(
                 record_id="vault-neg-mismatch",
+                split=CorpusSplit.PUBLIC,
                 pin=a_pin(),
                 locator=a_locator(file="src/Elsewhere.sol"),
                 classes=[],
@@ -371,6 +376,7 @@ class TestNegativeKindsCarryTheirEvidence:
     def _neg(self, **over: object) -> CorpusRecord:
         base: dict[str, object] = {
             "record_id": "vault-neg",
+            "split": CorpusSplit.PUBLIC,
             "pin": a_pin(),
             "classes": [],
             "negative_for": [VulnerabilityClass.REENTRANCY],
@@ -413,6 +419,7 @@ class TestLevelIsTotal:
     def test_level_of_a_negative_comes_from_what_it_is_negative_for(self) -> None:
         record = CorpusRecord(
             record_id="vault-neg-level",
+            split=CorpusSplit.PUBLIC,
             pin=a_pin(),
             classes=[],
             negative_for=[VulnerabilityClass.FLASHLOAN_MANIPULATION],
@@ -494,3 +501,62 @@ contract Vault {
         result = verify_record(a_positive(pin=a_pin(sha256=None)), resolver("}{ not solidity ]["))
         assert not result.ok
         assert CheckFailure.UNPARSEABLE_SOURCE in result.failures
+
+
+class TestCorpusSplit:
+    """Which corpus a record belongs to, and what that permits."""
+
+    def test_the_split_must_be_stated(self) -> None:
+        # No default, because the dangerous direction is asymmetric: a forgotten
+        # split that defaulted to public would publish a record meant to be
+        # withheld, and that mistake cannot be taken back.
+        with pytest.raises(ValidationError, match="split"):
+            CorpusRecord(
+                record_id="vault-no-split",
+                pin=a_pin(),
+                locator=a_locator(),
+                classes=[VulnerabilityClass.SLIPPAGE],
+                provenance=a_provenance(),
+            )
+
+    def test_only_the_public_split_may_be_distributed(self) -> None:
+        assert CorpusSplit.PUBLIC.is_distributable
+        assert not CorpusSplit.PRIVATE_HOLDOUT.is_distributable
+        assert not CorpusSplit.SYNTHETIC_VARIANT.is_distributable
+
+    def test_a_holdout_record_needs_nothing_extra(self) -> None:
+        # It is ordinary annotation that is merely withheld, so it could be
+        # published tomorrow by changing one field.
+        record = a_positive(record_id="vault-held", split=CorpusSplit.PRIVATE_HOLDOUT)
+        assert not record.split.is_distributable
+        assert record.derived_from is None
+
+    def _variant(self, **over: object) -> CorpusRecord:
+        base: dict[str, object] = {
+            "record_id": "vault-slippage-1-v2",
+            "split": CorpusSplit.SYNTHETIC_VARIANT,
+            "derived_from": "vault-slippage-1",
+            "notes": "Renamed params and reordered members; re-ran the PoC and it still drains.",
+        }
+        return a_positive(**{**base, **over})
+
+    def test_a_well_formed_variant_is_accepted(self) -> None:
+        assert self._variant().derived_from == "vault-slippage-1"
+
+    def test_a_variant_must_name_what_it_came_from(self) -> None:
+        with pytest.raises(ValidationError, match="must name the record it was mutated from"):
+            self._variant(derived_from=None)
+
+    def test_a_variant_cannot_be_derived_from_itself(self) -> None:
+        with pytest.raises(ValidationError, match="cannot be derived from itself"):
+            self._variant(derived_from="vault-slippage-1-v2")
+
+    def test_a_variant_must_record_that_the_defect_survived(self) -> None:
+        # A structure-preserving edit can repair the bug by accident, and an
+        # unconfirmed variant is a negative labelled positive.
+        with pytest.raises(ValidationError, match="survived mutation"):
+            self._variant(notes="   ")
+
+    def test_only_a_variant_may_be_derived_from_another_record(self) -> None:
+        with pytest.raises(ValidationError, match="only a synthetic variant is derived"):
+            a_positive(split=CorpusSplit.PUBLIC, derived_from="vault-slippage-1")
