@@ -773,7 +773,10 @@ class TestTheReportSaysWhatTheCorpusIsASampleOf:
         # what the corpus is a sample of is a property of the corpus rather than
         # a warning about one invocation.
         report = verify_all([a_positive()], resolver())
-        assert report.sampling_statement() == ("1 record admitted; no candidates were rejected.")
+        assert report.sampling_statement() == (
+            "1 record admitted; no candidates were rejected."
+            " Every number computed over this corpus describes the admitted records only."
+        )
 
 
 class TestLocatorProvenanceIsRecorded:

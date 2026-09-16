@@ -11,6 +11,12 @@ from contract_assay.corpus.harvest import (
     SkippedCandidate,
     harvest,
 )
+from contract_assay.corpus.normalize import (
+    NormalizeCause,
+    NormalizedSkip,
+    NormalizeReport,
+    normalize,
+)
 from contract_assay.corpus.records import (
     CorpusRecord,
     CorpusSplit,
@@ -38,6 +44,9 @@ __all__ = [
     "HarvestReport",
     "LocatorProvenance",
     "NegativeKind",
+    "NormalizeCause",
+    "NormalizeReport",
+    "NormalizedSkip",
     "Provenance",
     "RawReport",
     "ReportAdapter",
@@ -50,6 +59,7 @@ __all__ = [
     "VerificationResult",
     "VulnerabilityClass",
     "harvest",
+    "normalize",
     "verify_all",
     "verify_record",
 ]

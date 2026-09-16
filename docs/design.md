@@ -769,7 +769,7 @@ work in the present tense reports intentions as capabilities.
 | `detectors/` per class | the nine `evidence()` / `plan()` / `verdict()` triples (§2) | **partly built** |
 | `detectors/runner.py` | composing one detector and one unit into a `DetectorRun` | **built** |
 | `corpus/harvest.py` | adapter protocol, extraction, yield accounting (§6.3) | **partly built** |
-| `corpus/normalize.py` | location resolution and span derivation (§6.3) | not started |
+| `corpus/normalize.py` | location resolution, span derivation, digest pinning (§6.3) | **built** |
 | `report/` | scoring, match strengths, stratification, dual track (§7) | not started |
 | `corpus/mutate.py` | synthetic variants and their confirmation (§6.5) | not started |
 
@@ -791,6 +791,18 @@ protocol, the extraction loop and the whole yield accounting exist and are
 covered, and no adapter for a real platform does. What is built is the part that
 decides whether the losses are measurable; what is missing is the part that has
 to be written once per platform.
+
+`corpus/normalize.py` is built, and it pins the digest itself rather than leaving
+that to `verify`. For a derived span the digest is the only check that survives —
+the span check is tautological (§1.3) — and it only survives if the digest
+witnesses the bytes the derivation ran against. Left blank for `verify` to fill
+in later, verification would compare the file to itself, and the guarantee §6.6
+claims for derived locators would be empty.
+
+So the three stages compose into a corpus, and `tests/offline/` runs the whole
+way from a report to an admitted record with no network and no toolchain. What is
+still absent is any adapter for a real platform, which is why there is no corpus
+and nothing here can measure a model yet.
 
 The predicate library is marked *partly* built rather than built, and the gap
 is worth naming precisely. Six predicates cover five of the nine classes;

@@ -310,8 +310,12 @@ class VerificationReport:
             if count
             else ""
         )
+        # The scope sentence closes every branch, including the clean one. A
+        # reader quoting a number should not have to have hit a rejection to
+        # learn what the number is over.
+        scope = " Every number computed over this corpus describes the admitted records only."
         if not self.rejected:
-            return f"{admitted} admitted; no candidates were rejected.{derived}"
+            return f"{admitted} admitted; no candidates were rejected.{derived}{scope}"
 
         failures = ", ".join(
             f"{failure.value} {count}"
@@ -330,8 +334,7 @@ class VerificationReport:
         return (
             f"{admitted} admitted; {len(self.rejected)} of "
             f"{_plural(self.candidates, 'candidate')} ({self.rejection_rate:.1%}) rejected as "
-            f"unverifiable -- {failures}.{concentration}{derived} Every number computed "
-            "over this corpus describes the admitted records only."
+            f"unverifiable -- {failures}.{concentration}{derived}{scope}"
         )
 
 
