@@ -475,6 +475,9 @@ trading bot. Of the two that remain, one is among the two that do not map. So
 pinnable-and-in-scope is 1 in 7, against roughly 2% for a review platform — far
 better per candidate, out of a candidate pool of seven.
 
+`docs/curation.md` records the procedure, including the order, since three of
+its steps exist only because doing them later wastes the earlier ones.
+
 That does not make the incident population harvestable, and the obstacle is
 structural rather than incidental. A curated incident proof of concept forks a
 chain at a block and attacks a deployed address; it carries the *attacker's*
