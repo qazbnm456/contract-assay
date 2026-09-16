@@ -265,8 +265,8 @@ class TestStateWriteAfterRawExternalCall:
 """)
         [ref] = fired(source, "state_write_after_raw_external_call")
         assert ref.detail["ordering"] == "write_follows_call"
-        assert ref.detail["state_writes_after"] == 1
         assert ref.detail["call_member"] == "send"
+        assert "state_writes_after" not in ref.detail
 
     def test_a_write_before_the_call_is_not_reported(self) -> None:
         # Which is the whole point of the predicate: it establishes an ordering.
@@ -503,3 +503,85 @@ class TestTheSenderConditionIsCoarseOnPurpose:
     }
 """)
         assert fired(source, self.NAME) == []
+
+
+class TestOrderingSurvivesFormChanges:
+    """What the ordering predicate survives, and what it provably does not.
+
+    These matter because a comparison of evidence before and after a
+    behaviour-preserving edit is how a mutated variant gets confirmed to still
+    carry its defect. A predicate whose output moves when the defect does not
+    makes that comparison reject sound inputs.
+    """
+
+    NAME = "state_write_after_raw_external_call"
+
+    TERNARY = """\
+contract Vault {
+    uint256 total;
+    function f(uint256 a, bool c) external {
+        payable(msg.sender).send(a);
+        total = c ? a : 0;
+    }
+}
+"""
+    IF_FORM = """\
+contract Vault {
+    uint256 total;
+    function f(uint256 a, bool c) external {
+        payable(msg.sender).send(a);
+        if (c) { total = a; } else { total = 0; }
+    }
+}
+"""
+
+    def test_rewriting_a_ternary_as_an_if_does_not_move_the_payload(self) -> None:
+        # One state write becomes two and the property is untouched. This is the
+        # case that cost the payload its write count.
+        [before] = fired(self.TERNARY, self.NAME)
+        [after] = fired(self.IF_FORM, self.NAME)
+        assert before.detail == after.detail
+
+    EXTRACTED = """\
+contract Vault {
+    mapping(address => uint256) balances;
+
+    function _pay(uint256 amount) internal {
+        payable(msg.sender).send(amount);
+    }
+
+    function withdraw(uint256 amount) external {
+        _pay(amount);
+        balances[msg.sender] -= amount;
+    }
+}
+"""
+
+    def test_moving_the_call_into_a_helper_silences_it(self) -> None:
+        # The defect survives intact as cross-function reentrancy; this tier
+        # cannot see it, because there is no external call left in the function.
+        # Pinned as a tier limitation, not a bug to fix in the predicate:
+        # following a call across a boundary is what the semantic tier is for.
+        assert fired(self.EXTRACTED, self.NAME) == []
+
+    INLINED_WRITE = """\
+contract Vault {
+    mapping(address => uint256) balances;
+
+    function _debit(uint256 amount) internal {
+        balances[msg.sender] -= amount;
+    }
+
+    function withdraw(uint256 amount) external {
+        payable(msg.sender).send(amount);
+        _debit(amount);
+    }
+}
+"""
+
+    def test_a_write_behind_a_helper_is_equally_invisible(self) -> None:
+        # The mirror image of the case above, and the reason neither is a payload
+        # problem: inlining `_debit` here would make the predicate start firing
+        # on code whose behaviour never changed. Both directions are presence
+        # changes, so no spelling of `detail` repairs them.
+        assert fired(self.INLINED_WRITE, self.NAME) == []

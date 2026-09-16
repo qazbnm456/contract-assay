@@ -132,6 +132,25 @@ Corollaries:
 - Use a trie for large synonym sets (router interfaces, oracle interfaces,
   vault entry points) rather than alternating regex.
 
+One more rule belongs here, because it is the same kind of trap — something
+that looks like an improvement:
+
+> **A predicate's precision is a property of the corpus, not of the condition.**
+> A tighter condition that fires on a common benign pattern is worse than a
+> loose one that does not, and only the base rate in real code says which is
+> which.
+
+The worked example is access control. "An externally reachable function writes
+state and never mentions `msg.sender`" is a coarse condition: a sender reference
+used only for logging suppresses it. The obvious repair is to require the
+reference to sit inside a `require` or an `if`, which does distinguish a check
+from a log — and then fires on every permissionless-by-design function, because
+`balances[msg.sender] += msg.value` writes state and reads the sender while
+guarding nothing. Deposits vastly outnumber unguarded setters that log their
+caller, so the semantically better condition is the empirically worse predicate.
+Both directions are pinned by tests, so the trade is visible rather than
+inferred.
+
 The same argument decides what an `EvidenceRef` may carry, and one level deeper
 than it first appears. Evidence is compared — between a detector's output and
 ground truth, and between two versions of one source — so every value in the
@@ -556,6 +575,19 @@ Recognising a callee across aliasing needs a 4-byte selector rather than a name,
 and computing one needs ABI canonicalisation that `Declaration.signature`
 deliberately does not do (§6.3). That canonicalisation is therefore a
 prerequisite for the oracle and slippage classes, not a later tidy-up.
+
+A second dependency has the same shape and is worth stating beside it. An edit
+that moves an external call across a function boundary — extracting it into an
+internal helper, or inlining a helper that held the state write — leaves a
+reentrancy defect perfectly intact while changing whether
+`state_write_after_raw_external_call` fires at all. That is a presence change,
+not a payload change, so no spelling of the compared payload repairs it: a
+syntactic predicate cannot follow a call across a boundary, and following one is
+exactly what §3's semantic tier provides. Any comparison that tries to confirm a
+defect survived such an edit is therefore blocked on the semantic backend, in the
+same way the oracle and slippage classes are blocked on canonicalisation. Stated
+here because the alternative is discovering it as a run that rejects sound inputs
+for no visible reason.
 
 Consequences worth stating plainly: §2.2's gate is code, but its verdict
 predicates remain a rule for writing them rather than a library; §3's tier

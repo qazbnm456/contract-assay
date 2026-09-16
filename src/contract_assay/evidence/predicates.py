@@ -371,6 +371,22 @@ def _state_write_after_raw_external_call(syntax: Syntax, path: str) -> list[Evid
     neither. This establishes the ordering only, over the calls the language
     itself marks as external -- so the class is *partly* covered, which is what
     the status table says.
+
+    The payload carries the ordering relation and nothing else. It once carried
+    a count of the writes following the call, which had to go: rewriting
+    `total = c ? a : 0` as an `if`/`else` turns one state write into two,
+    leaving the property untouched while the count moves. A compared value that
+    moves when the property does not is a false difference, and the count was
+    never part of the property.
+
+    What this predicate cannot survive at all is an edit that moves the call
+    across a function boundary. Extracting it into an internal helper leaves the
+    defect intact as cross-function reentrancy, and this predicate then finds no
+    external call in the function and stays silent; inlining a helper that held
+    the state write does the reverse, and it starts firing where it did not
+    before. Both are presence changes rather than payload changes, so no
+    spelling of the payload fixes them -- following a call across a boundary is
+    what the semantic tier is for. See section 8.
     """
     found: list[EvidenceRef] = []
     for call in syntax.calls:
@@ -395,11 +411,11 @@ def _state_write_after_raw_external_call(syntax: Syntax, path: str) -> list[Evid
                 locator=call.site.locator(path),
                 detail={
                     "call_member": call.callee,
-                    # An ordering relation and a count, both stable under
-                    # renaming and reordering. A line delta would not be: a
-                    # blank line inserted anywhere between would change it.
+                    # The ordering relation alone. Not a count, which an
+                    # if/else rewrite of a ternary changes while preserving the
+                    # property; and not a line delta, which any inserted blank
+                    # line changes.
                     "ordering": "write_follows_call",
-                    "state_writes_after": len(after),
                 },
                 diagnostic={"written_roots": ",".join(sorted({w.target_root for w in after}))},
             )
