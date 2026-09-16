@@ -1,0 +1,33 @@
+{
+  "record_id": "alchemix-v2-dao-access-control-d4846e54",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/Voter.sol",
+    "sha256": "acd7631d4e9fa2e126f2e99d69b8e32a1d51620f50c7f894199edc6a787e336d",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-02"
+  },
+  "locator": {
+    "file": "src/Voter.sol",
+    "contract": "Voter",
+    "function": "poke",
+    "start_line": 195,
+    "end_line": 212
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 195,
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/30634%20-%20%5BSC%20-%20Critical%5D%20Unauthorized%20minting%20of%20unlimited%20FLUX%20in%20%20tran....md",
+    "reported_severity": "critical"
+  },
+  "notes": ""
+}

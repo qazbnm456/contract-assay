@@ -1,0 +1,32 @@
+{
+  "record_id": "alchemix-v2-dao-slippage-e86e1d55",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/RevenueHandler.sol",
+    "sha256": "bf9456a3498367eb106aa7bd36910b672a3246a3144475c8fdbb781b93311b49",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-04"
+  },
+  "locator": {
+    "file": "src/RevenueHandler.sol",
+    "contract": "RevenueHandler",
+    "function": "_melt",
+    "start_line": 275,
+    "end_line": 295
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/30682%20-%20%5BSC%20-%20Critical%5D%20Insufficient%20slippage%20control%20in%20RevenueHandler....md",
+    "reported_severity": "critical"
+  },
+  "notes": ""
+}

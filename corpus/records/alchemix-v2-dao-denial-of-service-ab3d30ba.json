@@ -1,0 +1,33 @@
+{
+  "record_id": "alchemix-v2-dao-denial-of-service-ab3d30ba",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/RewardsDistributor.sol",
+    "sha256": "16631611e82542dc25b263e65545628859b87c465837d4d99a4a748f226ffdf0",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-18"
+  },
+  "locator": {
+    "file": "src/RewardsDistributor.sol",
+    "contract": "RewardsDistributor",
+    "function": "_claimable",
+    "start_line": 336,
+    "end_line": 391
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 365,
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/31399%20-%20%5BSC%20-%20High%5D%20RewardDistributor%20claims%20can%20be%20DoSed%20through%20e....md",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

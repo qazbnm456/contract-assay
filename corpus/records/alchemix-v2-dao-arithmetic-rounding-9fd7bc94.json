@@ -1,0 +1,33 @@
+{
+  "record_id": "alchemix-v2-dao-arithmetic-rounding-9fd7bc94",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/FluxToken.sol",
+    "sha256": "8be657e30d42522feebb1bf240a287e5f1b77a10efddfdd1213ae2ab2b49faf6",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-17"
+  },
+  "locator": {
+    "file": "src/FluxToken.sol",
+    "contract": "FluxToken",
+    "function": "getClaimableFlux",
+    "start_line": 215,
+    "end_line": 230
+  },
+  "classes": [
+    "arithmetic_rounding"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 224,
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/31326%20-%20%5BSC%20-%20High%5D%20Precision%20loss%20causes%20minor%20loss%20of%20FLUX%20when%20c....md",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

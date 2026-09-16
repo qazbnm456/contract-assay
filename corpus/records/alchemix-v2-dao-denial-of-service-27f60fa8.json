@@ -1,0 +1,32 @@
+{
+  "record_id": "alchemix-v2-dao-denial-of-service-27f60fa8",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/VotingEscrow.sol",
+    "sha256": "abac20336b254ac59edb51e31babe25c82a5f5ee37202aa18348d328e57d45ca",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-08"
+  },
+  "locator": {
+    "file": "src/VotingEscrow.sol",
+    "contract": "VotingEscrow",
+    "function": "_checkpoint",
+    "start_line": 1170,
+    "end_line": 1175
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/30922%20-%20%5BSC%20-%20High%5D%20DOS%20of%20withdrawals%20through%20filling%20the%20userPoin....md",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

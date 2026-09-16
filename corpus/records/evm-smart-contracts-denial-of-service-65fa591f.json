@@ -1,0 +1,32 @@
+{
+  "record_id": "evm-smart-contracts-denial-of-service-65fa591f",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/lombard-finance/evm-smart-contracts",
+    "commit": "6b19ed213291fcc46b9043fc063268acbdd40f34",
+    "path": "contracts/bridge/adapters/TokenPool.sol",
+    "sha256": "e227d0aa849f7bb141d935ad46b861ff0091a38fed36e03078f9a208a9940d70",
+    "commit_resolved_from": "repository head at the report's date, 2025-01-01"
+  },
+  "locator": {
+    "file": "contracts/bridge/adapters/TokenPool.sol",
+    "contract": "LombardTokenPool",
+    "function": "releaseOrMint",
+    "start_line": 57,
+    "end_line": 70
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/lombard/38363-sc-medium-lbtc-cross-chain-transfer-can-be-dosed.md",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

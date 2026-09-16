@@ -1,0 +1,32 @@
+{
+  "record_id": "alchemix-v2-dao-denial-of-service-6b54ee07",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/Voter.sol",
+    "sha256": "acd7631d4e9fa2e126f2e99d69b8e32a1d51620f50c7f894199edc6a787e336d",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-18"
+  },
+  "locator": {
+    "file": "src/Voter.sol",
+    "contract": "Voter",
+    "function": "reset",
+    "start_line": 183,
+    "end_line": 192
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/31425%20-%20%5BSC%20-%20Medium%5D%20Users%20can%20call%20reset%20on%20their%20token%20even%20if%20the....md",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

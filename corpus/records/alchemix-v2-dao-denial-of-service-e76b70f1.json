@@ -1,0 +1,32 @@
+{
+  "record_id": "alchemix-v2-dao-denial-of-service-e76b70f1",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f",
+    "path": "src/Bribe.sol",
+    "sha256": "4bc8a3061e9844637164b223d944d130a6c79a0dc778f78b53abbe9d5f8c38bb",
+    "commit_resolved_from": "repository head at the report's date, 2024-05-10"
+  },
+  "locator": {
+    "file": "src/Bribe.sol",
+    "contract": "Bribe",
+    "function": "swapOutRewardToken",
+    "start_line": 138,
+    "end_line": 155
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "immunefi",
+    "report_url": "https://github.com/immunefi-team/Past-Audit-Competitions/blob/main/Alchemix/30985%20-%20%5BSC%20-%20Medium%5D%20Griefing%20attack%20prevents%20admins%20from%20disabling%20....md",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}
