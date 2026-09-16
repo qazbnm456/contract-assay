@@ -665,6 +665,53 @@ The second kind is the reason all nine classes are built together rather than
 one at a time. It also yields two measurements a single-class corpus cannot
 produce: cross-class false-positive rate, and detector overlap.
 
+**A post-fix negative requires a commit pin, and what that costs is the control
+rather than the executable half.** "After the fix" is identified by a commit,
+and an address pin (§6.1) has no commit to compare a fix against, so the
+incident population currently supports positives and cross-class negatives and
+no post-fix ones.
+
+Stated precisely because the loose version — "the pair-differential is
+unavailable for this population" — will later be read as "executable ground
+truth is unavailable", and that is false. A proof of concept that reproduces the
+exploit at a fork point demonstrates the defect is real, at that location,
+executably, and that is §6.4's *positive* half needing no negative at all. It is
+also the half that was novel, since no prose record can make that claim. What is
+missing is the control: fires on vulnerable, silent on fixed.
+
+**No fourth kind is being added, and the reason is that the shape could not be
+measured.** The deployed analogue of "after the fix" is at least four
+situations, not one: an upgradeable proxy whose implementation was replaced; an
+immutable contract redeployed at a new address; a defect fixed in a repository
+and never redeployed; and a contract never fixed because the project was
+abandoned. Those carry different claims, different controls and different
+availability, and carving one enum member now forces all four into one shape —
+the approximation refused for variants, for branch references and twice for
+pins.
+
+The measurement that would decide it was attempted and **did not determine the
+answer**, which is recorded because the attempt is what justifies the delay. Of
+34 sampled incidents, the apparent result was 13 immutable and no proxies at
+all. Both halves of that are instrument artefacts:
+
+- The victim contract was identified by matching a verified contract's own name
+  against the proof-of-concept's project name, and **18 of 34 could not be
+  matched** — a bridge named `MainchainGatewayV2` does not resemble its
+  project's name, and most victims do not.
+- Proxy detection reports a *recognised* proxy standard, not a proxy. In one
+  sample it identified a standard proxy correctly, and returned "not a proxy"
+  for two contracts whose own names end in `Proxy` — so a bespoke proxy is
+  invisible to it.
+
+So "no proxies" is a zero that the §6.3 rule applies to, and the samples said
+the instrument. The hypothesis that a proxy upgrade is the dominant shape — in
+which case the control is the **same address at a later fork point**, an
+ordering on a field that already exists, needing neither a new pin kind nor a
+new negative kind — is therefore untested rather than refuted. Settling it needs
+proxy status read from the chain (an implementation storage slot, or a
+`delegatecall` in the runtime code) rather than from a verification repository,
+and a victim identified from the exploit's call targets rather than from a name.
+
 ### 6.3 Pipeline
 
 ```
