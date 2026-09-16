@@ -528,6 +528,7 @@ work in the present tense reports intentions as capabilities.
 | `corpus/records.py` | record schema, the nine classes | **built** |
 | `corpus/verify.py` | verification against pinned source | **built** |
 | `evidence/solidity.py` | syntactic backend: declarations and spans | **built** |
+| `evidence/syntax.py` | shape queries: calls, arguments, writes, visibility | **built** |
 | `cli.py` | `verify`, `declarations` | **built** |
 | `detectors/base.py` | the public detector interface (§2.4) | **built** |
 | `detectors/loading.py` | manifest loading, the untrusted boundary (§2.4) | **built** |

@@ -45,14 +45,16 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tree_sitter import Node, Parser
+    from tree_sitter import Node, Parser, Tree
 
 __all__ = [
+    "NODE_KINDS",
     "Declaration",
     "DeclarationIndex",
     "DeclarationKind",
     "SolidityUnavailable",
     "index_source",
+    "parse_bytes",
 ]
 
 
@@ -81,7 +83,11 @@ class DeclarationKind(StrEnum):
 # Nodes whose presence we care about, and the kind each maps to. The grammar
 # emits a single node type for `receive` and `fallback`; both are unnamed in the
 # source, so a synthetic name is supplied below.
-_NODE_KINDS: dict[str, DeclarationKind] = {
+#
+# Public because the shape-query layer needs the same answer to "is this node a
+# declaration, and of what kind". Two modules maintaining private copies of that
+# question is how they come to disagree about it.
+NODE_KINDS: dict[str, DeclarationKind] = {
     "contract_declaration": DeclarationKind.CONTRACT,
     "library_declaration": DeclarationKind.LIBRARY,
     "interface_declaration": DeclarationKind.INTERFACE,
@@ -142,6 +148,18 @@ class Declaration:
     def spans(self, start_line: int, end_line: int) -> bool:
         """True if this declaration's span intersects the given one."""
         return self.start_line <= end_line and start_line <= self.end_line
+
+
+def parse_bytes(data: bytes) -> Tree:
+    """Parse UTF-8 source bytes. Never raises on malformed input.
+
+    Callers pass bytes rather than `str` and keep them, because every node
+    position is a byte offset into exactly these bytes. Re-encoding the same
+    `str` a second time to read a node's text is safe only as long as both
+    encodings agree, and a caller that slices a different buffer gets silently
+    shifted text.
+    """
+    return _parser().parse(data)
 
 
 @lru_cache(maxsize=1)
@@ -264,7 +282,7 @@ def index_source(source: str) -> DeclarationIndex:
         return DeclarationIndex(declarations=(), parsed=False)
 
     data = source.encode("utf-8")
-    tree = _parser().parse(data)
+    tree = parse_bytes(data)
 
     found: list[Declaration] = []
     # Explicit stack rather than recursion: contract sources are occasionally
@@ -274,7 +292,7 @@ def index_source(source: str) -> DeclarationIndex:
         node, parent = stack.pop()
         enclosing = parent
 
-        if (kind := _NODE_KINDS.get(node.type)) is not None:
+        if (kind := NODE_KINDS.get(node.type)) is not None:
             names = _name_of(node, data, kind)
             if names:
                 found.append(
