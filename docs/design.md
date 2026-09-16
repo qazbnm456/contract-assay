@@ -132,6 +132,33 @@ Corollaries:
 - Use a trie for large synonym sets (router interfaces, oracle interfaces,
   vault entry points) rather than alternating regex.
 
+The same argument decides what an `EvidenceRef` may carry, and one level deeper
+than it first appears. Evidence is compared — between a detector's output and
+ground truth, and between two versions of one source — so every value in the
+compared payload must survive any edit that preserves the property it describes.
+That is a test, not a list:
+
+| Value | Stable? | Where it goes |
+| --- | --- | --- |
+| argument index, literal value, statement ordering | yes | `detail` |
+| language builtins (`block.timestamp`, `blockhash`) | yes — unrenameable | `detail` |
+| local identifiers: state variables, parameters, helpers | **no** | `diagnostic` |
+| external callee identity | only as a 4-byte selector | `detail`, once canonicalised |
+
+Local identifiers fail the test outright: renaming preserves behaviour, so a
+`detail` carrying one reports a difference where nothing changed. They are still
+worth keeping, because evidence a human cannot read is evidence nobody trusts —
+so they go in `diagnostic`, which is excluded from every comparison.
+
+External callee identity is the awkward one, because for the oracle and slippage
+classes it *is* the property rather than incidental to it. Its stable form is the
+selector: an import can be aliased and a variable holding an interface can be
+renamed, while the selector cannot change without changing what is called.
+Computing it needs real ABI canonicalisation — `uint` widened to `uint256`,
+structs flattened to tuples, array suffixes normalised — which
+`Declaration.signature` deliberately does not do. That canonicalisation is
+therefore a prerequisite for those classes rather than a later tidy-up.
+
 ### 2.4 The interface is a public API
 
 The three layers above are also what people outside this project write against:

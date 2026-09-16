@@ -442,3 +442,39 @@ class TestTextIsBounded:
             ).detector_id
             == "example"
         )
+
+
+class TestEvidenceCarriesTwoPayloads:
+    """`detail` is compared; `diagnostic` is not, and the split is load-bearing.
+
+    A value that is not stable under a behaviour-preserving edit -- a renamed
+    state variable, a renamed parameter -- would make a comparison report a
+    difference where nothing changed. Such values are kept, because evidence a
+    human cannot read is evidence nobody trusts, but they are kept out of the
+    payload that gets compared.
+    """
+
+    def _ref(self, **over: object) -> EvidenceRef:
+        base: dict[str, object] = {
+            "predicate": "low_level_call_result_discarded",
+            "tier": EvidenceTier.SYNTACTIC,
+            "locator": Locator(file="src/Vault.sol", start_line=5, end_line=5),
+        }
+        return EvidenceRef(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_both_payloads_default_to_empty(self) -> None:
+        ref = self._ref()
+        assert ref.detail == {} and ref.diagnostic == {}
+
+    def test_the_payloads_are_independent(self) -> None:
+        ref = self._ref(
+            detail={"call_kind": "call", "result_used": False},
+            diagnostic={"receiver": "recipient"},
+        )
+        assert "receiver" not in ref.detail
+        assert "call_kind" not in ref.diagnostic
+
+    def test_evidence_is_still_frozen_and_closed(self) -> None:
+        # A field nobody declared would let two meanings of one predicate coexist.
+        with pytest.raises(ValidationError):
+            self._ref(surprise="?")

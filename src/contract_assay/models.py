@@ -245,14 +245,41 @@ class EvidenceRef(_Frozen):
     part of the record a model cannot influence: it may sway the verdict, but it
     cannot remove an evidence item, and a verdict asserted against the evidence
     is visible as exactly that.
+
+    A predicate is named for the **property** it establishes, never for the form
+    in which it found it. `oracle_price_read_without_staleness_check` names a
+    property; `chainlink_latest_round_data_unchecked` names one shape of it, and
+    a second shape of the same property then needs a second name, so counting
+    either one under-reports the property. The form belongs in `detail`.
+
+    The two payloads below are split because they are compared differently, and
+    the difference is load-bearing rather than cosmetic -- see the field
+    descriptions and section 2.3 of docs/design.md.
     """
 
     predicate: str = Field(
-        min_length=1, description="Stable predicate id, e.g. 'swap_call_min_out_is_literal'."
+        min_length=1,
+        description=(
+            "Stable predicate id, naming the property established -- "
+            "e.g. 'swap_call_min_out_is_literal'."
+        ),
     )
     tier: EvidenceTier
     locator: Locator
-    detail: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    detail: dict[str, str | int | float | bool | None] = Field(
+        default_factory=dict,
+        description=(
+            "Canonical payload. Every value must be stable under any edit that "
+            "preserves the property, because this is what gets compared."
+        ),
+    )
+    diagnostic: dict[str, str | int | float | bool | None] = Field(
+        default_factory=dict,
+        description=(
+            "Human-facing context. Never compared, so unstable values such as local "
+            "identifiers belong here."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

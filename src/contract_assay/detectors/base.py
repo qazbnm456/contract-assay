@@ -78,7 +78,7 @@ __all__ = [
 ]
 
 
-API_VERSION = "1.0"
+API_VERSION = "1.1"
 """Version of this interface, as `major.minor`.
 
 Major changes break submissions; minor changes do not. A submission declares the

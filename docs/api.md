@@ -54,6 +54,24 @@ evidence is recorded *whatever the model concludes*. A model may decline to
 report, or report wrongly; it cannot remove an evidence item. A verdict asserted
 against the evidence is therefore visible as exactly that.
 
+Name a predicate for the **property** it establishes, not for the form in which
+you found it. `oracle_price_read_without_staleness_check` is a property;
+`chainlink_latest_round_data_unchecked` is one shape of it, and the second shape
+then needs a second name, so neither name counts the property.
+
+An `EvidenceRef` carries two payloads, and putting a value in the wrong one is a
+silent scoring bug rather than a style slip:
+
+- `detail` is **compared**. Every value in it must be stable under any edit that
+  preserves the property — argument indices, literal values, statement ordering,
+  and language builtins such as `block.timestamp`, which no author can rename.
+- `diagnostic` is **never compared**. Local identifiers go here: state variable
+  names, parameter names, helper names. Renaming any of them preserves
+  behaviour, so a comparison would report a difference where nothing changed.
+
+Put the unstable values in `diagnostic` rather than dropping them. Evidence a
+human cannot read is evidence nobody trusts.
+
 Two habits that will cost you accuracy if you ignore them:
 
 - **Test shapes, not names.** Identifiers are chosen by whoever wrote the
@@ -217,6 +235,10 @@ Covered by the commitment: every name exported from
 signatures. Also the types these reuse from `contract_assay.models`:
 `EvidenceRef`, `Finding`, `FailedCheck`, `RejectionKind`, `Locator`,
 `EvidenceTier`, `DifficultyLevel` and `VulnerabilityClass`.
+
+`API_VERSION` is `1.1`. The move from `1.0` added `EvidenceRef.diagnostic`,
+which is exactly the kind of change a minor version is for: a submission written
+against `1.0` never reads the field and runs unchanged.
 
 Not covered: anything prefixed with an underscore, anything under
 `contract_assay.corpus`, and the harness internals that call these methods.
