@@ -241,6 +241,20 @@ class TestValidConstructions:
         assert run.verified_findings == []
         assert run.findings[0].failed_checks[0].check == "min_out_flows_into_guard"
 
+    def test_a_model_the_exercise_did_not_agree_to_is_its_own_cause(self) -> None:
+        # Not `budget_exhausted`. A host that recorded a refused model as an
+        # exhausted budget would send the submission's author to look at how
+        # much it spends, when the fix is to stop naming that model.
+        run = a_run(
+            outcome=Outcome.INVALID,
+            findings=[],
+            invalid_reason=InvalidReason.MODEL_NOT_PERMITTED,
+            evidence_tier=None,
+        )
+        assert run.outcome is Outcome.INVALID
+        assert run.invalid_reason is not InvalidReason.BUDGET_EXHAUSTED
+        assert run.verified_findings == []
+
     def test_evidence_survives_a_clean_verdict(self) -> None:
         # The model declined to report; the deterministic phase still observed what
         # it observed. A verdict cannot erase an evidence item.

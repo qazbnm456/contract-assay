@@ -616,6 +616,19 @@ class InvalidReason(StrEnum):
     TRANSPORT_FAILURE = "transport_failure"
     SANDBOX_FAILURE = "sandbox_failure"
 
+    MODEL_NOT_PERMITTED = "model_not_permitted"
+    """The harness asked for a model the exercise did not agree to, and the call
+    was refused before it was made.
+
+    Distinct from `budget_exhausted`, and the distinction is the whole reason it
+    exists: a run recorded as out of budget sends its author to look at how much
+    it spends, when the fix is to stop naming that model. A cause recorded
+    wrongly points investigation away from the fix.
+
+    Also distinct from `sandbox_failure`, which says the host could not run the
+    submission. This says the host ran it and it asked for something outside the
+    agreement -- a fact about the submission, not about the infrastructure."""
+
 
 class SkipReason(StrEnum):
     """Why a source was not analysed.
