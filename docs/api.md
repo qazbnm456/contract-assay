@@ -398,6 +398,31 @@ charge it for the result.
 declines rows under different baseline models: their precisions are over
 different pools.
 
+### Calling the model
+
+This package does not. `plan()` states what to ask and nothing here asks it, so
+a consumer supplies the model — and `examples/reference_runner/` is a worked one,
+on any OpenAI-compatible endpoint.
+
+Three obligations come with calling a model on a submission's behalf, and each
+one produces figures that look fine when it is skipped:
+
+1. **A run must name what produced its findings.** `models=[ModelUse(…)]`, or
+   `produced_without_a_model=True`. A run that leaves the producer unnamed is
+   refused: a figure that cannot say what produced it cannot be compared with
+   one produced by something else.
+2. **A failed call still happened.** Tokens spent on a call that returned
+   nothing are spent, and a budget counting only successes lets a harness retry
+   without limit.
+3. **"We stopped it" and "it found nothing" are different facts.** A run cut
+   short by a budget or a timeout is `invalid` with a reason, never `clean`.
+
+A host running *someone else's* harness owes three more, and none of them change
+what a submission author writes: meter the calls from outside the process
+running the submission, confine that process, and re-check every citation
+against the host's own copy of the source. `check_citation` is exported for the
+third.
+
 ### What the documents guarantee
 
 Both documents carry `schema_version`, `engine_version` and a `corpus` digest

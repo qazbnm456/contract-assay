@@ -15,7 +15,7 @@ import typer
 from pydantic import ValidationError
 
 from contract_assay import __version__
-from contract_assay.corpus.records import CorpusRecord, SourcePin
+from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
 from contract_assay.corpus.verify import verify_all
 from contract_assay.evidence.solidity import index_source
 from contract_assay.models import DetectorRun, DifficultyLevel, VulnerabilityClass
@@ -181,18 +181,17 @@ def declarations_command(
 
 
 def _records_from(directory: Path) -> list[CorpusRecord]:
-    paths = sorted(directory.glob("*.json")) if directory.is_dir() else [directory]
-    records: list[CorpusRecord] = []
-    for path in paths:
-        try:
-            records.append(CorpusRecord.model_validate_json(path.read_text(encoding="utf-8")))
-        except ValidationError as invalid:
-            typer.secho(f"{path.name}: {invalid.error_count()} problems", fg=typer.colors.RED)
-            raise typer.Exit(1) from invalid
-    if not records:
-        typer.secho(f"no records under {directory}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-    return records
+    """The public loader, with the CLI's own exit on top of it.
+
+    The reading and validating live in `corpus.records` so that a consumer
+    outside this package gets the same behaviour; what belongs here is only the
+    decision to stop the process, which a library has no business making.
+    """
+    try:
+        return load_records(directory)
+    except ValueError as invalid:
+        typer.secho(str(invalid), fg=typer.colors.RED)
+        raise typer.Exit(1) from invalid
 
 
 def _runs_from(path: Path) -> list[DetectorRun]:

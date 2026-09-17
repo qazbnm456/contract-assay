@@ -22,6 +22,20 @@ labelled vulnerable.
 > by an instrument its own author would adjudicate cannot license one -- so the
 > reference detectors' recall is measured (0.80 down to 0.00 by class) and their
 > precision waits on a judge who did not write them.
+>
+> **What produced the predictions that recall was measured over.** This package
+> calls no model. `Detector.plan()` says what to ask and nothing here asks it,
+> so the findings those figures were computed over were written by a person
+> reading each contract against the detector's own contract. The matching
+> arithmetic is the real one, over real corpus records at real locations; what it
+> measures is *what these detectors' predicates admit at those locations*, not
+> what a model behind them scores. Those are different numbers and only the
+> second is a model's.
+>
+> `examples/reference_runner/` is how the second one is produced, by anybody,
+> including against a local endpoint. It is deliberately outside the package:
+> an instrument whose own correctness depended on the thing it measures could
+> not tell a broken instrument from a weak model.
 
 ## Why this exists
 
@@ -97,7 +111,19 @@ recorded as a harness failure rather than as the absence of a finding.
 [docs/api.md](docs/api.md) states the compatibility surface and what running
 under isolation asks of a submission.
 
-Built on [rlm-harness](https://github.com/qazbnm456/rlm-harness).
+## Connecting a model
+
+This package does not call one, and installing it gets you no model library.
+`examples/reference_runner/` is a worked consumer built on
+[rlm-harness](https://github.com/qazbnm456/rlm-harness): copy `submission.py` to
+start a detector of your own, and run `runner.py` against any
+OpenAI-compatible endpoint -- hosted or local -- to produce runs this engine can
+score.
+
+`pytest -m live` is the one test that needs a model. It establishes the two
+things a misconfigured endpoint gets wrong while appearing to work: that usage
+is reported at all, and that the model quotes rather than paraphrases. Every
+other test in this repository runs with no model and no network.
 
 ## Development
 

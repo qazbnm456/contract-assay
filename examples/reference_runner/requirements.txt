@@ -1,0 +1,5 @@
+# What the example needs and the package does not. `contract_assay` imports no
+# model library at all -- an instrument whose correctness depended on the thing
+# it measures could not tell a broken instrument from a weak model -- so this
+# file exists instead of an extra on the package.
+rlm-harness>=1.11.2,<2

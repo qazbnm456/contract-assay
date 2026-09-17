@@ -1,6 +1,6 @@
 [project]
 name = "contract-assay"
-version = "0.1.0.dev2"
+version = "0.1.0.dev3"
 description = "Benchmark infrastructure for LLM smart contract auditing: verified findings, deterministic evidence, attributable scoring."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,9 +34,14 @@ slither = [
     "slither-analyzer>=0.11.6,<0.12",
     "crytic-compile>=0.4.2,<0.5",
 ]
-# The model-driven detectors. Not needed to build or verify a corpus.
-llm = ["rlm-harness>=1.11.2,<2"]
-all = ["contract-assay[slither,llm]"]
+all = ["contract-assay[slither]"]
+
+# There is no `llm` extra, and the omission is deliberate. This package imports
+# no model library: `Detector.plan()` states what to ask and nothing here asks
+# it, because an instrument whose correctness depended on the thing it measures
+# could not tell a broken instrument from a weak model. What a consumer needs to
+# call a model is in `examples/reference_runner/requirements.txt`, which is
+# where a dependency nothing here imports belongs.
 
 [project.scripts]
 contract-assay = "contract_assay.cli:app"
@@ -100,6 +105,12 @@ strict = true
 warn_unreachable = true
 mypy_path = "src"
 packages = ["contract_assay"]
+
+[[tool.mypy.overrides]]
+# Third-party analysis backends ship no type information. `dspy` and
+# `rlm_harness` appear only in `examples/`, which is not part of the package.
+module = ["dspy.*", "rlm_harness.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # Third-party analysis backends ship no type information.

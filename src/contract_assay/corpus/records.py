@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from contract_assay.models import DifficultyLevel, Locator, VulnerabilityClass
 
@@ -44,6 +45,7 @@ __all__ = [
     "VulnerabilityClass",
     "defect_key",
     "fold_preference",
+    "load_records",
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
@@ -880,3 +882,29 @@ def fold_preference(record: CorpusRecord) -> tuple[int, int, int, str]:
         width,
         record.record_id,
     )
+
+
+def load_records(path: Path) -> list[CorpusRecord]:
+    """Every record at `path`, validated, in a stable order.
+
+    A file or a directory of `*.json`. Public because a consumer cannot connect
+    to this corpus without it, and until it was public each one re-implemented
+    it -- a check that has to be repeated is a check that will be forgotten in
+    one of its places. The omission surfaced the first time a runner outside
+    this package tried to read a corpus.
+
+    Sorted by path, so two runs over one directory see the same units in the
+    same order. Raises `ValueError` naming the file that would not validate,
+    rather than skipping it: a corpus that silently loses a record produces a
+    recall figure over a denominator nobody chose.
+    """
+    paths = sorted(path.glob("*.json")) if path.is_dir() else [path]
+    records: list[CorpusRecord] = []
+    for one in paths:
+        try:
+            records.append(CorpusRecord.model_validate_json(one.read_text(encoding="utf-8")))
+        except ValidationError as invalid:
+            raise ValueError(f"{one}: {invalid.error_count()} problems\n{invalid}") from invalid
+    if not records:
+        raise ValueError(f"no records under {path}")
+    return records
