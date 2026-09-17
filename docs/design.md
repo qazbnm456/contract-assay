@@ -2776,6 +2776,48 @@ present and insufficient -- and the count is the thing that said so. A
 narrowing that buys precision by hiding a miss is the failure declaring exists
 to prevent, and the declaration has to be written in the same change.
 
+#### Who may judge the pool
+
+The chain was run end to end over the whole corpus -- 442 records, 140 source
+units, nine classes -- and it ranked nothing. The reason is worth stating
+because it looks like a gap and is not one.
+
+Precision needs the pool judged, and the pool here is the *reference detectors'*
+own predictions. Judging one of them as an instance would make the instrument's
+firing into the ground truth it is scored against, which is the circularity
+"agreement is not authorship" exists to stop: a detector whose author adjudicates
+its own hits has a precision of 1 by construction. Judging them as non-instances
+is available only where the source settles it, and it did not: a loop over a
+user-growable order array is the shape the class names, and nothing in the file
+says whether the contest treated it as a finding.
+
+So the reference detectors' precision is unlicensable **by their author**, and
+that is a property of who judges rather than of the tier or the corpus. The
+asymmetry the exercise depends on is that a submission's predictions are judged
+by the exercise's owner, who did not write the submission -- and the floor
+baseline is not a competitor, it is the line a submission has to beat.
+
+What the run does produce is every per-class figure that does not need the pool:
+
+| class | records | predictions | hits | recall |
+| --- | --- | --- | --- | --- |
+| unchecked_external_call | 10 | 512 | 10 | 0.800 |
+| access_control | 55 | 24 | 7 | 0.091 |
+| arithmetic_rounding | 61 | 12 | 5 | 0.049 |
+| slippage | 31 | 41 | 3 | 0.032 |
+| denial_of_service | 190 | 7 | 5 | 0.016 |
+| oracle_integrity | 61 | 4 | 3 | 0.016 |
+| reentrancy | 20 | 3 | 0 | 0.000 |
+| flashloan_manipulation | 6 | 0 | 0 | 0.000 |
+| insecure_randomness | 1 | 6 | 1 | 1.000 |
+
+Read as a statement about the reference detectors, that table is the point of
+having them: they are narrow syntactic rules and the corpus is a sample of real
+audit findings, so low recall is the honest reading rather than a failure of the
+measurement. The two figures above 0.5 are both below the stated minimum of ten
+records and are reported as unusable. And the composition sentence travels with
+all of it: 87% of the records come from one platform.
+
 ### 7.7 The boundary a submission surface is built on
 
 A ranking is eventually read on a page, and the page is a different program.

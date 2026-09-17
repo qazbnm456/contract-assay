@@ -138,6 +138,14 @@ whatever they turn out to be. Where it gives numbers alone, open the file at
 them and check that what is there is what the finding describes — and if it is
 not, the finding has not given you a location.
 
+**Do not adjudicate a prediction made by an instrument you wrote.** Not as an
+instance, at least: that turns the firing into the ground truth it is scored
+against, and a detector whose author judges its own hits has a precision of 1 by
+construction. As a *non*-instance it is allowed and is ordinary curation, because
+the deciding fact then comes from the source rather than from the instrument.
+The exercise's asymmetry is what makes the pool work: submissions are judged by
+whoever runs the exercise, who did not write them.
+
 **A refusal is a result, and it belongs somewhere durable.** Four predictions
 stand refused, and they are recorded here so the next person does not spend the
 afternoon reaching the same answer:
