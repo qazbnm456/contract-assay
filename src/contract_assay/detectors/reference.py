@@ -471,3 +471,265 @@ class AccessControlDetector(_SyntacticDetector):
                     )
                 )
         return failures
+
+
+class DenialOfServiceDetector(_SyntacticDetector):
+    """An iteration an outsider can make longer than a block will hold.
+
+    Built because §4.2's audit found this class needed no compiled backend after
+    all: an array's declared type says whether it is dynamic, the loop's
+    condition says what bounds it, and the appending function has a visibility.
+
+    Reports the loop rather than the array. The array is fine; iterating all of
+    it in one transaction is the defect, and a corpus scored at function
+    granularity needs the location where the work happens.
+    """
+
+    detector_id = "reference-denial-of-service"
+    class_id = VulnerabilityClass.DENIAL_OF_SERVICE
+    api_version = "1.1"
+    predicate_ids = frozenset({"loop_bounded_by_externally_growable_storage_array"})
+
+    # Four entries from one run against five records, and the headline is about
+    # the *class* rather than the detector: this predicate names one denial-of-
+    # service mechanism, and the corpus's five records contain at least four.
+    # §4.2 treats the class as needing one capability; the records say it is a
+    # family. Three of the four are stated here; the fifth record's mechanism
+    # could not be read from its span, so it is left as an unexplained miss
+    # rather than filed under a guess.
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "the append that grows the iterated collection is one internal call "
+                "away from any externally reachable function, so the collection is "
+                "caller-growable and nothing in this unit says so directly"
+            ),
+            demonstrated_by="alchemix-v2-dao-denial-of-service-e76b70f1",
+            unpatched_because=(
+                "deciding it needs to know which externally reachable functions reach "
+                "the internal appender, which is a call graph over the unit rather than "
+                "a shape in it. Treating any internal appender as externally reachable "
+                "would fire on every collection a contract maintains for itself."
+            ),
+            closed_when=(
+                "a call graph over the analysed unit -- which is §4.2's one remaining "
+                "row for the semantic tier, and now has five records behind it rather "
+                "than the reentrancy row alone"
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "the loop's bound is a local variable assigned from a collection's "
+                "length, so the condition names the local and not the collection"
+            ),
+            demonstrated_by="alchemix-v2-dao-denial-of-service-6b54ee07",
+            isolated=False,
+            unpatched_because=(
+                "following the assignment is def-use inside a function. Matching the "
+                "local's name against collection names would be name-based inference of "
+                "the kind §2.3 forbids."
+            ),
+            closed_when="def-use within a function body",
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a loop capped by a literal, whose cap cannot cover work that grows "
+                "with elapsed time -- the defect is too *few* iterations, which is the "
+                "opposite of the property this detector names"
+            ),
+            demonstrated_by="alchemix-v2-dao-denial-of-service-ab3d30ba",
+            unpatched_because=(
+                "it is a different property rather than a weaker view of this one, and "
+                "it needs its own predicate: a bound that is constant while the work it "
+                "must cover is not. No analysis depth helps, so no tier closes it."
+            ),
+            closed_when=(
+                "a predicate naming the opposite property, a constant cap over "
+                "unbounded work. Not a tier matter."
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a denial of service whose mechanism is not iteration at all -- an "
+                "external dependency that can be made to revert, with no loop anywhere "
+                "in the function"
+            ),
+            demonstrated_by="evm-smart-contracts-denial-of-service-65fa591f",
+            unpatched_because=(
+                "this detector holds one predicate and that predicate is about "
+                "iteration. The class covers several mechanisms (§4.3) and the others "
+                "have no predicate yet."
+            ),
+            closed_when=(
+                "predicates for the class's other mechanisms, starting with a "
+                "dependency whose failure a caller can force"
+            ),
+        ),
+    )
+
+    instruction = (
+        "Find loops whose iteration count an outside caller can increase without "
+        "bound, so that the enclosing function eventually cannot complete. Report the "
+        "loop. A loop bounded by a constant, by a fixed-size collection, or by a "
+        "length only the contract itself can grow is not an instance."
+    )
+
+    def class_checks(
+        self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
+    ) -> Sequence[FailedCheck]:
+        loops = [
+            loop
+            for loop in parsed.loops
+            if self._spans(finding, loop.site.start_line, loop.site.end_line)
+        ]
+        if not loops:
+            return [_reject("no_loop_at_locator", "the stated location contains no loop")]
+
+        failures: list[FailedCheck] = []
+        dynamic = {
+            name
+            for name, declared in parsed.state_variable_types.items()
+            if declared.endswith("[]")
+        }
+        if not any(frozenset(loop.bound_identifiers) & dynamic for loop in loops):
+            failures.append(
+                _reject(
+                    "loop_not_bounded_by_a_dynamic_collection",
+                    "the loop's condition names no dynamically sized state variable, so "
+                    "its iteration count is not something state can grow",
+                )
+            )
+        appended = {call.receiver for call in parsed.calls if call.callee == "push"}
+        if not appended & dynamic:
+            failures.append(
+                _reject(
+                    "nothing_appends_to_it_in_this_unit",
+                    "no call in this unit appends to a dynamically sized state variable, so "
+                    "nothing here makes the iteration longer",
+                )
+            )
+        return failures
+
+
+class OracleIntegrityDetector(_SyntacticDetector):
+    """A freshness value the code asked for and then never consulted.
+
+    Built because §4.2's audit found the blocker was misdescribed. The class was
+    parked on needing an ABI to know which interface returns a price; naming the
+    *property* rather than the oracle removes the need -- a caller that binds a
+    timestamp beside a value and never mentions it in a condition discarded a
+    freshness claim, whoever the callee is.
+    """
+
+    detector_id = "reference-oracle-integrity"
+    class_id = VulnerabilityClass.ORACLE_INTEGRITY
+    api_version = "1.1"
+    predicate_ids = frozenset({"multi_return_timestamp_never_reaches_a_guard"})
+    instruction = (
+        "Find places where a value is used after the freshness information returned "
+        "with it was discarded. Report the function. A caller that checks the "
+        "freshness, or one whose source returns none at all, is not an instance."
+    )
+
+    def class_checks(
+        self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
+    ) -> Sequence[FailedCheck]:
+        unpacked = [
+            d
+            for d in parsed.destructurings
+            if self._spans(finding, d.site.start_line, d.site.end_line)
+        ]
+        hosts = [
+            function
+            for function in parsed.functions
+            if self._spans(finding, function.site.start_line, function.site.end_line)
+        ]
+        if not unpacked:
+            unpacked = [
+                d
+                for d in parsed.destructurings
+                if any(
+                    function.site.start_line <= d.site.start_line <= function.site.end_line
+                    for function in hosts
+                )
+            ]
+        if not unpacked:
+            return [
+                _reject(
+                    "no_multi_return_at_locator",
+                    "nothing at the stated location unpacks several values, so there is no "
+                    "freshness value that could have been discarded",
+                )
+            ]
+
+        failures: list[FailedCheck] = []
+        bound = {name for d in unpacked for name in d.names}
+        mentioned = {
+            identifier
+            for guard in parsed.guards
+            for function in hosts
+            if function.site.start_line <= guard.site.start_line <= function.site.end_line
+            for identifier in guard.identifiers
+        }
+        if bound & mentioned:
+            failures.append(
+                _reject(
+                    "an_unpacked_value_does_reach_a_guard",
+                    "a value unpacked here is mentioned in a condition in the same "
+                    "function, so the freshness information was not discarded",
+                )
+            )
+        return failures
+
+
+class ArithmeticRoundingDetector(_SyntacticDetector):
+    """Integer division taken before a multiplication that would have kept the precision.
+
+    Built because §4.2's audit split this class three ways where the table had
+    merged them. Evaluation order is the parse tree and declared widths are
+    declarations; a token's `decimals()` is another contract's storage and is a
+    declared indeterminacy rather than a gap this detector can close.
+    """
+
+    detector_id = "reference-arithmetic-rounding"
+    class_id = VulnerabilityClass.ARITHMETIC_ROUNDING
+    api_version = "1.1"
+    predicate_ids = frozenset({"division_evaluated_before_multiplication"})
+    instruction = (
+        "Find expressions that divide before multiplying, discarding precision that "
+        "the other order would have kept. Report the expression's line. An expression "
+        "that multiplies first, or whose division is exact by construction, is not an "
+        "instance."
+    )
+
+    def class_checks(
+        self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
+    ) -> Sequence[FailedCheck]:
+        spanned = [
+            expression
+            for expression in parsed.arithmetic
+            if self._spans(finding, expression.site.start_line, expression.site.end_line)
+        ]
+        if not spanned:
+            return [
+                _reject(
+                    "no_arithmetic_at_locator",
+                    "the stated location contains no arithmetic expression",
+                )
+            ]
+        if not any(
+            expression.operator == "*" and "/" in expression.operand_operators
+            for expression in spanned
+        ):
+            return [
+                _reject(
+                    "nothing_divides_before_multiplying",
+                    "no expression here multiplies a value that was already divided, so the "
+                    "order this class is about is not present",
+                )
+            ]
+        return []

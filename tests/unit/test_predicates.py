@@ -61,7 +61,10 @@ class TestRegistry:
         # omitted the zeroes would imply the second.
         coverage = coverage_by_class()
         assert set(coverage) == set(VulnerabilityClass)
-        assert coverage[VulnerabilityClass.ORACLE_INTEGRITY] == ()
+        # Still one class with nothing behind it, and it is the one no analysis
+        # over a single unit reaches (§4.2's audit): whether a callee is a market
+        # the caller can move is another contract's fact.
+        assert coverage[VulnerabilityClass.FLASHLOAN_MANIPULATION] == ()
 
     def test_results_can_be_restricted_to_one_class(self) -> None:
         source = contract('    function f(address to) external { to.call(""); }')
@@ -719,3 +722,165 @@ class TestAGuardThatAsksTheCallerForItsAnswer:
         assert ref.detail["caller_supplied_receiver_count"] == 1
         assert ref.diagnostic["receivers"] == "from"
         assert ref.locator.function == "f"
+
+
+class TestALoopAnOutsiderCanLengthen:
+    """Three declarations and a shape, none of which needed a compiled backend.
+
+    §4.2 recorded this class as needing storage and dynamic-array types from the
+    semantic tier. The declaration states both in source text.
+    """
+
+    ID = "loop_bounded_by_externally_growable_storage_array"
+    SOURCE = """contract D {
+    address[] public voters;
+    address[3] public admins;
+    address[] internal hidden;
+
+    function payAll() external {
+        for (uint256 i = 0; i < voters.length; i++) { payable(voters[i]).transfer(1); }
+    }
+    function payFixed() external {
+        for (uint256 i = 0; i < admins.length; i++) { payable(admins[i]).transfer(1); }
+    }
+    function payHidden() external {
+        for (uint256 i = 0; i < hidden.length; i++) { payable(hidden[i]).transfer(1); }
+    }
+    function touchesWithoutBounding() external {
+        for (uint256 i = 0; i < 10; i++) { payable(voters[i]).transfer(1); }
+    }
+    function join() external { voters.push(msg.sender); }
+    function addHidden() internal { hidden.push(msg.sender); }
+}
+"""
+
+    def _hits(self) -> list[str]:
+        return sorted(
+            e.diagnostic["arrays"]  # type: ignore[misc]
+            for e in evidence(self.SOURCE)
+            if e.predicate == self.ID
+        )
+
+    def test_a_dynamic_array_an_outsider_appends_to_fires(self) -> None:
+        assert self._hits() == ["voters"]
+
+    def test_a_fixed_array_does_not(self) -> None:
+        # No length an outsider can change, so the iteration is bounded by the
+        # declaration.
+        assert "admins" not in self._hits()
+
+    def test_an_array_only_an_insider_appends_to_does_not(self) -> None:
+        # The array is dynamic and nothing external grows it, so the loop's
+        # length is the contract's own business.
+        assert "hidden" not in self._hits()
+
+    def test_touching_an_array_is_not_being_bounded_by_it(self) -> None:
+        # The distinction the condition-only bound exists for: this loop reads
+        # `voters` in its body and is bounded by a literal.
+        [ref] = [e for e in evidence(self.SOURCE) if e.predicate == self.ID]
+        assert ref.locator.start_line == 7
+
+    def test_it_names_the_appender_for_diagnosis(self) -> None:
+        [ref] = [e for e in evidence(self.SOURCE) if e.predicate == self.ID]
+        assert ref.diagnostic["appenders"] == "join"
+        assert ref.detail["array_is_dynamic"] is True
+
+
+class TestAFreshnessValueAskedForAndDiscarded:
+    """Named for the property, which is what lets it work without an ABI.
+
+    The class had been parked on knowing which interface returns a price. It
+    does not need to know: a call that hands back a timestamp beside a value,
+    whose caller binds the timestamp and never mentions it in a condition, asked
+    for a freshness claim and threw it away.
+    """
+
+    ID = "multi_return_timestamp_never_reaches_a_guard"
+
+    def _fires(self, body: str) -> bool:
+        source = "contract O {\n    uint256 last;\n" + body + "\n}\n"
+        return any(e.predicate == self.ID for e in evidence(source))
+
+    def test_an_unconsulted_timestamp_fires(self) -> None:
+        assert self._fires(
+            """    function f(address feed) external {
+        (, int256 price, , uint256 updatedAt, ) = IFeed(feed).latestRoundData();
+        last = uint256(price);
+    }"""
+        )
+
+    def test_a_consulted_timestamp_does_not(self) -> None:
+        assert not self._fires(
+            """    function f(address feed) external {
+        (, int256 price, , uint256 updatedAt, ) = IFeed(feed).latestRoundData();
+        require(block.timestamp - updatedAt < 3600, "stale");
+        last = uint256(price);
+    }"""
+        )
+
+    def test_an_if_consults_it_as_much_as_a_require(self) -> None:
+        assert not self._fires(
+            """    function f(address feed) external {
+        (, int256 price, , uint256 updatedAt, ) = IFeed(feed).latestRoundData();
+        if (block.timestamp - updatedAt > 3600) { revert(); }
+        last = uint256(price);
+    }"""
+        )
+
+    def test_a_single_return_feed_is_silent_rather_than_sound(self) -> None:
+        # There is no timestamp to discard. A different situation from a
+        # discarded one -- arguably worse -- and not this property.
+        assert not self._fires(
+            """    function f(address feed) external {
+        last = uint256(IFeed(feed).latestAnswer());
+    }"""
+        )
+
+    def test_a_non_time_binding_does_not_fire(self) -> None:
+        # Every uint256 is not a timestamp, which is why the type alone is not
+        # the test.
+        assert not self._fires(
+            """    function f(address pool) external {
+        (uint256 reserve0, uint256 reserve1) = IPair(pool).getReserves();
+        last = reserve0 + reserve1;
+    }"""
+        )
+
+    def test_a_time_named_binding_of_the_wrong_type_does_not_fire(self) -> None:
+        assert not self._fires(
+            """    function f(address feed) external {
+        (bool ok, address updatedBy) = IFeed(feed).lastWriter();
+        last = ok ? 1 : 0;
+    }"""
+        )
+
+
+class TestDividingBeforeMultiplying:
+    """Integer division truncates, so the order decides the result."""
+
+    ID = "division_evaluated_before_multiplication"
+
+    def _fires(self, expression: str) -> bool:
+        source = (
+            "contract A {\n"
+            "    function f(uint256 a, uint256 b, uint256 c) external pure returns (uint256) {\n"
+            f"        return {expression};\n    }}\n}}\n"
+        )
+        return any(e.predicate == self.ID for e in evidence(source))
+
+    def test_dividing_first_fires(self) -> None:
+        assert self._fires("a / b * c")
+
+    def test_multiplying_first_does_not(self) -> None:
+        assert not self._fires("a * c / b")
+
+    def test_parenthesised_division_first_still_fires(self) -> None:
+        assert self._fires("(a / b) * c")
+
+    def test_division_alone_does_not(self) -> None:
+        # Truncation on its own is not this property: the property is the order
+        # of two operations, and there is only one here.
+        assert not self._fires("a / b")
+
+    def test_multiplication_alone_does_not(self) -> None:
+        assert not self._fires("a * b")

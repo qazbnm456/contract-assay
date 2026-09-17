@@ -20,7 +20,10 @@ from contract_assay.detectors.base import (
 )
 from contract_assay.detectors.reference import (
     AccessControlDetector,
+    ArithmeticRoundingDetector,
+    DenialOfServiceDetector,
     InsecureRandomnessDetector,
+    OracleIntegrityDetector,
     UncheckedExternalCallDetector,
 )
 from contract_assay.models import (
@@ -331,3 +334,113 @@ contract Quiet {
             "host_carries_a_modifier",
             "host_writes_no_state",
         }
+
+
+class TestDenialOfServiceVerdict:
+    """The strict side of the class §4.2's audit moved out of the tier."""
+
+    SOURCE = """contract D {
+    address[] public voters;
+    address[3] public admins;
+
+    function payAll() external {
+        for (uint256 i = 0; i < voters.length; i++) { payable(voters[i]).transfer(1); }
+    }
+    function payFixed() external {
+        for (uint256 i = 0; i < admins.length; i++) { payable(admins[i]).transfer(1); }
+    }
+    function join() external { voters.push(msg.sender); }
+}
+"""
+
+    def _verdict(self, finding: Finding, source: str | None = None) -> list[str]:
+        detector = DenialOfServiceDetector()
+        ctx = a_context(detector.level, source=source or self.SOURCE)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_a_loop_over_a_growable_array_stands(self) -> None:
+        assert self._verdict(a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)")) == []
+
+    def test_a_location_with_no_loop_is_refuted(self) -> None:
+        assert self._verdict(a_finding(2, 2, "address[] public voters;")) == ["no_loop_at_locator"]
+
+    def test_a_fixed_size_collection_is_refuted(self) -> None:
+        # Its length is in the declaration, so no state can grow the iteration.
+        assert "loop_not_bounded_by_a_dynamic_collection" in self._verdict(
+            a_finding(9, 9, "for (uint256 i = 0; i < admins.length; i++)")
+        )
+
+    def test_a_unit_where_nothing_appends_is_refuted(self) -> None:
+        source = self.SOURCE.replace(
+            "    function join() external { voters.push(msg.sender); }\n", ""
+        )
+        assert "nothing_appends_to_it_in_this_unit" in self._verdict(
+            a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)"), source=source
+        )
+
+
+class TestOracleIntegrityVerdict:
+    """The class the audit found was parked on a misdescribed blocker."""
+
+    SOURCE = """contract O {
+    uint256 last;
+
+    function stale(address feed) external {
+        (, int256 price, , uint256 updatedAt, ) = IFeed(feed).latestRoundData();
+        last = uint256(price);
+    }
+    function fresh(address feed) external {
+        (, int256 price, , uint256 updatedAt, ) = IFeed(feed).latestRoundData();
+        require(block.timestamp - updatedAt < 3600, "stale");
+        last = uint256(price);
+    }
+}
+"""
+
+    def _verdict(self, finding: Finding) -> list[str]:
+        detector = OracleIntegrityDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_a_discarded_freshness_value_stands(self) -> None:
+        assert self._verdict(a_finding(4, 6, "function stale(address feed) external")) == []
+
+    def test_a_consulted_one_is_refuted(self) -> None:
+        assert "an_unpacked_value_does_reach_a_guard" in self._verdict(
+            a_finding(8, 12, "function fresh(address feed) external")
+        )
+
+    def test_a_location_unpacking_nothing_is_refuted(self) -> None:
+        assert self._verdict(a_finding(2, 2, "uint256 last;")) == ["no_multi_return_at_locator"]
+
+
+class TestArithmeticRoundingVerdict:
+    """One of the three things §4.2 had merged under this class."""
+
+    SOURCE = """contract A {
+    uint256 last;
+
+    function loses(uint256 a, uint256 b, uint256 c) external pure returns (uint256) {
+        return a / b * c;
+    }
+    function keeps(uint256 a, uint256 b, uint256 c) external pure returns (uint256) {
+        return a * c / b;
+    }
+}
+"""
+
+    def _verdict(self, finding: Finding) -> list[str]:
+        detector = ArithmeticRoundingDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_dividing_before_multiplying_stands(self) -> None:
+        assert self._verdict(a_finding(5, 5, "return a / b * c;")) == []
+
+    def test_the_other_order_is_refuted(self) -> None:
+        assert self._verdict(a_finding(8, 8, "return a * c / b;")) == [
+            "nothing_divides_before_multiplying"
+        ]
+
+    def test_a_location_with_no_arithmetic_is_refuted(self) -> None:
+        assert self._verdict(a_finding(2, 2, "uint256 last;")) == ["no_arithmetic_at_locator"]

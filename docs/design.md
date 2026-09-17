@@ -123,6 +123,14 @@ onto a record and checked the digest, so for any record arriving without one the
 comparison was against itself — the same shape as a derived locator, arriving in
 a different field.
 
+Every rule in this section is an **instruction to go and look**, not a
+conclusion to cite. That distinction is the section's own failure mode, and it
+has cost real decisions here: §2.3's base-rate rule was followed as far as
+stating it and a predicate was nearly shipped on the strength of one catch,
+where measuring it showed 17 of 19 firings were on correct code. The rule said
+to measure. The measurement gave the answer. A rule cited instead of run reads
+as diligence and produces nothing.
+
 A second question belongs beside it, because it catches a different failure:
 
 > **What test fails if this guarantee is absent?**
@@ -451,6 +459,14 @@ and deliberately does not build. The asymmetry is worth knowing: indeterminacy
 is closeable for an address pin in a way it is not for a commit pin, where a
 third-party interface has no implementation anywhere we hold.
 
+**When to build it is a measured trigger, not a plan.** `ClassScore` counts
+*qualified negatives* — clean runs that rested on a site the deterministic layer
+could not decide. If that count stays small as the incident population grows,
+recursive resolution was never the investment; if it climbs, the count says when
+and roughly by how much. A trigger tied to an observation rather than a date
+gets settled by data instead of by whoever is arguing at the time. At the last
+measurement it was 5 of 54 runs, all in one class and one unit.
+
 ## 4. Vulnerability classes
 
 Nine classes, derived from two public sources: the OWASP Smart Contract Top 10
@@ -535,6 +551,17 @@ not reachable at any tier over one unit. That is a much smaller justification
 than "six of nine classes need the compiled backend", which is what the
 unaudited column said and what the build order had been following.
 
+**The one row is worth more than one row, and that was measured afterwards.**
+Running the newly-collapsed predicates against the corpus found that the *same*
+missing capability — a call graph over the unit — also blocks
+`denial_of_service`, in two of its five records: one where the append that grows
+the iterated collection sits in an internal function, and one where the loop
+itself is in an internal callee of the recorded entry point. So the tier's
+justification is a single mechanism serving at least two classes with five
+records behind it, not a single row with one. The audit removed the tier from
+contention on a false basis and the measurement put it back on a true one, which
+is the difference between "it is probably not soon" and a price worth naming.
+
 The general form, and it is §1.3's rule pointed at this document rather than at
 a parser: **a capability column written from reasoning is a claim about whoever
 reasoned.** It had been steering the build for weeks, and half a day of fixtures
@@ -604,6 +631,36 @@ surprising.
 Recorded this way because the failure mode is specific and was nearly walked
 into here: an observation feels like confirmation because it arrived from the
 population the prediction concerns, while testing something else entirely.
+
+**A class is not a mechanism, and `denial_of_service` is the case that shows
+it.** One predicate was built for it, naming one mechanism: a loop bounded by a
+collection an outsider can grow. Run against the five records the corpus holds,
+it found none of them, and reading each one gave four *different* mechanisms:
+
+| record's mechanism | what it needs |
+| --- | --- |
+| the appender is one internal call away | a call graph over the unit |
+| the bound is a local alias for a length | def-use in a function |
+| a loop capped by a literal cannot cover work that grows with time — too *few* iterations | a predicate for the opposite property |
+| no iteration at all: a dependency a caller can make revert | a predicate for that mechanism |
+
+The fifth record's mechanism could not be read from its span, so it is left
+unaccounted rather than filed under a guess.
+
+This is not a complaint about the class list. It is what §4.2's single row per
+class conceals: a capability column answers "what does this class need" as
+though the class had one answer, and a five-record sample of one class produced
+four. The register (§7.3) holds these as four entries because each has a record
+behind it, which is the form in which the finding is checkable rather than
+asserted.
+
+It also says what the increment that found them was for. Five records is below
+the stated minimum of ten, so no score over them supports a claim — and a reader
+seeing "5 records, no valid score" would conclude the work did not pay. What it
+bought is four demonstrated facts about the instrument, each certain at the one
+record that demonstrates it, in a class where nothing was known before. Records
+alone would not have produced them: **harvesting produces records, and only
+running detectors produces limits.**
 
 ### 4.3 What nine classes means for the claim
 

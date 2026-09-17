@@ -624,5 +624,182 @@ def _authorisation_reads_its_answer_from_caller_supplied_address(
     return found
 
 
+@_register(
+    "loop_bounded_by_externally_growable_storage_array",
+    VulnerabilityClass.DENIAL_OF_SERVICE,
+    summary="A loop is bounded by the length of a dynamic storage array that an "
+    "externally reachable function appends to.",
+)
+def _loop_bounded_by_externally_growable_storage_array(
+    syntax: Syntax, path: str
+) -> list[EvidenceRef]:
+    """Three facts, each of them a declaration or a shape.
+
+    The array's declared type says whether it is dynamic -- `address[]` grows,
+    `address[3]` does not, and a mapping has no length to loop over. The loop's
+    continuation condition says which name bounds it. And the function calling
+    `push` on it has a visibility, which says whether an outsider can make the
+    loop longer.
+
+    §4.2 recorded this class as needing storage and dynamic-array *types* from a
+    compiled backend. The declaration states both in the source text, which is
+    what the audit in `tests/unit/test_tier_audit.py` established.
+
+    Not established: that the loop is expensive enough to exceed a block's gas,
+    which depends on what the body does per element and on a gas schedule that
+    changes between forks. So this reports an unbounded iteration an outsider
+    can extend, and the verdict layer is where a claim about it is checked.
+    """
+    growable: dict[str, str] = {}
+    for call in syntax.calls:
+        if call.callee != "push" or call.receiver is None:
+            continue
+        declared = syntax.state_variable_types.get(call.receiver)
+        if declared is None or not declared.endswith("[]"):
+            continue
+        host = syntax.host_at(call.site.start_line)
+        if host.function is None:
+            continue
+        appender = next(
+            (f for f in syntax.functions if f.declaration.names[0] == host.function), None
+        )
+        if appender is not None and appender.is_externally_reachable:
+            growable[call.receiver] = host.function
+
+    found: list[EvidenceRef] = []
+    for loop in syntax.loops:
+        bounded_by = sorted(frozenset(loop.bound_identifiers) & frozenset(growable))
+        if not bounded_by or "length" not in loop.bound_identifiers:
+            continue
+        found.append(
+            EvidenceRef(
+                predicate="loop_bounded_by_externally_growable_storage_array",
+                tier=_SYNTACTIC,
+                locator=loop.site.locator(path),
+                detail={
+                    "bounded_array_count": len(bounded_by),
+                    "array_is_dynamic": True,
+                },
+                diagnostic={
+                    "arrays": ",".join(bounded_by),
+                    "appenders": ",".join(growable[name] for name in bounded_by),
+                },
+            )
+        )
+    return found
+
+
+@_register(
+    "multi_return_timestamp_never_reaches_a_guard",
+    VulnerabilityClass.ORACLE_INTEGRITY,
+    summary="A time-typed value unpacked from a multi-return is never mentioned in any "
+    "condition in the function that unpacked it.",
+)
+def _multi_return_timestamp_never_reaches_a_guard(syntax: Syntax, path: str) -> list[EvidenceRef]:
+    """A freshness value the code asked for and then never consulted.
+
+    Named for the property and not for an oracle, which is what makes it
+    reachable without an ABI: the class had been parked on knowing *which*
+    interface returns a price. It does not need to know. A call that returns a
+    timestamp alongside a value, whose caller binds the timestamp and then never
+    mentions it in a condition, asked for a freshness claim and discarded it --
+    whoever the callee is.
+
+    A binding is treated as time-typed on its declared type and its name
+    together, and both are in the tuple's own declaration.
+
+    What it cannot see, and the shape is worth knowing before trusting a zero:
+    an older single-return feed carries no timestamp at all, so there is nothing
+    to bind and this is silent. That is a *different* situation from a discarded
+    timestamp -- arguably a worse one -- and it is not this property.
+    """
+    found: list[EvidenceRef] = []
+    for function in syntax.functions:
+        declaration = function.declaration
+        unpacked = [d for d in syntax.destructurings if _inside(declaration, d.site.start_line)]
+        if not unpacked:
+            continue
+        mentioned = {
+            identifier
+            for guard in syntax.guards
+            if _inside(declaration, guard.site.start_line)
+            for identifier in guard.identifiers
+        }
+        for destructuring in unpacked:
+            stale = sorted(
+                name
+                for declared, name in destructuring.bindings
+                if _looks_like_a_time(declared, name) and name not in mentioned
+            )
+            if not stale:
+                continue
+            found.append(
+                EvidenceRef(
+                    predicate="multi_return_timestamp_never_reaches_a_guard",
+                    tier=_SYNTACTIC,
+                    locator=destructuring.site.locator(path),
+                    detail={
+                        "unguarded_time_binding_count": len(stale),
+                        "guards_in_function": len(mentioned) > 0,
+                    },
+                    diagnostic={"bindings": ",".join(stale), "from": destructuring.source_text},
+                )
+            )
+    return found
+
+
+@_register(
+    "division_evaluated_before_multiplication",
+    VulnerabilityClass.ARITHMETIC_ROUNDING,
+    summary="One expression divides and then multiplies, discarding precision that "
+    "multiplying first would have kept.",
+)
+def _division_evaluated_before_multiplication(syntax: Syntax, path: str) -> list[EvidenceRef]:
+    """Integer division truncates, so the order of the two decides the result.
+
+    `a / b * c` and `a * c / b` differ by up to `c - 1` in integer arithmetic,
+    and the first is the shape that loses. It is the shape of a single
+    expression: an outer multiplication whose operand already divided. §4.2
+    recorded this class as needing types and evaluation order from a compiled
+    backend; evaluation order is the parse tree, which is the part the audit
+    separated out.
+
+    Not established: that the loss matters. Dividing first is correct when the
+    quotient is exact or the scale is deliberate, which is why this is evidence
+    about a shape rather than a verdict (§2.1).
+    """
+    found: list[EvidenceRef] = []
+    for expression in syntax.arithmetic:
+        if expression.operator != "*" or "/" not in expression.operand_operators:
+            continue
+        found.append(
+            EvidenceRef(
+                predicate="division_evaluated_before_multiplication",
+                tier=_SYNTACTIC,
+                locator=expression.site.locator(path),
+                detail={"outer_operator": "*", "divides_in_operand": True},
+                diagnostic={"expression": expression.site.text[:120]},
+            )
+        )
+    return found
+
+
+def _looks_like_a_time(declared: str, name: str) -> bool:
+    """Whether a binding is a timestamp, from its declared type and its name.
+
+    Both, because either alone is wrong in a common case: every `uint256` is not
+    a time, and a name is a user identifier that may say anything. Requiring an
+    unsigned integer type *and* a name that speaks of time is narrow enough to
+    be worth reporting and shallow enough to be honest about -- a binding named
+    for time and typed as one is the shape, not a proof.
+    """
+    if not declared.startswith(("uint", "int")):
+        return False
+    lowered = name.lower()
+    return any(
+        term in lowered for term in ("time", "timestamp", "updated", "roundid", "age", "stale")
+    )
+
+
 def _inside(declaration: Declaration, line: int) -> bool:
     return declaration.start_line <= line <= declaration.end_line

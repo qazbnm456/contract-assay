@@ -37,7 +37,7 @@ nested functions.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -274,6 +274,43 @@ class WriteSite:
         )
 
 
+_ARITHMETIC_OPERATORS = frozenset({"*", "/", "%", "+", "-", "**", "<<", ">>"})
+
+
+@dataclass(frozen=True, slots=True)
+class LoopSite:
+    """One loop, described by what bounds it rather than by what it does."""
+
+    site: Site
+    bound_identifiers: tuple[str, ...]
+    """Identifiers in the continuation condition. For correlation (§2.3)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Destructuring:
+    """One multi-return unpacked into named bindings."""
+
+    site: Site
+    bindings: tuple[tuple[str, str], ...]
+    """(declared type, name) for each *named* binding, in source order."""
+
+    source_text: str
+    """The expression the values came from. Diagnostic: never correlate on text."""
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(name for _, name in self.bindings)
+
+
+@dataclass(frozen=True, slots=True)
+class ArithmeticSite:
+    """One binary arithmetic expression and the operators inside its operands."""
+
+    site: Site
+    operator: str
+    operand_operators: tuple[str, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class GuardSite:
     """One condition that decides whether execution proceeds."""
@@ -459,6 +496,117 @@ class Syntax:
             if name is not None:
                 names.add(self.text(name))
         return frozenset(names)
+
+    @cached_property
+    def state_variable_types(self) -> Mapping[str, str]:
+        """Declared type text for each contract-scope name.
+
+        The declaration says whether a collection is dynamic, fixed or a
+        mapping, which §4.2's audit found is the whole of what one class needed
+        and was recorded as requiring a compiled backend.
+        """
+        types: dict[str, str] = {}
+        for node in self._nodes("state_variable_declaration"):
+            name = node.child_by_field_name("name")
+            declared = next((c for c in node.children if c.type == "type_name"), None)
+            if name is not None and declared is not None:
+                types[self.text(name)] = self.text(declared)
+        return types
+
+    @cached_property
+    def loops(self) -> tuple[LoopSite, ...]:
+        """Every loop, with the identifiers its continuation condition mentions.
+
+        The condition is what bounds the loop, so it is kept apart from the
+        body: a loop over `voters.length` and one that merely touches `voters`
+        inside are different facts, and merging them would make every loop in a
+        contract look bounded by whatever it uses.
+        """
+        found: list[LoopSite] = []
+        for node in self._nodes("for_statement", "while_statement"):
+            if node.type == "while_statement":
+                conditions = [c for c in node.children if c.type == "expression"][:1]
+            else:
+                # A `for` header is `init; condition; update`, and the condition
+                # is the `expression_statement` -- the bare `expression` child is
+                # the *update*, which is what a first guess selects and which
+                # mentions only the counter. A `for (;;)` has no
+                # `expression_statement` and so no bound, which is the right
+                # answer for it.
+                conditions = [c for c in node.children if c.type == "expression_statement"][:1]
+            names = {
+                self.text(i)
+                for condition in conditions
+                for i in self._descendants(condition, "identifier")
+            }
+            found.append(LoopSite(site=self._site(node), bound_identifiers=tuple(sorted(names))))
+        return tuple(found)
+
+    @cached_property
+    def destructurings(self) -> tuple[Destructuring, ...]:
+        """Every multi-return unpacked into named bindings, with the call behind it.
+
+        Positional and partial by nature: `(, price, , updatedAt, )` names two of
+        five returns and skips three. Only the named ones can be referred to
+        later, so only they are recorded.
+        """
+        found: list[Destructuring] = []
+        for node in self._nodes("variable_declaration_statement"):
+            group = next((c for c in node.children if c.type == "variable_declaration_tuple"), None)
+            if group is None:
+                continue
+            bindings: list[tuple[str, str]] = []
+            for declaration in (c for c in group.children if c.type == "variable_declaration"):
+                name = next(
+                    (self.text(i) for i in declaration.children if i.type == "identifier"), None
+                )
+                declared = next(
+                    (self.text(t) for t in declaration.children if t.type == "type_name"), None
+                )
+                if name is not None:
+                    bindings.append((declared or "", name))
+            if not bindings:
+                continue
+            source = next((c for c in node.children if c.type == "expression"), None)
+            found.append(
+                Destructuring(
+                    site=self._site(node),
+                    bindings=tuple(bindings),
+                    source_text=self.text(source) if source is not None else "",
+                )
+            )
+        return tuple(found)
+
+    @cached_property
+    def arithmetic(self) -> tuple[ArithmeticSite, ...]:
+        """Every binary arithmetic expression, with its operator and its operands'.
+
+        `operand_operators` is what makes evaluation order visible: an outer `*`
+        whose left operand contains a `/` divides first and loses precision that
+        multiplying first would have kept. That is the shape of one expression
+        and needs no types, which §4.2 had recorded otherwise.
+        """
+        found: list[ArithmeticSite] = []
+        for node in self._nodes("binary_expression"):
+            operator = next(
+                (c.type for c in node.children if c.type in _ARITHMETIC_OPERATORS), None
+            )
+            if operator is None:
+                continue
+            operand_operators: set[str] = set()
+            for operand in (c for c in node.children if c.type == "expression"):
+                for inner in self._descendants(operand, "binary_expression"):
+                    operand_operators |= {
+                        c.type for c in inner.children if c.type in _ARITHMETIC_OPERATORS
+                    }
+            found.append(
+                ArithmeticSite(
+                    site=self._site(node),
+                    operator=operator,
+                    operand_operators=tuple(sorted(operand_operators)),
+                )
+            )
+        return tuple(found)
 
     @cached_property
     def calls(self) -> tuple[CallSite, ...]:
