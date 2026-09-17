@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -101,6 +102,68 @@ class Proposal(BaseModel):
 
 class Proposals(BaseModel):
     findings: list[Proposal] = Field(default_factory=list)
+
+
+_CONFIGURED = False
+
+
+def setup(*, model: str, sub_model: str, max_tokens: int, max_calls: int) -> None:
+    """Configure the harness once: models from the caller, endpoint from the environment.
+
+    The split is the thing to copy. `rlm-harness` will read `RLM_MAIN_MODEL` and
+    `RLM_SUB_MODEL` if you let it build the config for you, and a runner that
+    took the model from there would have two sources of truth for the one value
+    a figure is only meaningful beside. So the models come from arguments and
+    the environment supplies **where the model lives**:
+
+        RLM_BASE_URL    any OpenAI-compatible endpoint, hosted or local
+        RLM_API_KEY     required by hosted providers; most local servers want
+                        any non-empty string
+        RLM_ADAPTER     `json` for schema-guided structured output, `chat` for
+                        an endpoint with none
+        RLM_INTERPRETER where the model's own REPL runs
+
+    Getting this wrong is not a subtle failure, and it is worth knowing the
+    shape: omit the base URL and litellm receives a bare model name with no
+    provider, which comes back as `LLM Provider NOT provided` on every call.
+    Every run is then `invalid`, which reads like a harness that measures
+    nothing.
+
+    Called once rather than per call, because `configure` sets process-global
+    state. That is safe here for the same reason it is safe in a competition:
+    one round, one agreed model, one process.
+    """
+    global _CONFIGURED
+    if _CONFIGURED:
+        return
+    try:
+        from rlm_harness import RLMConfig, configure
+    except ImportError:
+        print(
+            "this runner needs rlm-harness: "
+            "pip install -r examples/reference_runner/requirements.txt",
+            file=sys.stderr,
+        )
+        raise
+
+    configure(
+        RLMConfig(
+            main_model=model,
+            sub_model=sub_model,
+            api_key=os.environ.get("RLM_API_KEY") or None,
+            base_url=os.environ.get("RLM_BASE_URL") or None,
+            adapter=os.environ.get("RLM_ADAPTER", "json"),
+            interpreter=os.environ.get("RLM_INTERPRETER", "pyodide"),
+            # A per-call ceiling, where the submission's budget is per unit. A
+            # reasoning model emits its chain-of-thought before its answer, so
+            # this has to hold both or the reply is cut off mid-JSON -- which
+            # surfaces as a model that cannot follow a schema rather than as a
+            # truncation. The unit budget then bounds how many such calls fit.
+            max_tokens=max_tokens,
+            max_llm_calls=max_calls,
+        )
+    )
+    _CONFIGURED = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,27 +217,14 @@ def ask(
     whole run on one bad call and publishes the submission as having measured
     nothing.
     """
-    try:
-        import dspy
-        from rlm_harness import RLMConfig, RLMTask, configure
-    except ImportError:
-        print(
-            "this runner needs rlm-harness: "
-            "pip install -r examples/reference_runner/requirements.txt",
-            file=sys.stderr,
-        )
-        raise
+    import dspy
+    from rlm_harness import RLMTask
 
-    configure(
-        RLMConfig(
-            main_model=model,
-            sub_model=sub_model,
-            # The submission's own stated ceiling, not a global one. `ctx.limits`
-            # is what the host holds it to, so it is also what the call is sized
-            # against.
-            max_tokens=ctx.limits.max_tokens,
-            max_llm_calls=ctx.limits.max_model_calls,
-        )
+    setup(
+        model=model,
+        sub_model=sub_model,
+        max_tokens=ctx.limits.max_tokens,
+        max_calls=ctx.limits.max_model_calls,
     )
 
     class Detect(RLMTask):  # type: ignore[misc]
@@ -270,6 +320,13 @@ def run_one(
 
     answer = ask(detector, ctx, spec.instruction, model=model, sub_model=sub_model)
     if answer.failed is not None:
+        # Printed as well as recorded. `InvalidReason` has five values and none
+        # of them says *what* the transport did, so a runner that only set the
+        # reason would leave the cause nowhere -- and the first thing anybody
+        # does with a run of `transport_failure` is go looking for it. A cause
+        # recorded wrongly points investigation away from the fix; a cause
+        # dropped points it nowhere.
+        print(f"\n{unit.source_id} {detector.detector_id}: {answer.failed}", file=sys.stderr)
         # Charged and invalid. The call happened; it measured nothing.
         return DetectorRun(
             detector_id=detector.detector_id,
