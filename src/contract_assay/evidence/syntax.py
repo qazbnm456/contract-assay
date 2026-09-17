@@ -144,6 +144,27 @@ class Site:
     end_line: int
     host: Host
 
+    start_byte: int = -1
+    end_byte: int = -1
+    """Byte offsets, for asking whether one site is *inside* another.
+
+    Lines cannot answer that. Two nodes on one line contain each other by line
+    number, so a line-only check made "the selection contains the read"
+    equivalent to "they share a line" -- and
+    `lastEarn[token][id] = block.timestamp;` then read as a timestamp being used
+    as an index, which is 21 of 88 sites over one corpus.
+
+    Defaulted to -1 so a `Site` built without them answers `contains` as false
+    rather than as true, which is the direction that refuses rather than
+    asserts.
+    """
+
+    def contains(self, other: Site) -> bool:
+        """Whether `other` lies inside this site's own extent."""
+        if self.start_byte < 0 or other.start_byte < 0:
+            return False
+        return self.start_byte <= other.start_byte and other.end_byte <= self.end_byte
+
     def locator(self, file: str) -> Locator:
         """A `Locator` for this site, naming its host contract and function."""
         return Locator(
@@ -273,6 +294,9 @@ class WriteSite:
             WriteTarget.STATE_MEMBER,
         )
 
+
+_HASHES = frozenset({"keccak256", "sha256", "ripemd160", "sha3", "blockhash"})
+"""Calls that turn a value into an unpredictable-looking one."""
 
 _ARITHMETIC_OPERATORS = frozenset({"*", "/", "%", "+", "-", "**", "<<", ">>"})
 
@@ -481,6 +505,8 @@ class Syntax:
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             host=self.host_at(node.start_point[0] + 1),
+            start_byte=node.start_byte,
+            end_byte=node.end_byte,
         )
 
     def host_at(self, line: int) -> Host:
@@ -939,6 +965,47 @@ class Syntax:
             if identifier is not None:
                 names.append(self.text(identifier))
         return tuple(names)
+
+    @cached_property
+    def selections(self) -> tuple[Site, ...]:
+        """Places a value is turned into a choice rather than read as a quantity.
+
+        Three shapes, and they are the only ways an integer becomes a selection
+        without leaving the expression: a cryptographic hash, a modulo, and a
+        subscript. A value that reaches none of them is being read as a
+        quantity -- a deadline, a stamp, a balance -- however unpredictable its
+        source.
+
+        The depth is one expression and the limitation is the same one that
+        caller-taint and length aliases have: a value assigned to a local and
+        selected on later is not seen, and following it needs def-use. The
+        shallow form was assumed to need data flow too, and does not.
+        """
+        found: list[Site] = []
+        for node in self._nodes("call_expression"):
+            callee = next((c for c in node.children if c.type == "expression"), None)
+            if callee is not None and self.text(callee).strip() in _HASHES:
+                found.append(self._site(node))
+        for node in self._nodes("binary_expression"):
+            if any(c.type == "%" for c in node.children):
+                found.append(self._site(node))
+        for node in self._nodes("array_access", "index_access", "subscript_expression"):
+            # The *index*, not the whole node. The grammar gives a subscript a
+            # base expression that can swallow a surrounding comparison --
+            # `block.timestamp > locked[id]` parses as a subscript whose base is
+            # `block.timestamp > locked` -- so the node's extent contains reads
+            # that are nowhere near the index. The index child is small and
+            # right, and indexing *by* a value is the property anyway.
+            after_bracket = False
+            for child in node.children:
+                if child.type == "[":
+                    after_bracket = True
+                    continue
+                if child.type == "]":
+                    break
+                if after_bracket:
+                    found.append(self._site(child))
+        return tuple(sorted(found, key=lambda site: (site.start_line, site.text)))
 
     @cached_property
     def guards(self) -> tuple[GuardSite, ...]:

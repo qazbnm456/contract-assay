@@ -241,7 +241,7 @@ class InsecureRandomnessDetector(_SyntacticDetector):
         self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
     ) -> Sequence[FailedCheck]:
         reads = [
-            (receiver, prop)
+            site
             for site, receiver, prop in parsed.member_reads
             if self._spans(finding, site.start_line, site.end_line)
             and prop in CHAIN_STATE_MEMBERS.get(receiver, frozenset())
@@ -273,9 +273,35 @@ class InsecureRandomnessDetector(_SyntacticDetector):
                 )
             ]
 
-        # Whether the value is then *used* as randomness rather than as a
-        # deadline needs data flow, so it is not checked here. Asserting it from
-        # syntax would be a rule that passes its own tests and nothing else.
+        # This used to say that whether the value is *used* as randomness rather
+        # than as a deadline needs data flow, so it was not checked. That was
+        # right about the general case and wrong about the shallow one, which is
+        # the third time the same mistake has been made here. Reaching a hash, a
+        # modulo or a subscript inside the cited span is a syntactic property,
+        # and a value that reaches none of them is read as a quantity however
+        # unpredictable its source. Measured: of 83 producer-controlled reads
+        # across one corpus, none reached any of the three, and the detector had
+        # been claiming all of them.
+        # The selection must *contain* the read, not merely share a line with
+        # it. `lastVoted[id] = block.timestamp;` has a subscript on the line and
+        # the timestamp is not what indexes it -- checking overlap alone left 21
+        # of 88 firing on exactly that shape.
+        read_sites = reads + [call.site for call in blockhash]
+        selections = [
+            site for site in parsed.selections if any(site.contains(read) for read in read_sites)
+        ]
+        if not selections:
+            return [
+                _reject(
+                    "the_value_reaches_no_selection",
+                    "nothing in the cited span hashes, takes a modulo of, or indexes by "
+                    "this value, so it is read as a quantity rather than used as though "
+                    "unpredictable",
+                )
+            ]
+
+        # What remains genuinely needs data flow: a value assigned to a local
+        # and selected on later is outside the cited span and not seen here.
         return []
 
 

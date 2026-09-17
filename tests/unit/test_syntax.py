@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 
 from contract_assay.evidence.syntax import (
+    Host,
+    Site,
     Syntax,
     WriteTarget,
 )
@@ -496,3 +498,37 @@ class TestNoQueryRaisesOnOddSource:
         for declaration in parsed.index.declarations:
             parsed.identifier_uses(declaration, "x")
             parsed.within(declaration, tuple(s for s, _, _ in parsed.member_reads))
+
+
+class TestASiteKnowsWhatItContains:
+    """Containment needs byte offsets, because lines cannot answer it.
+
+    Two nodes on one line contain each other by line number, which made "this
+    selection contains that read" equivalent to "they share a line".
+    """
+
+    SOURCE = "contract R {\n    function f(uint256 id) external { xs[id] = block.timestamp; }\n}\n"
+
+    def test_a_site_built_without_offsets_contains_nothing(self) -> None:
+        # Refusing rather than asserting is the safe direction for a default.
+        host = Host(contract=None, function=None, function_signature=None)
+        bare = Site(node_type="x", text="x", start_line=1, end_line=1, host=host)
+        other = Site(node_type="y", text="y", start_line=1, end_line=1, host=host)
+        assert bare.contains(other) is False
+
+    def test_two_nodes_on_one_line_need_not_contain_each_other(self) -> None:
+        syntax = Syntax.of(self.SOURCE)
+        assert syntax is not None
+        [read] = [s for s, r, p in syntax.member_reads if r == "block"]
+        indices = [s for s in syntax.selections if s.start_line == read.start_line]
+        assert indices, "the subscript's index should be a selection on that line"
+        assert not any(index.contains(read) for index in indices)
+
+    def test_containment_holds_when_it_really_nests(self) -> None:
+        syntax = Syntax.of(
+            "contract R {\n    function f() external view returns (bytes32)"
+            " { return keccak256(abi.encode(block.timestamp)); }\n}\n"
+        )
+        assert syntax is not None
+        [read] = [s for s, r, p in syntax.member_reads if r == "block"]
+        assert any(selection.contains(read) for selection in syntax.selections)

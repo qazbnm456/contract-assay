@@ -660,6 +660,37 @@ is the *source of the answer* -- `IVisor(from).owner() == msg.sender` asks a
 caller-chosen contract to adjudicate a check on itself -- and that distinction
 is the receiver position of a call inside the condition, which fires 4 times.
 
+**Fix the instrument before adjudicating the pool.** Applied to three classes,
+it took an adjudication backlog of 137 predictions down to 2, and each narrowing
+was a stated property rather than a threshold:
+
+| class | pool before | after | the property |
+| --- | --- | --- | --- |
+| `arithmetic_rounding` | 28 | 4 | the multiplier differs from the divisor |
+| `slippage` | 25 | 4 | the call has a receiver, so it crosses a contract boundary |
+| `insecure_randomness` | 88 | 0 | the read reaches a hash, a modulo or a subscript's index |
+
+The third is the one that changes a conclusion recorded here earlier. This
+document said that whether a producer-chosen value is *used* as randomness
+rather than as a deadline needs data flow, so it was not checked — and that was
+right about the general case and wrong about the shallow one, which is the third
+time that distinction has been missed. A value reaches a selection three ways
+without leaving its expression: a hash, a modulo, or a subscript's index. One
+that reaches none of them is read as a quantity. Of 88 firings, none reached
+any.
+
+Getting there took two wrong versions, both of which fired correctly and refused
+incorrectly — the failure mode a control fixture exists to catch:
+
+- **Lines cannot express containment.** Two nodes on one line contain each other
+  by line number, so "the selection contains the read" meant "they share a
+  line", and `lastEarn[id] = block.timestamp;` read as a timestamp used as an
+  index. `Site` now carries byte offsets.
+- **A subscript's extent is not its index.** The grammar gives
+  `block.timestamp > locked[id]` a subscript whose *base* is
+  `block.timestamp > locked`, so the node contained a read nowhere near the
+  index. The index child is what the property is about anyway.
+
 **Fix the instrument before adjudicating the pool**, which the arithmetic class
 demonstrated at a cost of one afternoon avoided. Its pool was 28 predictions, and
 24 were a single idiom: `(a / b) * b`, rounding down to a multiple of `b`, where

@@ -531,3 +531,77 @@ class TestSlippageVerdict:
 
     def test_a_location_with_no_call_is_refuted(self) -> None:
         assert self._verdict(a_finding(1, 1, "contract S {")) == ["no_call_at_locator"]
+
+
+class TestAValueReadIsNotAValueUsedAsRandom:
+    """The class is about using a producer-chosen value *as though unpredictable*.
+
+    A value reaches a selection three ways without leaving the expression: a
+    hash, a modulo, or a subscript's index. One that reaches none of them is
+    read as a quantity -- a deadline, a stamp -- however unpredictable its
+    source. Measured: of 88 firings over one corpus, none reached any of the
+    three, and the detector had been claiming all of them.
+
+    Two mistakes on the way here are pinned below, because both passed the
+    fires-correctly cases and failed the refuses-correctly one.
+    """
+
+    def _verdict(self, body: str, cited: str, lo: int, hi: int) -> list[str]:
+        source = (
+            "contract R {\n"
+            "    uint256 deadline;\n"
+            "    mapping(uint256 => uint256) lastEarn;\n"
+            f"{body}\n}}\n"
+        )
+        detector = InsecureRandomnessDetector()
+        ctx = a_context(detector.level, source=source)
+        finding = a_finding(lo, hi, cited)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_hashing_the_value_stands(self) -> None:
+        body = (
+            "    function f() external view returns (uint256) {\n"
+            "        return uint256(keccak256(abi.encode(block.timestamp)));\n    }"
+        )
+        assert self._verdict(body, "uint256(keccak256(abi.encode(block.timestamp)))", 5, 5) == []
+
+    def test_indexing_by_the_value_stands(self) -> None:
+        body = (
+            "    function f(uint256[] memory xs) external view returns (uint256) {\n"
+            "        return xs[block.number % xs.length];\n    }"
+        )
+        assert self._verdict(body, "xs[block.number % xs.length]", 5, 5) == []
+
+    def test_a_deadline_comparison_is_refuted(self) -> None:
+        body = (
+            "    function f() external view returns (bool) {\n"
+            "        return block.timestamp > deadline;\n    }"
+        )
+        assert self._verdict(body, "block.timestamp > deadline", 5, 5) == [
+            "the_value_reaches_no_selection"
+        ]
+
+    def test_a_subscript_on_the_line_is_not_a_selection_of_the_value(self) -> None:
+        # The first version compared line numbers, and two nodes on one line
+        # contain each other by line -- so `lastEarn[id] = block.timestamp;`
+        # read as a timestamp used as an index. That was 21 of 88 firings.
+        body = (
+            "    function f(uint256 id) external {\n        lastEarn[id] = block.timestamp;\n    }"
+        )
+        assert self._verdict(body, "lastEarn[id] = block.timestamp;", 5, 5) == [
+            "the_value_reaches_no_selection"
+        ]
+
+    def test_a_comparison_beside_a_subscript_is_not_a_selection(self) -> None:
+        # The second version took the whole subscript node, and the grammar
+        # gives `block.timestamp > locked[id]` a subscript whose *base* is
+        # `block.timestamp > locked` -- so the node contained a read nowhere
+        # near the index. The index child is what matters, and indexing by a
+        # value is the property anyway.
+        body = (
+            "    function f(uint256 id) external view returns (bool) {\n"
+            "        return block.timestamp > lastEarn[id];\n    }"
+        )
+        assert self._verdict(body, "block.timestamp > lastEarn[id]", 5, 5) == [
+            "the_value_reaches_no_selection"
+        ]
