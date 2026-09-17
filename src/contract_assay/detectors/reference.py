@@ -48,6 +48,7 @@ from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSp
 from contract_assay.evidence.predicates import (
     externally_growable_arrays,
     looks_like_a_time,
+    mentions_the_sender,
     run_all,
 )
 from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, FunctionSite, Syntax
@@ -466,6 +467,23 @@ class AccessControlDetector(_SyntacticDetector):
                     "host_carries_a_modifier",
                     "the enclosing function carries a modifier, which this tier cannot "
                     "distinguish from a guard",
+                )
+            )
+
+        # The predicate's fourth condition, which the verdict never asked: a
+        # body that reads `msg.sender` is either guarding on it or is
+        # permissionless by design, and this tier cannot tell those apart. 47 of
+        # 59 unadjudicated predictions over one sample were the second kind.
+        # Fourth class in a row where the strict layer was looser than its own
+        # evidence, and the reason is structural: `class_checks` re-derives the
+        # rules from the source and nothing made it re-derive *these* rules.
+        if mentions_the_sender(parsed, host.declaration):
+            failures.append(
+                _reject(
+                    "host_reads_the_sender",
+                    "the enclosing function reads msg.sender, which this tier cannot "
+                    "tell from a guard on it -- and a function that reads the sender "
+                    "while guarding nothing is usually permissionless by design",
                 )
             )
 

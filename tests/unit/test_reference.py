@@ -835,3 +835,42 @@ class TestTheRoundingIdiomStaysExcluded:
 
     def test_a_different_multiplier_still_stands(self) -> None:
         assert self._verdict(7, 9, "    function scaled(") == []
+
+
+class TestReadingTheSenderIsNotGuardingOnIt:
+    """And this tier cannot tell the two apart, so it declines both.
+
+    The predicate has treated a body that reads `msg.sender` as a non-finding
+    from the start -- coarse on purpose, because requiring the reference to sit
+    inside a condition would fire on every permissionless-by-design function.
+    The verdict never asked, and 47 of 59 unadjudicated predictions over one
+    sample were exactly those functions. Fourth class in a row where the strict
+    layer was looser than its own evidence.
+    """
+
+    SOURCE = """contract P {
+    mapping(address => uint256) balances;
+    address owner;
+
+    function deposit() external payable {
+        balances[msg.sender] += msg.value;
+    }
+    function setOwner(address who) external {
+        owner = who;
+    }
+}
+"""
+
+    def _verdict(self, lo: int, hi: int, cited: str) -> list[str]:
+        detector = AccessControlDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [
+            check.check
+            for check in detector.verdict(ctx, a_finding(lo, hi, cited), detector.evidence(ctx))
+        ]
+
+    def test_a_permissionless_deposit_is_refuted(self) -> None:
+        assert self._verdict(5, 7, "    function deposit()") == ["host_reads_the_sender"]
+
+    def test_an_unguarded_setter_still_stands(self) -> None:
+        assert self._verdict(8, 10, "    function setOwner(") == []

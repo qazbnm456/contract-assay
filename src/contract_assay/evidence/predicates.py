@@ -90,6 +90,7 @@ __all__ = [
     "coverage_by_class",
     "externally_growable_arrays",
     "looks_like_a_time",
+    "mentions_the_sender",
     "predicates",
     "run_all",
 ]
@@ -394,12 +395,7 @@ def _state_change_reachable_without_modifier_or_sender_reference(
                     )
                 )
             continue
-        senders = [
-            1
-            for site, receiver, prop in syntax.member_reads
-            if receiver == "msg" and prop == "sender" and _inside(declaration, site.start_line)
-        ]
-        if senders:
+        if mentions_the_sender(syntax, declaration):
             continue
         found.append(
             EvidenceRef(
@@ -868,6 +864,23 @@ def _division_evaluated_before_multiplication(syntax: Syntax, path: str) -> list
             )
         )
     return found
+
+
+def mentions_the_sender(syntax: Syntax, declaration: Declaration) -> bool:
+    """Whether the function's body reads `msg.sender` anywhere.
+
+    Public because the verdict has to ask the same question. Coarse on purpose:
+    a reference is not a guard, and requiring it to sit inside a condition would
+    fire on every permissionless-by-design function, since
+    `balances[msg.sender] += msg.value` writes state and reads the sender while
+    guarding nothing. The predicate has treated such a function as a non-finding
+    from the start; the verdict never asked, and 47 of 59 unadjudicated
+    predictions over one sample were exactly them.
+    """
+    return any(
+        receiver == "msg" and prop == "sender" and _inside(declaration, site.start_line)
+        for site, receiver, prop in syntax.member_reads
+    )
 
 
 def looks_like_a_time(declared: str, name: str) -> bool:

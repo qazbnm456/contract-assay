@@ -2488,6 +2488,37 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### The same split, four times, and what it was worth
+
+Access control was the fourth and the largest. Its predicate observes four
+things -- externally reachable, writes state, no modifier, and **no mention of
+`msg.sender` anywhere in the body** -- and the verdict asked the first three.
+The fourth is the one that matters most and the one most easily left out,
+because it is deliberately coarse: a reference is not a guard, and requiring it
+to sit inside a condition would fire on every permissionless-by-design
+function, since `balances[msg.sender] += msg.value` writes state and reads the
+sender while guarding nothing. The predicate has treated those as non-findings
+from the start. 47 of 59 unadjudicated predictions were exactly them.
+
+Asking for it took the class from 66 predictions to 17 with all five hits
+intact, and the adjudication queue for the whole corpus from 74 to 26 — from
+110 when the run was first made. Four classes, one mistake:
+
+> **The layer that decides must ask for the property the layer that observes
+> established.** Nothing in the architecture enforced it. `class_checks`
+> re-derives its rules from the source at the stated location, which is right --
+> a verdict bounded by its evidence would cap a model's reach at the
+> deterministic tier's, and two tests exist to say so -- but *re-deriving* is
+> not *re-deriving the same thing*, and every narrowing written into a predicate
+> after a measurement has to be written twice or it protects nothing.
+
+Where the same test now serves both, it is one function called from both places:
+`looks_like_a_time`, `externally_growable_arrays`, `mentions_the_sender`. That is
+the real fix; the four narrowings are its instances. The cost of getting it wrong
+is not symmetrical either, which is why it showed up as queue length rather than
+as a wrong score: a verdict looser than its evidence produces predictions nobody
+can adjudicate, and precision waits on all of them.
+
 #### Every miss accounted for, and what that cost
 
 Denial of service had six misses no limit named, so the method that found the
