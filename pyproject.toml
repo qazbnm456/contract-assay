@@ -61,6 +61,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/contract_assay"]
+# PEP 561. Without the marker a consumer running strict mypy cannot import this
+# package at all -- it reports "missing library stubs or py.typed marker" and
+# stops. Found by building a consumer: this project runs mypy over its own
+# source, where the marker is never consulted, so the gate here could not see
+# it. A benchmark meant to be depended on has to be importable by a typed
+# caller, and that is a packaging property rather than a code one.
+artifacts = ["src/contract_assay/py.typed"]
 
 # ---------------------------------------------------------------------------
 # Enforcement. Every tool below runs in CI on every push. A linter that is
