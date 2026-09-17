@@ -832,6 +832,15 @@ class SlippageDetector(_SyntacticDetector):
     that declined to look.
     """
 
+    # What the boundary check cannot separate, recorded here rather than in the
+    # declared-limit register because no corpus record demonstrates it (§7.4's
+    # completeness bound): a struct construction qualified by the interface that
+    # declares the struct -- `IVotingEscrow.Point(0, 0, 0, 0)` -- carries a
+    # receiver and constructs a value in memory. Telling that from a member call
+    # needs to know the qualifier is a type, and the type is declared in another
+    # file, so it is not in this unit's index. An indeterminacy of scope rather
+    # than a defect in the check.
+
     detector_id = "reference-slippage"
     class_id = VulnerabilityClass.SLIPPAGE
     api_version = "1.1"
@@ -854,6 +863,22 @@ class SlippageDetector(_SyntacticDetector):
             return [_reject("no_call_at_locator", "the stated location contains no call")]
 
         failures: list[FailedCheck] = []
+        # An exchange happens across a contract boundary, so the call has a
+        # receiver. Without this the class means "passes zero to anything": over
+        # one corpus every single firing was a struct construction or an
+        # internal call -- `LockedBalance(0, 0, false, 0)`, `_checkpoint(...)` --
+        # where the zero is a field initialiser and not a bound on anything.
+        # Structural rather than a list of callee names, which no import
+        # aliasing survives (§2.3).
+        if not any(call.receiver is not None for call in calls):
+            failures.append(
+                _reject(
+                    "call_crosses_no_contract_boundary",
+                    "the call has no receiver, so it is an internal call or a struct "
+                    "construction rather than an exchange with another party, and a zero "
+                    "among its arguments bounds nothing",
+                )
+            )
         if not any(argument.is_zero_literal for call in calls for argument in call.arguments):
             failures.append(
                 _reject(
