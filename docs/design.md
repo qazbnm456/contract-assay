@@ -501,17 +501,44 @@ Which backend each class needs. This drives implementation order: classes
 reachable at the syntactic tier can be built and tested before the compiled
 backend is wired up.
 
-| Class | Needs | Syntactic tier sufficient? |
-| --- | --- | --- |
-| `unchecked_external_call` | shallow def-use | mostly |
-| `insecure_randomness` | shallow def-use | mostly |
-| `access_control` | modifiers, visibility, caller-taint | partly |
-| `slippage` | def-use through call arguments | no |
-| `oracle_integrity` | def-use into guards | no |
-| `denial_of_service` | storage/dynamic array types | no |
-| `arithmetic_rounding` | types, decimals, evaluation order | no |
-| `reentrancy` | control flow + state-write ordering | no |
-| `flashloan_manipulation` | interprocedural reachability | no |
+This table was **audited**, and the audit is in `tests/unit/test_tier_audit.py`
+rather than in this paragraph. Its first version was written by reasoning when
+the classes were defined — no code existed, nothing was tested, and each "no"
+asserted that something could not be done without a compiled backend. Six of
+those were never checked. Of the six: two already had working syntactic
+predicates in the tree, three collapse wholly or partly, and one turns out not
+to be a tier gap at all.
+
+The outcome column is three-valued now, because two of the old "no"s meant
+different things. **Never** means the missing fact is another contract's bytes,
+so no analysis over this unit reaches it — an indeterminacy (§3.1), and a tier
+built for it produces nothing.
+
+| Class | What decides it | Syntactic? | Was |
+| --- | --- | --- | --- |
+| `unchecked_external_call` | a call result bound or discarded | yes | mostly |
+| `insecure_randomness` | a producer-controlled value read | yes | mostly |
+| `access_control` | modifiers, visibility, depth-one caller-taint | yes, except aliases | partly |
+| `slippage` | a call argument that is a zero literal | yes | no |
+| `oracle_integrity` | a destructured timestamp never named in a guard | yes | no |
+| `denial_of_service` | declared array type, loop bound, appender visibility | yes | no |
+| `arithmetic_rounding` | division before multiplication; declared widths | yes | no |
+| `arithmetic_rounding` | a token's `decimals()` | **never** | no |
+| `reentrancy` | a state write after a raw call, one function | yes | no |
+| `reentrancy` | the same across functions in one unit | **needs a tier** | no |
+| `reentrancy` | the same across a contract boundary | **never** | no |
+| `flashloan_manipulation` | whether a callee is a market the caller can move | **never** | no |
+
+**What the audit leaves for the semantic tier is one row**: reentrancy across
+functions within a unit. Everything else either collapses to the parser or is
+not reachable at any tier over one unit. That is a much smaller justification
+than "six of nine classes need the compiled backend", which is what the
+unaudited column said and what the build order had been following.
+
+The general form, and it is §1.3's rule pointed at this document rather than at
+a parser: **a capability column written from reasoning is a claim about whoever
+reasoned.** It had been steering the build for weeks, and half a day of fixtures
+moved five rows.
 
 The `access_control` row says "partly" and **caller-taint turned out not to
 need the semantic tier at all**, which is worth recording because the
