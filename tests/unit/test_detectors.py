@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -41,7 +41,14 @@ from contract_assay.detectors.loading import (
     call_verdict,
     load_detector,
 )
-from contract_assay.detectors.reference import AccessControlDetector
+from contract_assay.detectors.reference import (
+    AccessControlDetector,
+    ArithmeticRoundingDetector,
+    DenialOfServiceDetector,
+    OracleIntegrityDetector,
+    ReentrancyDetector,
+    SlippageDetector,
+)
 from contract_assay.models import (
     Determination,
     DifficultyLevel,
@@ -956,8 +963,30 @@ class TestTheDeclaredLimitsAreCheckable:
         assert open_limits[0].kind is LimitKind.INDETERMINACY
         assert "NOT the semantic tier" in open_limits[0].closed_when
 
-    def test_every_entry_names_a_reason_and_a_record(self) -> None:
-        for entry in AccessControlDetector().declared_limits:
+    DETECTORS_WITH_LIMITS: ClassVar[list[type]] = [
+        AccessControlDetector,
+        ArithmeticRoundingDetector,
+        DenialOfServiceDetector,
+        OracleIntegrityDetector,
+        ReentrancyDetector,
+        SlippageDetector,
+    ]
+
+    @pytest.mark.parametrize("detector", DETECTORS_WITH_LIMITS)
+    def test_every_entry_names_a_reason_and_a_record(self, detector: type) -> None:
+        for entry in detector().declared_limits:
             assert entry.unpatched_because.strip()
-            assert entry.demonstrated_by.strip()
+            assert entry.demonstrated_by
+            assert all(record_id.strip() for record_id in entry.demonstrated_by)
             assert entry.closed_when.strip()
+
+    @pytest.mark.parametrize("detector", DETECTORS_WITH_LIMITS)
+    def test_every_named_record_exists(self, detector: type) -> None:
+        # What makes a claimed limit checkable rather than an opinion: the
+        # records can be fetched and the detector run against them. A limit
+        # naming a record that does not exist cannot be falsified, and it would
+        # still take a miss out of the unexplained count.
+        held = {path.stem for path in Path("corpus/records").glob("*.json")}
+        for entry in detector().declared_limits:
+            for record_id in entry.demonstrated_by:
+                assert record_id in held, f"{record_id} is not in the corpus"

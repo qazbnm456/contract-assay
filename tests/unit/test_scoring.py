@@ -491,7 +491,7 @@ class TestADeclaredLimit:
     ENTRY = DeclaredLimit(
         kind=LimitKind.BLINDNESS,
         shape="a guard that is present and unsound",
-        demonstrated_by="vault-reentrancy-1",
+        demonstrated_by=("vault-reentrancy-1",),
         unpatched_because="soundness needs caller-taint, which is the semantic tier",
         closed_when="the semantic tier lands",
     )
@@ -554,7 +554,7 @@ class TestDeclaringReadsBetterThanNotDeclaring:
     ENTRY = DeclaredLimit(
         kind=LimitKind.BLINDNESS,
         shape="a guard that is present and unsound",
-        demonstrated_by="vault-reentrancy-1",
+        demonstrated_by=("vault-reentrancy-1",),
         unpatched_because="soundness needs caller-taint",
         closed_when="the semantic tier lands",
     )
@@ -607,7 +607,7 @@ class TestTheRegisterCannotBeSummed:
             DeclaredLimit(
                 kind=LimitKind.BLINDNESS,
                 shape=shape,
-                demonstrated_by="vault-reentrancy-1",
+                demonstrated_by=("vault-reentrancy-1",),
                 unpatched_because="needs the semantic tier",
                 closed_when="the semantic tier lands",
                 isolated=False,
@@ -638,7 +638,7 @@ class TestTheRegisterCannotBeSummed:
             DeclaredLimit(
                 kind=LimitKind.BLINDNESS,
                 shape="a",
-                demonstrated_by="vault-reentrancy-1",
+                demonstrated_by=("vault-reentrancy-1",),
                 unpatched_because="r",
                 closed_when="the semantic tier lands",
                 isolated=False,
@@ -647,7 +647,7 @@ class TestTheRegisterCannotBeSummed:
             DeclaredLimit(
                 kind=LimitKind.BLINDNESS,
                 shape="b",
-                demonstrated_by="vault-reentrancy-1",
+                demonstrated_by=("vault-reentrancy-1",),
                 unpatched_because="r",
                 closed_when="the semantic tier lands",
                 isolated=False,
@@ -672,7 +672,7 @@ class TestTheTwoKindsOfLimitStayApart:
         limit = DeclaredLimit(
             kind=kind,
             shape="a state change through an external call",
-            demonstrated_by="vault-reentrancy-1",
+            demonstrated_by=("vault-reentrancy-1",),
             unpatched_because="the callee is not in the unit",
             closed_when="the callee's bytes come into scope",
         )
@@ -706,7 +706,7 @@ class TestTheTwoKindsOfLimitStayApart:
         with pytest.raises(ValidationError):
             DeclaredLimit(  # type: ignore[call-arg]
                 shape="x",
-                demonstrated_by="vault-reentrancy-1",
+                demonstrated_by=("vault-reentrancy-1",),
                 unpatched_because="y",
                 closed_when="z",
             )
@@ -716,7 +716,7 @@ class TestTheTwoKindsOfLimitStayApart:
             DeclaredLimit(  # type: ignore[call-arg]
                 kind=LimitKind.BLINDNESS,
                 shape="x",
-                demonstrated_by="vault-reentrancy-1",
+                demonstrated_by=("vault-reentrancy-1",),
                 unpatched_because="y",
             )
 

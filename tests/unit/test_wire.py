@@ -203,13 +203,13 @@ class TestAFieldsTypeIsPartOfItsMeaning:
     was well formed.
     """
 
-    def test_a_declared_limit_names_one_record(self) -> None:
+    def test_a_declared_limit_names_the_records_it_hides(self) -> None:
         from contract_assay.models import DeclaredLimit, LimitKind
 
         limit = DeclaredLimit(
             kind=LimitKind.BLINDNESS,
             shape="a shape this tier cannot see",
-            demonstrated_by="some-record-id",
+            demonstrated_by=("some-record-id", "another"),
             isolated=True,
             unpatched_because="because",
             closed_when="when",
@@ -220,4 +220,4 @@ class TestAFieldsTypeIsPartOfItsMeaning:
         )
         document = score_document(a_submission(report), [a_record()])
         [entry] = document["classes"]
-        assert entry["declared_limits"][0]["demonstrated_by"] == "some-record-id"
+        assert entry["declared_limits"][0]["demonstrated_by"] == ["some-record-id", "another"]

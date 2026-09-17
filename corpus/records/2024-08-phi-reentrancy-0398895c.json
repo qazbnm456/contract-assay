@@ -5,6 +5,7 @@
   "pin": {
     "path": "src/Cred.sol",
     "sha256": "ba605680a70fb58271f68f7f15afc55b5a14e4bd2059fcc7fa3986a2930b0163",
+    "resolved_from": null,
     "kind": "commit",
     "repo_url": "https://github.com/code-423n4/2024-08-phi",
     "commit": "8c0985f7a10b231f916a51af5d506dd6b0c54120"
@@ -12,21 +13,28 @@
   "locator": {
     "file": "src/Cred.sol",
     "contract": "Cred",
-    "function": "getPositionsForCurator",
-    "start_line": 518,
-    "end_line": 551
+    "function": "_createCredInternal",
+    "start_line": 544,
+    "end_line": 577
   },
   "classes": [
     "reentrancy"
   ],
   "negative_for": [],
   "vulnerable_to": [],
-  "locator_provenance": "quoted",
-  "asserted_labels": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [
+    "contract",
+    "function"
+  ],
+  "anchor_line": null,
+  "negative_kind": null,
+  "derived_from": null,
   "provenance": {
     "platform": "code4rena",
     "report_url": "https://github.com/code-423n4/2024-08-phi-findings/issues/25",
-    "reported_severity": "high"
+    "reported_severity": "high",
+    "fix_commit": null
   },
-  "notes": ""
+  "notes": "Corrected by hand, the same defect as the FluxToken record: the harvested locator named `getPositionsForCurator` for a span of 518-551, which covers that function's tail (480-523), all of `getRoot` (531-533) and the head of `_createCredInternal` (544-577), and the enclosing declaration was read off the span's first line. The report is titled for creating Creds, and `_createCredInternal` writes eight `creds` fields, then calls `buyShareCred(credIdCounter, 1, 0)`, then increments `credIdCounter` -- the counter is advanced after control has left, which is what the finding is about. `normalize` now refuses a span overlapping several declarations."
 }

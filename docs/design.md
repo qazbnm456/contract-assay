@@ -2488,6 +2488,52 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### Every miss accounted for, and what that cost
+
+Denial of service had six misses no limit named, so the method that found the
+oracle and arithmetic splits was applied to it. The verdict was looser than its
+own predicate for the third time, and in two ways at once: the append only had
+to target *a* dynamic array rather than the one the loop iterates, and the
+appender's reachability -- which is the whole of "externally growable" -- was
+never asked at all. Both are now asked, of the predicate's own helper rather
+than re-derived, and that detail cost a hit before it was fixed: a
+re-derivation written here required the `push` to sit directly inside an
+external function, which lost the one-hop case that is this class's only true
+positive. Recall falling by one is what caught it, again.
+
+The six misses then came apart into two shapes, not six. Three are a loop
+capped by a literal where the defect is too *few* iterations -- weeks that
+cannot be caught up, a Newton iteration that need not converge -- which was
+already a declared limit naming one of them. The other three, plus a fourth
+already declared, are mechanisms that are not iteration at all: a re-entrancy
+guard the contract carries itself, blocking an inbound call its own withdrawal
+path requires; an outbound transfer the recipient can refuse; value retained
+with no path to return it; a timestamp written by one action that a later one
+requires to be older.
+
+Which made `demonstrated_by` wrong. It named **one** record, so a limit whose
+shape hides three could explain one of them and leave two counted as
+unexplained -- and the declaration list grew with the corpus instead of with
+the blindnesses. A limit is a property of the instrument, and it now names
+every record it hides. The wire layer had already been written as if the field
+were a sequence, which is a small piece of evidence that the sequence reading
+was the natural one.
+
+Two more records turned out to be the straddle defect rather than a blindness:
+a reentrancy record whose span covered one function's tail, all of a second and
+the head of a third, named for the first. Corrected by hand to the function the
+report's own title gives -- and the detector still misses it, for a reason now
+declared: control leaves through an *internal* call, two hops above the external
+one. Slippage's two misses are a bound that is present and unsound
+(`melt(token, debt, balance, balance)`) and an exchange that takes no bound at
+all (`pool.burn(...)`, where the omission is a missing check on what came back).
+
+Every measured class now has zero unexplained misses. That is not a score: five
+of the eight have recall at or near zero and say why, which is the state §7.5
+exists to make reportable rather than the state it exists to reward. The one
+thing it does buy is that a reader can tell a detector's blindness from its
+silence, for every record in the corpus.
+
 ### 7.7 The boundary a submission surface is built on
 
 A ranking is eventually read on a page, and the page is a different program.

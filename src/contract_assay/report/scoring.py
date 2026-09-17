@@ -408,7 +408,8 @@ class ScoreReport:
         for entries in self.declared_limits.values():
             for entry in entries:
                 if not entry.closed_by:
-                    out.setdefault(entry.demonstrated_by, []).append(entry)
+                    for record_id in entry.demonstrated_by:
+                        out.setdefault(record_id, []).append(entry)
         return {record: tuple(v) for record, v in sorted(out.items())}
 
     @property
@@ -432,7 +433,10 @@ class ScoreReport:
             if not score.false_negatives or not score.measured_runs:
                 continue
             explained = {
-                b.demonstrated_by for b in self.declared_limits.get(cls, ()) if not b.closed_by
+                record_id
+                for b in self.declared_limits.get(cls, ())
+                if not b.closed_by
+                for record_id in b.demonstrated_by
             }
             missed = {r for r in score.missed_record_ids if r not in explained}
             out[cls] = len(missed)
@@ -495,7 +499,7 @@ class ScoreReport:
         if open_entries:
             named = "; ".join(
                 f"{cls.value} [{entry.kind.value}]: {entry.shape} (shown by "
-                f"{entry.demonstrated_by}"
+                f"{', '.join(entry.demonstrated_by)}"
                 + ("" if entry.isolated else ", jointly with another limit")
                 + f"; closed when {entry.closed_when})"
                 for cls, entry in open_entries

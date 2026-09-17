@@ -88,6 +88,7 @@ __all__ = [
     "RAW_EXTERNAL_CALL_MEMBERS",
     "PredicateSpec",
     "coverage_by_class",
+    "externally_growable_arrays",
     "looks_like_a_time",
     "predicates",
     "run_all",
@@ -625,31 +626,15 @@ def _authorisation_reads_its_answer_from_caller_supplied_address(
     return found
 
 
-@_register(
-    "loop_bounded_by_externally_growable_storage_array",
-    VulnerabilityClass.DENIAL_OF_SERVICE,
-    summary="A loop is bounded by the length of a dynamic storage array that an "
-    "externally reachable function appends to.",
-)
-def _loop_bounded_by_externally_growable_storage_array(
-    syntax: Syntax, path: str
-) -> list[EvidenceRef]:
-    """Three facts, each of them a declaration or a shape.
+def externally_growable_arrays(syntax: Syntax) -> dict[str, str]:
+    """Dynamically sized state arrays an outsider can append to, and how.
 
-    The array's declared type says whether it is dynamic -- `address[]` grows,
-    `address[3]` does not, and a mapping has no length to loop over. The loop's
-    continuation condition says which name bounds it. And the function calling
-    `push` on it has a visibility, which says whether an outsider can make the
-    loop longer.
-
-    §4.2 recorded this class as needing storage and dynamic-array *types* from a
-    compiled backend. The declaration states both in the source text, which is
-    what the audit in `tests/unit/test_tier_audit.py` established.
-
-    Not established: that the loop is expensive enough to exceed a block's gas,
-    which depends on what the body does per element and on a gas schedule that
-    changes between forks. So this reports an unbounded iteration an outsider
-    can extend, and the verdict layer is where a claim about it is checked.
+    Public because the verdict has to ask the same question. It asked a weaker
+    one -- whether *anything* in the unit appends to *some* dynamic array -- so
+    "externally growable", the whole of the property, was established by the
+    layer that does not decide. The one-hop rule is the part that is easy to
+    lose: a verdict re-deriving it from scratch dropped the class's only true
+    positive, whose appender is internal and called from an external function.
     """
     growable: dict[str, str] = {}
     for call in syntax.calls:
@@ -692,6 +677,37 @@ def _loop_bounded_by_externally_growable_storage_array(
         ]
         if reachable:
             growable[call.receiver] = f"{host.function} via {reachable[0]}"
+
+    return growable
+
+
+@_register(
+    "loop_bounded_by_externally_growable_storage_array",
+    VulnerabilityClass.DENIAL_OF_SERVICE,
+    summary="A loop is bounded by the length of a dynamic storage array that an "
+    "externally reachable function appends to.",
+)
+def _loop_bounded_by_externally_growable_storage_array(
+    syntax: Syntax, path: str
+) -> list[EvidenceRef]:
+    """Three facts, each of them a declaration or a shape.
+
+    The array's declared type says whether it is dynamic -- `address[]` grows,
+    `address[3]` does not, and a mapping has no length to loop over. The loop's
+    continuation condition says which name bounds it. And the function calling
+    `push` on it has a visibility, which says whether an outsider can make the
+    loop longer.
+
+    §4.2 recorded this class as needing storage and dynamic-array *types* from a
+    compiled backend. The declaration states both in the source text, which is
+    what the audit in `tests/unit/test_tier_audit.py` established.
+
+    Not established: that the loop is expensive enough to exceed a block's gas,
+    which depends on what the body does per element and on a gas schedule that
+    changes between forks. So this reports an unbounded iteration an outsider
+    can extend, and the verdict layer is where a claim about it is checked.
+    """
+    growable = externally_growable_arrays(syntax)
 
     found: list[EvidenceRef] = []
     for loop in syntax.loops:

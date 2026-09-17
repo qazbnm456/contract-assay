@@ -347,11 +347,15 @@ class DeclaredLimit(_Frozen):
             "not 'the Visor bug'."
         ),
     )
-    demonstrated_by: str = Field(
+    demonstrated_by: tuple[str, ...] = Field(
         min_length=1,
         description=(
-            "Record id of a corpus record this limit applies to. What makes the entry "
-            "a proof rather than an opinion, and what makes it checkable."
+            "Record ids this limit applies to. What makes the entry a proof rather than "
+            "an opinion, and what makes it checkable: run the detector and confirm it is "
+            "silent on each. Several, because a limit is a property of the instrument "
+            "and one shape hides however many records show it -- naming one of them made "
+            "the declaration list grow with the corpus instead of with the blindnesses, "
+            "and left the rest of a known shape's records counted as unexplained."
         ),
     )
     unpatched_because: str = Field(

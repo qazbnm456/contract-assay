@@ -382,7 +382,33 @@ class TestDenialOfServiceVerdict:
         source = self.SOURCE.replace(
             "    function join() external { voters.push(msg.sender); }\n", ""
         )
-        assert "nothing_appends_to_it_in_this_unit" in self._verdict(
+        assert "nothing_an_outsider_can_reach_appends_to_it" in self._verdict(
+            a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)"), source=source
+        )
+
+    def test_an_append_to_a_different_array_does_not_count(self) -> None:
+        # Both halves were quantified separately, so a loop over one dynamic
+        # array and a push to *another* satisfied the pair with neither being
+        # about the other.
+        source = self.SOURCE.replace(
+            "    function join() external { voters.push(msg.sender); }",
+            "    address[] public watchers;\n"
+            "    function watch() external { watchers.push(msg.sender); }",
+        )
+        assert "nothing_an_outsider_can_reach_appends_to_it" in self._verdict(
+            a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)"), source=source
+        )
+
+    def test_an_append_no_outsider_can_reach_does_not_count(self) -> None:
+        # "Externally growable" is the whole property, and the verdict never
+        # asked: the predicate checks the appender's visibility and the strict
+        # side did not. An array only an internal path appends to is not one an
+        # outsider makes longer.
+        source = self.SOURCE.replace(
+            "    function join() external { voters.push(msg.sender); }",
+            "    function _join() internal { voters.push(msg.sender); }",
+        )
+        assert "nothing_an_outsider_can_reach_appends_to_it" in self._verdict(
             a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)"), source=source
         )
 

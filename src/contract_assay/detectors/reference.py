@@ -45,7 +45,11 @@ from functools import lru_cache
 from typing import ClassVar
 
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, TaskOutput
-from contract_assay.evidence.predicates import looks_like_a_time, run_all
+from contract_assay.evidence.predicates import (
+    externally_growable_arrays,
+    looks_like_a_time,
+    run_all,
+)
 from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, FunctionSite, Syntax
 from contract_assay.models import (
     DeclaredLimit,
@@ -350,7 +354,7 @@ class AccessControlDetector(_SyntacticDetector):
                 "function references msg.sender and the predicate reads that "
                 "reference as a check"
             ),
-            demonstrated_by="rewardshypervisor-access-control-13849006",
+            demonstrated_by=("rewardshypervisor-access-control-13849006",),
             isolated=False,
             unpatched_because=(
                 "deciding soundness means knowing whether the other side of the "
@@ -382,7 +386,7 @@ class AccessControlDetector(_SyntacticDetector):
                 "writing storage: the function mints, transfers or delegates, so "
                 "whether it changes state depends on what the callee does"
             ),
-            demonstrated_by="rewardshypervisor-access-control-13849006",
+            demonstrated_by=("rewardshypervisor-access-control-13849006",),
             isolated=False,
             unpatched_because=(
                 "knowing that a call changes state means knowing what the callee does, "
@@ -541,7 +545,7 @@ class DenialOfServiceDetector(_SyntacticDetector):
                 "away from any externally reachable function, so the collection is "
                 "caller-growable and nothing in this unit says so directly"
             ),
-            demonstrated_by="alchemix-v2-dao-denial-of-service-e76b70f1",
+            demonstrated_by=("alchemix-v2-dao-denial-of-service-e76b70f1",),
             unpatched_because=(
                 "deciding it needs to know which externally reachable functions reach "
                 "the internal appender, which is a call graph over the unit rather than "
@@ -572,7 +576,7 @@ class DenialOfServiceDetector(_SyntacticDetector):
                 "the loop's bound is a local variable assigned from a collection's "
                 "length, so the condition names the local and not the collection"
             ),
-            demonstrated_by="alchemix-v2-dao-denial-of-service-6b54ee07",
+            demonstrated_by=("alchemix-v2-dao-denial-of-service-6b54ee07",),
             isolated=False,
             unpatched_because=(
                 "the capability this entry named is now built and works -- a local "
@@ -593,11 +597,17 @@ class DenialOfServiceDetector(_SyntacticDetector):
         DeclaredLimit(
             kind=LimitKind.BLINDNESS,
             shape=(
-                "a loop capped by a literal, whose cap cannot cover work that grows "
-                "with elapsed time -- the defect is too *few* iterations, which is the "
-                "opposite of the property this detector names"
+                "a loop capped by a literal, whose cap cannot cover the work it must "
+                "do -- the defect is too *few* iterations, which is the opposite of the "
+                "property this detector names. Three records, one shape: weeks that "
+                "cannot be caught up (`i < 255` over elapsed epochs, twice) and a "
+                "Newton iteration that need not converge inside its cap"
             ),
-            demonstrated_by="alchemix-v2-dao-denial-of-service-ab3d30ba",
+            demonstrated_by=(
+                "2024-08-basin-denial-of-service-1cb83cfa",
+                "alchemix-v2-dao-denial-of-service-27f60fa8",
+                "alchemix-v2-dao-denial-of-service-ab3d30ba",
+            ),
             unpatched_because=(
                 "it is a different property rather than a weaker view of this one, and "
                 "it needs its own predicate: a bound that is constant while the work it "
@@ -611,11 +621,21 @@ class DenialOfServiceDetector(_SyntacticDetector):
         DeclaredLimit(
             kind=LimitKind.BLINDNESS,
             shape=(
-                "a denial of service whose mechanism is not iteration at all -- an "
-                "external dependency that can be made to revert, with no loop anywhere "
-                "in the function"
+                "a denial of service whose mechanism is not iteration at all. Five "
+                "records, five mechanisms: an external dependency that can be made to "
+                "revert; a re-entrancy guard the contract carries itself, blocking an "
+                "inbound call its own withdrawal path requires; an outbound value "
+                "transfer the recipient can refuse; value retained with no path to "
+                "return it; and a timestamp written by one action that a later one "
+                "requires to be older"
             ),
-            demonstrated_by="evm-smart-contracts-denial-of-service-65fa591f",
+            demonstrated_by=(
+                "2024-04-renzo-denial-of-service-02c33f80",
+                "2024-04-renzo-denial-of-service-75265ee2",
+                "2024-07-traitforge-denial-of-service-03b21871",
+                "2024-07-traitforge-denial-of-service-d68b57bc",
+                "evm-smart-contracts-denial-of-service-65fa591f",
+            ),
             unpatched_because=(
                 "this detector holds one predicate and that predicate is about "
                 "iteration. The class covers several mechanisms (§4.3) and the others "
@@ -652,7 +672,8 @@ class DenialOfServiceDetector(_SyntacticDetector):
             for name, declared in parsed.state_variable_types.items()
             if declared.endswith("[]")
         }
-        if not any(frozenset(loop.bound_identifiers) & dynamic for loop in loops):
+        bounding = {name for loop in loops for name in loop.bound_identifiers} & dynamic
+        if not bounding:
             failures.append(
                 _reject(
                     "loop_not_bounded_by_a_dynamic_collection",
@@ -660,13 +681,26 @@ class DenialOfServiceDetector(_SyntacticDetector):
                     "its iteration count is not something state can grow",
                 )
             )
-        appended = {call.receiver for call in parsed.calls if call.callee == "push"}
-        if not appended & dynamic:
+        # The same array, appended from somewhere an outsider can reach. Both
+        # halves were missing: the append only had to target *a* dynamic array
+        # rather than the one this loop iterates, and the appender's reachability
+        # -- which is the whole of "externally growable", and which the predicate
+        # checks -- was never asked. Third class in a row where the verdict was
+        # looser than its own evidence, and the second where conditions held of
+        # different sites.
+        #
+        # Asked of the predicate's own helper rather than re-derived. A
+        # re-derivation written here required the `push` to sit directly inside
+        # an external function and so lost the one-hop case -- an internal
+        # appender called from an external function, which is this class's only
+        # true positive in the corpus. Recall falling by one is what caught it.
+        if not (bounding & set(externally_growable_arrays(parsed))):
             failures.append(
                 _reject(
-                    "nothing_appends_to_it_in_this_unit",
-                    "no call in this unit appends to a dynamically sized state variable, so "
-                    "nothing here makes the iteration longer",
+                    "nothing_an_outsider_can_reach_appends_to_it",
+                    "no externally reachable function in this unit appends to the "
+                    "collection this loop iterates, so nothing an outsider controls makes "
+                    "the iteration longer",
                 )
             )
         return failures
@@ -695,7 +729,7 @@ class OracleIntegrityDetector(_SyntacticDetector):
                 "slots and drops the rest, so there is no binding whose type and name "
                 "could be tested for time-ness"
             ),
-            demonstrated_by="2024-05-predy-oracle-integrity-b01cf382",
+            demonstrated_by=("2024-05-predy-oracle-integrity-b01cf382",),
             isolated=True,
             unpatched_because=(
                 "an unbound slot carries neither a type nor a name, so which of the "
@@ -716,7 +750,7 @@ class OracleIntegrityDetector(_SyntacticDetector):
                 "establish freshness: `require(updatedAt != 0)` consults the value and "
                 "asserts only that a round exists"
             ),
-            demonstrated_by="2024-07-benddao-oracle-integrity-4fd907a4",
+            demonstrated_by=("2024-07-benddao-oracle-integrity-4fd907a4",),
             isolated=True,
             unpatched_because=(
                 "a guard comparing the value against a stored timestamp is a sound "
@@ -832,7 +866,7 @@ class ArithmeticRoundingDetector(_SyntacticDetector):
                 "an arithmetic defect with no division in it, so the order this detector "
                 "is about is not present at all"
             ),
-            demonstrated_by="2024-07-benddao-arithmetic-rounding-0f04d2af",
+            demonstrated_by=("2024-07-benddao-arithmetic-rounding-0f04d2af",),
             isolated=True,
             unpatched_because=(
                 "§4.2 split this class three ways and this detector implements one of "
@@ -854,7 +888,7 @@ class ArithmeticRoundingDetector(_SyntacticDetector):
                 "/ 60 / 24;` and then `daysOld * perfomanceFactor * ...`, where the "
                 "division and the multiplication are in two statements joined by a local"
             ),
-            demonstrated_by="2024-07-traitforge-arithmetic-rounding-1800009d",
+            demonstrated_by=("2024-07-traitforge-arithmetic-rounding-1800009d",),
             isolated=True,
             unpatched_because=(
                 "the predicate is about one expression -- an outer multiplication whose "
@@ -941,6 +975,33 @@ class ReentrancyDetector(_SyntacticDetector):
     unit and is §4.2's one remaining row for the semantic tier.
     """
 
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "control leaves through an internal call rather than a language-level "
+                "transfer: `buyShareCred(credIdCounter, 1, 0)` is internal and the "
+                "external call that can re-enter is two hops below it, while the state "
+                "write this class is about -- `credIdCounter += 1` -- is here"
+            ),
+            demonstrated_by=("2024-08-phi-reentrancy-0398895c",),
+            isolated=True,
+            unpatched_because=(
+                "the predicate is about a transfer visible in the analysed function. "
+                "Finding one below an internal call is a reachability question over the "
+                "unit's call graph, which is a different search from the one-hop name "
+                "lookup the denial-of-service predicate does for appends to a named "
+                "array: there the target is one identifier, here it is any of several "
+                "transfer forms at unknown depth."
+            ),
+            closed_when=(
+                "a predicate that follows internal calls within the unit to the first "
+                "language-level transfer, refusing where a name resolves to more than "
+                "one declaration. Not a tier matter -- the calls are all in the file"
+            ),
+        ),
+    )
+
     detector_id = "reference-reentrancy"
     class_id = VulnerabilityClass.REENTRANCY
     api_version = "1.1"
@@ -1016,6 +1077,53 @@ class SlippageDetector(_SyntacticDetector):
     # needs to know the qualifier is a type, and the type is declared in another
     # file, so it is not in this unit's index. An indeterminacy of scope rather
     # than a defect in the check.
+
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a bound that is present and unsound: "
+                "`melt(revenueToken, debtToken, balance, balance)` passes the input "
+                "amount as the minimum, so a bound was written and it cannot bind"
+            ),
+            demonstrated_by=("alchemix-v2-dao-slippage-e86e1d55",),
+            isolated=True,
+            unpatched_because=(
+                "the predicate names the bound written as zero, which is a shape. A "
+                "bound equal to the input is also a shape, and it is a *correct* one "
+                "wherever the exchange is meant to be one-for-one -- a stable pair, a "
+                "wrapper. Whether this assumption holds is what the report argues about, "
+                "and no predicate over the expression decides it."
+            ),
+            closed_when=(
+                "the two sides of the exchange can be told apart -- which token is "
+                "being sold and which bought -- so that 'minimum equals input' can be "
+                "read as an assumption about their prices rather than as arithmetic"
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "an exchange that takes no bound at all: `pool.burn(TICK_LOWER, "
+                "TICK_UPPER, liquidity)` returns `(amount0, amount1)` and accepts no "
+                "minimum, so the caller's omission is a missing *check on what came "
+                "back* rather than a zero passed in"
+            ),
+            demonstrated_by=("2024-06-vultisig-slippage-55a693c2",),
+            isolated=True,
+            unpatched_because=(
+                "this detector reads the call's arguments, and there is no argument to "
+                "read. The property is about the returned values reaching a guard, which "
+                "is the oracle detector's shape applied to amounts -- a different "
+                "predicate, not a looser version of this one."
+            ),
+            closed_when=(
+                "a predicate for a multi-return whose values reach no condition before "
+                "being used, which `multi_return_timestamp_never_reaches_a_guard` "
+                "already does for timestamps. Not a tier matter"
+            ),
+        ),
+    )
 
     detector_id = "reference-slippage"
     class_id = VulnerabilityClass.SLIPPAGE
