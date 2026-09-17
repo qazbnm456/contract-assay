@@ -2375,6 +2375,40 @@ own statement says exactly which classes are waiting on how many
 adjudications, so the outstanding work is visible before the round rather than
 discovered during it.
 
+#### A class about one site is checked at one site
+
+Three verdicts had their conditions quantified over a *set* of sites rather than
+over a site, and all three would accept a location where every condition held
+and no single site held them together.
+
+The slippage verdict found it: a receiver, two arguments and a zero literal,
+each its own `any(...)` over the calls in the span. Over a whole function
+`IFluxToken(FLUX).mergeFlux(from, to)` supplied the receiver and the arguments
+while `LockedBalance(0, 0, false, 0)` supplied the zero, and the verdict passed
+on a function that exchanges nothing. The receiver requirement had been added
+for exactly that struct construction and did not close it, because it was a
+rule about the set. Three of four firings over one sample were this.
+
+The same shape was then in two more places. Reentrancy required state written
+after *a* call rather than after the transfer, so an internal call with a write
+below it and a low-level call elsewhere satisfied both halves. Access control
+quantified over every function in the span -- which a quoted excerpt easily
+covers two of -- so an externally reachable function that writes nothing and an
+internal one that writes state together satisfied all three conditions, with
+neither being an unguarded state change.
+
+Measured: slippage 4 predictions to 1, reentrancy 10 to 9, access control
+unchanged at 66. The access-control narrowing changed nothing on the sample that
+prompted the look and is held by argument and a test rather than by a measured
+false positive, which is worth stating rather than leaving to be assumed.
+
+And the fix did the pool's work for it. Two slippage predictions were about to
+be hand-adjudicated; the narrowing removed them, the one that remained already
+sat inside an existing adjudication, and the class went to fully judged with no
+curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
+the pool", paying for itself literally. The hit it also removed was at *file*
+strength, which the function floor never counted, so no score moved.
+
 ### 7.7 The boundary a submission surface is built on
 
 A ranking is eventually read on a page, and the page is a different program.

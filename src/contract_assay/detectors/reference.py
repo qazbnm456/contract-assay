@@ -46,7 +46,7 @@ from typing import ClassVar
 
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, TaskOutput
 from contract_assay.evidence.predicates import run_all
-from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, Syntax
+from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, FunctionSite, Syntax
 from contract_assay.models import (
     DeclaredLimit,
     EvidenceRef,
@@ -427,8 +427,25 @@ class AccessControlDetector(_SyntacticDetector):
                 )
             ]
 
+        # Every condition holds of **one** function. Quantified over the set of
+        # functions in the span -- which a quoted excerpt easily covers two of --
+        # an externally reachable function without a modifier and a separate
+        # internal one that writes state together satisfied all three, and the
+        # verdict passed on neither of them. The class is a claim about a
+        # function, so it is checked at a function; the same defect the slippage
+        # and reentrancy verdicts had, in a third place.
+        per_host = [self._host_failures(host, parsed) for host in hosts]
+        if any(not failures for failures in per_host):
+            return []
+        # The nearest miss, rather than the union: a message naming one
+        # function's shortcomings is diagnosable, where a merged list describes
+        # no function that exists.
+        return min(per_host, key=len)
+
+    def _host_failures(self, host: FunctionSite, parsed: Syntax) -> list[FailedCheck]:
+        """What stops this one function from being an unguarded state change."""
         failures: list[FailedCheck] = []
-        if not any(function.is_externally_reachable for function in hosts):
+        if not host.is_externally_reachable:
             failures.append(
                 _reject(
                     "host_not_externally_reachable",
@@ -436,7 +453,7 @@ class AccessControlDetector(_SyntacticDetector):
                     "is not the defect",
                 )
             )
-        if all(function.modifiers for function in hosts):
+        if host.modifiers:
             # Coarse on purpose: a modifier need not guard anything. The verdict
             # side is the strict side, rejections are recorded and countable, and
             # a modifier on a function claimed as unguarded is usually a guard.
@@ -448,14 +465,11 @@ class AccessControlDetector(_SyntacticDetector):
                 )
             )
 
+        def inside(start: int) -> bool:
+            return host.site.start_line <= start <= host.site.end_line
+
         writes = [
-            write
-            for write in parsed.writes
-            if write.writes_state
-            and any(
-                function.site.start_line <= write.site.start_line <= function.site.end_line
-                for function in hosts
-            )
+            write for write in parsed.writes if write.writes_state and inside(write.site.start_line)
         ]
         if not writes:
             # Two causes, not one. A function with no writes and no outgoing
@@ -471,11 +485,7 @@ class AccessControlDetector(_SyntacticDetector):
             outbound = [
                 call
                 for call in parsed.calls
-                if call.receiver is not None
-                and any(
-                    function.site.start_line <= call.site.start_line <= function.site.end_line
-                    for function in hosts
-                )
+                if call.receiver is not None and inside(call.site.start_line)
             ]
             if outbound:
                 failures.append(
@@ -818,7 +828,8 @@ class ReentrancyDetector(_SyntacticDetector):
         ]
         if not calls:
             return [_reject("no_call_at_locator", "the stated location contains no call")]
-        if not any(call.is_low_level or call.is_value_transfer for call in calls):
+        transfers = [call for call in calls if call.is_low_level or call.is_value_transfer]
+        if not transfers:
             return [
                 _reject(
                     "call_is_not_a_language_level_transfer",
@@ -827,11 +838,16 @@ class ReentrancyDetector(_SyntacticDetector):
                 )
             ]
 
+        # After a *transfer*, not after any call. Quantified over `calls` this
+        # accepted a span holding an internal call with a write below it and a
+        # low-level call somewhere else entirely -- two conditions met by two
+        # sites, which is the same defect the slippage verdict had. The class is
+        # a claim about one call and the state written after it.
         after = [
             write
             for write in parsed.writes
             if write.writes_state
-            and any(write.site.start_line > call.site.end_line for call in calls)
+            and any(write.site.start_line > call.site.end_line for call in transfers)
         ]
         if not after:
             return [
@@ -888,6 +904,22 @@ class SlippageDetector(_SyntacticDetector):
         if not calls:
             return [_reject("no_call_at_locator", "the stated location contains no call")]
 
+        # All three conditions below have to hold of **one** call. Written as
+        # three independent `any(...)` they held of three different ones: over a
+        # whole function, `IFluxToken(FLUX).mergeFlux(_from, _to)` supplied the
+        # receiver and the two arguments while `LockedBalance(0, 0, false, 0)`
+        # supplied the zero, and the verdict passed on a call that exchanges
+        # nothing. The receiver rule was added for exactly that struct
+        # construction and did not close it, because the rule was about the
+        # *set* of calls rather than about a call.
+        if any(
+            call.receiver is not None
+            and len(call.arguments) >= 2
+            and any(argument.is_zero_literal for argument in call.arguments)
+            for call in calls
+        ):
+            return []
+
         failures: list[FailedCheck] = []
         # An exchange happens across a contract boundary, so the call has a
         # receiver. Without this the class means "passes zero to anything": over
@@ -922,6 +954,18 @@ class SlippageDetector(_SyntacticDetector):
                     "call_takes_too_few_arguments_to_be_an_exchange",
                     "a call with fewer than two arguments has no separate amount and bound, "
                     "so a zero among them is not an unbounded exchange",
+                )
+            )
+        if not failures:
+            # Every condition held, and no call held them together. Reported as
+            # its own rejection rather than as silence, because silence here
+            # means "accepted" and that was the defect.
+            failures.append(
+                _reject(
+                    "no_one_call_is_an_unbounded_exchange",
+                    "a receiver, two arguments and a zero literal are all present at this "
+                    "location but not in the same call, so nothing here exchanges value "
+                    "without a bound",
                 )
             )
         return failures

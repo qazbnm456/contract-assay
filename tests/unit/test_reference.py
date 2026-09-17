@@ -532,6 +532,43 @@ class TestSlippageVerdict:
     def test_a_location_with_no_call_is_refuted(self) -> None:
         assert self._verdict(a_finding(1, 1, "contract S {")) == ["no_call_at_locator"]
 
+    WHOLE_FUNCTION = """contract V {
+    function merge(uint256 from, uint256 to) external {
+        IFluxToken(FLUX).mergeFlux(from, to);
+        locked[from] = LockedBalance(0, 0, false, 0);
+        _checkpoint(from, locked[from], LockedBalance(0, 0, false, 0));
+    }
+}
+"""
+
+    def test_three_conditions_met_by_three_different_calls_is_not_an_exchange(self) -> None:
+        # The defect this closes. Over a whole function,
+        # `IFluxToken(FLUX).mergeFlux(from, to)` supplies the receiver and the
+        # two arguments while `LockedBalance(0, 0, false, 0)` supplies the zero,
+        # and each condition was written as its own `any(...)` over the set of
+        # calls -- so the verdict passed on a function that exchanges nothing.
+        # The receiver rule had been added for exactly that struct construction
+        # and did not close it, because it was about the set and not about a
+        # call. Measured: three of four firings over one corpus were this.
+        detector = SlippageDetector()
+        ctx = a_context(detector.level, source=self.WHOLE_FUNCTION)
+        checks = [
+            check.check
+            for check in detector.verdict(ctx, a_finding(2, 6, "    function merge("), [])
+        ]
+        assert checks == ["no_one_call_is_an_unbounded_exchange"]
+
+    def test_one_call_holding_all_three_still_stands(self) -> None:
+        # The conjunction is the point, not strictness: a genuine unbounded
+        # exchange in the same span still passes.
+        source = self.WHOLE_FUNCTION.replace(
+            "IFluxToken(FLUX).mergeFlux(from, to);",
+            "router.swapExactTokensForTokens(from, 0, path, address(this), to);",
+        )
+        detector = SlippageDetector()
+        ctx = a_context(detector.level, source=source)
+        assert detector.verdict(ctx, a_finding(2, 6, "    function merge("), []) == []
+
 
 class TestAValueReadIsNotAValueUsedAsRandom:
     """The class is about using a producer-chosen value *as though unpredictable*.
@@ -605,3 +642,80 @@ class TestAValueReadIsNotAValueUsedAsRandom:
         assert self._verdict(body, "block.timestamp > lastEarn[id]", 5, 5) == [
             "the_value_reaches_no_selection"
         ]
+
+
+class TestAClassAboutOneSiteIsCheckedAtOneSite:
+    """Three verdicts had conditions quantified over a *set* of sites.
+
+    Found in the slippage verdict, where three conditions were met by three
+    different calls and the verdict passed on a function that exchanges
+    nothing. The same shape was then in the reentrancy verdict -- a write after
+    any call rather than after the transfer -- and in access control, where a
+    quoted excerpt covering two functions could satisfy every condition with
+    neither function satisfying all of them.
+
+    The access-control case changed nothing on the sample that prompted the
+    look: 66 predictions before and after. It is a restriction held by argument
+    and by this test rather than by a measured false positive, and worth saying
+    so plainly.
+    """
+
+    TWO_FUNCTIONS = """contract V {
+    uint256 total;
+
+    function reachableButHarmless(uint256 a) external returns (uint256) {
+        return a + 1;
+    }
+
+    function _internalStateChange(uint256 a) internal {
+        total = a;
+    }
+}
+"""
+
+    def test_two_functions_in_one_span_do_not_add_up_to_one_instance(self) -> None:
+        # `reachableButHarmless` is externally reachable and unguarded but
+        # writes nothing; `_internalStateChange` writes state but cannot be
+        # called from outside. Neither is an unguarded state change.
+        detector = AccessControlDetector()
+        ctx = a_context(detector.level, source=self.TWO_FUNCTIONS)
+        checks = [
+            check.check for check in detector.verdict(ctx, a_finding(4, 10, "contract V {"), [])
+        ]
+        assert checks
+        assert "host_writes_no_state" in checks or "host_not_externally_reachable" in checks
+
+    def test_one_function_holding_both_properties_still_stands(self) -> None:
+        source = """contract V {
+    uint256 total;
+
+    function setTotal(uint256 a) external {
+        total = a;
+    }
+}
+"""
+        detector = AccessControlDetector()
+        ctx = a_context(detector.level, source=source)
+        assert detector.verdict(ctx, a_finding(4, 6, "    function setTotal("), []) == []
+
+    def test_a_write_after_an_unrelated_call_is_not_reentrancy(self) -> None:
+        # The low-level call is below the write; the call above it is internal.
+        # Quantified over every call, the write counted as "after a call".
+        source = """contract V {
+    mapping(address => uint256) balances;
+
+    function withdraw(uint256 amount) external {
+        _accrue(amount);
+        balances[msg.sender] = 0;
+        (bool ok, ) = msg.sender.call{value: amount}("");
+        require(ok);
+    }
+}
+"""
+        detector = ReentrancyDetector()
+        ctx = a_context(detector.level, source=source)
+        checks = [
+            check.check
+            for check in detector.verdict(ctx, a_finding(4, 9, "    function withdraw("), [])
+        ]
+        assert checks == ["no_state_written_after_the_call"]
