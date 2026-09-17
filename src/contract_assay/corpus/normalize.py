@@ -94,6 +94,41 @@ def _normalised_lines(text: str) -> list[str]:
     return out
 
 
+def _file_the_quote_names(draft: DraftRecord, resolve: SourceResolver) -> str | NormalizeCause:
+    """Which of the cited files the excerpt occurs in, or why none was chosen.
+
+    The adapter hands over the whole cited set when a finding names several
+    Solidity files, because a quoted excerpt states which one if it occurs in
+    exactly one of them -- and only this stage holds the bytes to check. Which
+    file the adapter put in `path` is not load-bearing: every candidate is
+    resolved and the excerpt has to occur uniquely in exactly one.
+
+    Two files containing it identifies neither, which is `quote_ambiguous` for
+    the same reason two occurrences in one file are. None containing it is a
+    different loss, since the file was never stated and the excerpt was supposed
+    to choose it.
+    """
+    assert draft.quoted_source is not None
+    matched: list[str] = []
+    for path in (draft.path, *draft.alternative_paths):
+        pin = CommitPin(
+            repo_url=draft.repo_url,
+            commit=draft.commit,
+            path=path,
+            resolved_from=draft.commit_resolved_from,
+        )
+        source = resolve(pin)
+        if source is None or not source.strip():
+            continue
+        if isinstance(_match_quote(draft.quoted_source, source), tuple):
+            matched.append(path)
+    if len(matched) == 1:
+        return matched[0]
+    if len(matched) > 1:
+        return NormalizeCause.QUOTE_AMBIGUOUS
+    return NormalizeCause.FILE_NOT_DETERMINED
+
+
 def _match_quote(quote: str, source: str) -> tuple[int, int] | NormalizeCause | None:
     """Where a quoted excerpt uniquely occurs in a file, as 1-indexed lines.
 
@@ -156,7 +191,22 @@ class NormalizeCause(StrEnum):
     """The excerpt the report quoted does not occur in the pinned file."""
 
     QUOTE_AMBIGUOUS = "quote_ambiguous"
-    """The excerpt occurs more than once, so it locates nothing."""
+    """The excerpt occurs more than once, so it locates nothing.
+
+    Within one file or across the candidate set a finding cited -- the two are
+    the same failure. An excerpt occurring in two of the cited files identifies
+    neither, and taking the first would be a wrong record that no contiguity
+    test catches.
+    """
+
+    FILE_NOT_DETERMINED = "file_not_determined"
+    """The excerpt occurs in none of the files the finding cited.
+
+    Counted apart from `quote_not_found`, which is about one stated file. Here
+    the file was never stated and the excerpt was supposed to choose it, so what
+    failed is the choosing -- and a loss filed under the wrong cause points
+    investigation away from the fix (§1.3).
+    """
 
     QUOTE_CONTRADICTS_SPAN = "quote_contradicts_span"
     """The report's stated span and its quoted excerpt point at different code."""
@@ -541,6 +591,18 @@ def normalize(
             path=draft.path,
             resolved_from=draft.commit_resolved_from,
         )
+        if draft.alternative_paths:
+            chosen = _file_the_quote_names(draft, resolve)
+            if isinstance(chosen, NormalizeCause):
+                lose(draft, chosen, ", ".join((draft.path, *draft.alternative_paths))[:120])
+                continue
+            # The *draft* is narrowed, not only the pin. Updating the pin alone
+            # left the locator's file taken from the draft, so a record chosen
+            # from an alternative named one file in its pin and another in its
+            # locator -- which the record's own invariant then refused, loudly
+            # and one stage too late.
+            draft = draft.model_copy(update={"path": chosen, "alternative_paths": ()})
+            pin = pin.model_copy(update={"path": chosen})
         source = resolve(pin)
         if source is None or not source.strip():
             lose(draft, NormalizeCause.SOURCE_UNRESOLVABLE, pin.describe())

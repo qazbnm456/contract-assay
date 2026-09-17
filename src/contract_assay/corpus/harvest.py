@@ -114,6 +114,20 @@ class SkipCause(StrEnum):
     NO_CLASS = "no_class"
     """The report states no vulnerability type at all."""
 
+    CITES_ANOTHER_REPOSITORY = "cites_another_repository"
+    """The only location the finding states is outside the code under review.
+
+    A report cites a dependency to show what the reviewed code was derived from
+    or ought to have done, and a finding whose sole citation points there has
+    not located a defect in the reviewed code. Pinning the record to the
+    dependency would attribute the defect to a third party the report never
+    claimed was defective -- which the first run of the quote route did, to an
+    upstream library, for a finding about a port of it.
+
+    Its own cause rather than `no_file_path`, because the fix differs: this one
+    needs the report's scope read, not a better path parser (§1.3).
+    """
+
     NOT_A_FINDING = "not_a_finding"
     """Identified as a candidate but turned out to be an informational note."""
 
@@ -203,6 +217,13 @@ class DraftRecord(BaseModel):
     repo_url: str = Field(min_length=1)
     commit: str = Field(description="Full 40-hex SHA. Refs and short SHAs move.")
     path: str = Field(min_length=1)
+    alternative_paths: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Other files the finding cited, when a quoted excerpt is what will decide "
+            "which of them the defect is in. Empty when the file was stated."
+        ),
+    )
     commit_resolved_from: str | None = Field(
         default=None,
         description=(
@@ -214,6 +235,13 @@ class DraftRecord(BaseModel):
     function: str | None = None
     start_line: int | None = Field(default=None, ge=1)
     end_line: int | None = Field(default=None, ge=1)
+    # `path` plus `alternative_paths` is a *set* of candidate files, not a guess
+    # followed by fallbacks. A finding that cites several Solidity files has not
+    # stated which one holds the defect -- but a quoted excerpt has, if it occurs
+    # in exactly one of them, and only the stage holding the bytes can say. So
+    # the adapter hands over the whole cited set and `normalize` adjudicates,
+    # refusing when the excerpt occurs in more than one file for the same reason
+    # it refuses an excerpt occurring twice in one file.
     quoted_source: str | None = Field(
         default=None,
         description=(
@@ -386,6 +414,17 @@ class HarvestReport:
     anchored_drafts: int = 0
     """Drafts stating one line, to be widened to the declaration containing it."""
 
+    quoted_drafts: int = 0
+    """Drafts whose span will come from matching the report's own excerpt.
+
+    Counted apart from `derived_span_drafts` because they are the opposite kind
+    of locator, not a variant of it. A derived span is the declaration index
+    answering a question the report left open; a quoted span is the report's
+    text and the repository's bytes agreeing, which is the confirmation §6.6
+    says a derived locator lacks. Folding them together reported the strongest
+    unstated locator as the weakest.
+    """
+
     derived_span_drafts: int = 0
     """Drafts naming only a function, whose span must be guessed from prose.
 
@@ -492,7 +531,13 @@ class HarvestReport:
             if self.anchored_drafts
             else ""
         )
-        derived = anchored + derived + self.absence_evidence()
+        quoted = (
+            f" {self.quoted_drafts} quote source, to be located by matching the excerpt "
+            "against the repository's bytes."
+            if self.quoted_drafts
+            else ""
+        )
+        derived = anchored + quoted + derived + self.absence_evidence()
         return (
             f"{drafts} ({self.yield_rate:.1%}); {len(self.skipped)} skipped -- {causes}."
             f"{concentration}{unclassified}{derived}{floor}"
@@ -514,6 +559,7 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
     """
     drafts: list[DraftRecord] = []
     skipped: list[SkippedCandidate] = []
+    quoted_drafts = 0
     by_cause: Counter[SkipCause] = Counter()
     absence_samples: defaultdict[SkipCause, list[str]] = defaultdict(list)
     skipped_by_class: Counter[VulnerabilityClass] = Counter()
@@ -540,6 +586,12 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
                 extracted_by_class.update(outcome.classes)
                 if outcome.has_anchor:
                     anchored_drafts += 1
+                elif outcome.quoted_source:
+                    # A quote is the report's own text, matched against the
+                    # repository's bytes -- two sources, neither of which is the
+                    # declaration index. Counting it as prose-inferred called
+                    # the strongest unstated locator the weakest.
+                    quoted_drafts += 1
                 elif not outcome.has_stated_span:
                     derived_span_drafts += 1
                 continue
@@ -568,5 +620,6 @@ def harvest(adapter: ReportAdapter, reports: Iterable[RawReport]) -> HarvestRepo
         skipped_by_platform=dict(skipped_by_platform),
         unclassified_skips=unclassified_skips,
         anchored_drafts=anchored_drafts,
+        quoted_drafts=quoted_drafts,
         derived_span_drafts=derived_span_drafts,
     )

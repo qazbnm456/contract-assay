@@ -1,0 +1,32 @@
+{
+  "record_id": "2024-08-phi-reentrancy-0398895c",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/Cred.sol",
+    "sha256": "ba605680a70fb58271f68f7f15afc55b5a14e4bd2059fcc7fa3986a2930b0163",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-08-phi",
+    "commit": "8c0985f7a10b231f916a51af5d506dd6b0c54120"
+  },
+  "locator": {
+    "file": "src/Cred.sol",
+    "contract": "Cred",
+    "function": "getPositionsForCurator",
+    "start_line": 518,
+    "end_line": 551
+  },
+  "classes": [
+    "reentrancy"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-08-phi-findings/issues/25",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

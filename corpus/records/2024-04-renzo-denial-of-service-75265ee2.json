@@ -1,0 +1,34 @@
+{
+  "record_id": "2024-04-renzo-denial-of-service-75265ee2",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/Withdraw/WithdrawQueue.sol",
+    "sha256": "ab86a364e167b959207b4136f340c95c8e04715c911deec1e529ced46d8d6cd4",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-04-renzo",
+    "commit": "519e518f2d8dec9acf6482b84a181e403070d22d"
+  },
+  "locator": {
+    "file": "contracts/Withdraw/WithdrawQueue.sol",
+    "contract": "WithdrawQueue",
+    "function": "claim",
+    "start_line": 279,
+    "end_line": 312
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "derived",
+  "asserted_labels": [
+    "function"
+  ],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-04-renzo-findings/issues/612",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

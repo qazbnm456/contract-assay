@@ -1327,7 +1327,39 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   multiplies the pool without moving the constraint, which is worth knowing
   before a third is built.
 
-  A fourth route is **measured but not implemented**, recorded here because
+  The quote route is **built**, and what it cost was not the matcher. Findings
+  quote the vulnerable code far more often than they cite it, and locating an
+  excerpt in the pinned file was already implemented; what was missing was that
+  a finding citing *several* Solidity files was skipped before its excerpt was
+  ever considered. Six of eleven losses over one sample were exactly that: a
+  usable excerpt discarded because the **file** was not unique. So the adapter
+  now hands over the whole cited set and `normalize` adjudicates — the excerpt
+  states which file it came from if it occurs in exactly one of them, and only
+  the stage holding the bytes can say. Two files containing it identifies
+  neither, which is the same refusal as an excerpt occurring twice in one file.
+
+  Over six held reports the yield went from 6 drafts to 8, and of the records
+  admitted, two are located by excerpt rather than by citation.
+
+  **It also produced the worst record this corpus has held, which is worth
+  recording.** A report cites a dependency to show what the reviewed code was
+  derived from or ought to have done. A finding about a Rust port cited the
+  Solidity original, the excerpt matched there, and the result was a record
+  attributing a defect to an upstream library the report never claimed was
+  defective. The reviewed repository is now read from the whole report — within
+  one finding a dependency can easily be cited more often than the code under
+  review, which is how the record was made — and a citation outside it is
+  refused under its own cause, because the fix is to read the report's scope
+  rather than to parse a path better.
+
+  The restriction had to hold in three places and held in two, which is the
+  transferable part: the stated citation, the sole cited file, and the candidate
+  set. A finding whose single Solidity citation was a dependency went through as
+  "the one file it cites". **A check that has to be repeated is a check that
+  will be forgotten in one of its places**, so the citation set is restricted
+  once and every candidate derived from the restricted set.
+
+  A further route is **measured but not implemented**, recorded here because
   reproducing the measurement costs network access. Findings quote the vulnerable
   code inline far more often than they cite it: across 87 accepted findings, 82%
   carry a fenced code block and 63% carry one that looks like source rather than

@@ -660,3 +660,73 @@ class TestASpanInNoFunction:
         # that named one is scored against that.
         [record] = run(a_draft(function="setOwner", start_line=5, end_line=5)).records
         assert record.locator.function == "setOwner"
+
+
+class TestTheExcerptChoosesTheFile:
+    """A finding citing several files has not stated one; its excerpt may have.
+
+    The adapter hands over the whole cited set rather than guessing, because
+    only this stage holds the bytes. Six of eleven losses over one sample were
+    exactly this shape: a usable excerpt discarded because the *file* was not
+    unique.
+    """
+
+    OTHER = """\
+contract Other {
+    function untouched(uint256 a) external {
+        total = a;
+    }
+}
+"""
+
+    QUOTE = "    function setOwner(address o) external {\n        owner = o;\n    }"
+
+    def _run(self, sources: dict[str, str], **over: object):  # type: ignore[no-untyped-def]
+        def resolve(pin) -> str | None:  # type: ignore[no-untyped-def]
+            return sources.get(pin.path)
+
+        draft = a_draft(
+            contract=None,
+            function=None,
+            quoted_source=self.QUOTE,
+            alternative_paths=("src/Other.sol",),
+            **over,
+        )
+        return normalize(
+            [draft], resolve, split=CorpusSplit.PUBLIC, population=Population.AUDIT_REVIEW
+        )
+
+    def test_the_file_holding_the_excerpt_is_chosen(self) -> None:
+        report = self._run({"src/Vault.sol": VAULT, "src/Other.sol": self.OTHER})
+        [record] = report.records
+        assert record.pin.path == "src/Vault.sol"
+        assert record.locator_provenance is LocatorProvenance.QUOTED
+
+    def test_the_order_the_adapter_happened_to_use_is_not_load_bearing(self) -> None:
+        # The excerpt is in the *alternative*, and the record still resolves to
+        # it -- which is what makes handing over a set rather than a guess sound.
+        report = self._run(
+            {"src/Vault.sol": self.OTHER, "src/Other.sol": VAULT},
+        )
+        [record] = report.records
+        assert record.pin.path == "src/Other.sol"
+
+    def test_an_excerpt_in_two_of_them_identifies_neither(self) -> None:
+        # The same failure as an excerpt occurring twice in one file, and
+        # counted under the same cause.
+        report = self._run({"src/Vault.sol": VAULT, "src/Other.sol": VAULT})
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.QUOTE_AMBIGUOUS: 1}
+
+    def test_an_excerpt_in_none_of_them_is_its_own_loss(self) -> None:
+        # Counted apart from `quote_not_found`, which is about one stated file:
+        # here the file was never stated and the excerpt was to choose it, so
+        # what failed is the choosing.
+        report = self._run({"src/Vault.sol": self.OTHER, "src/Other.sol": self.OTHER})
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.FILE_NOT_DETERMINED: 1}
+
+    def test_a_file_that_cannot_be_fetched_is_skipped_not_matched(self) -> None:
+        report = self._run({"src/Vault.sol": VAULT})
+        [record] = report.records
+        assert record.pin.path == "src/Vault.sol"

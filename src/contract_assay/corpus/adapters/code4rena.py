@@ -39,6 +39,7 @@ report actually asserted and it is what such a record is scored against (§7).
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -210,7 +211,11 @@ class Code4renaAdapter:
         )
 
     def _by_name(
-        self, report: RawReport, candidate: Candidate, finding: EnumeratedFinding
+        self,
+        report: RawReport,
+        candidate: Candidate,
+        finding: EnumeratedFinding,
+        audited: str | None = None,
     ) -> DraftRecord | Skip:
         """Fall back to the file the finding cites plus the name its prose gives.
 
@@ -220,14 +225,33 @@ class Code4renaAdapter:
         that name does not resolve to exactly one declaration there, the draft is
         lost and counted rather than guessed at.
         """
-        file = _sole_solidity_file(finding.body)
-        if file is None:
-            return Skip(
-                SkipCause.NO_LOCATION,
-                "no stated location, and the finding cites either no Solidity file or several",
-            )
-        named = _named_function(finding.title, finding.body)
         quoted = quoted_source(finding.body)
+        # Restricted once, here, and every candidate derived from the
+        # restricted set. The repository check needed to hold in three places
+        # -- the stated citation, the sole cited file, and the candidate set --
+        # and applying it in two of them let a finding whose single Solidity
+        # citation was a dependency through, producing a record pinned to an
+        # upstream library. A check that has to be repeated is a check that
+        # will be forgotten in one of its places.
+        cited = _solidity_files(finding.body, audited)
+        file = cited[0] if len({c.path for c in cited}) == 1 else None
+        alternatives: tuple[str, ...] = ()
+        if file is None:
+            # Several files cited, or none. A quoted excerpt still states which
+            # one, if it occurs in exactly one of them -- and only the stage
+            # holding the bytes can decide that, so the whole cited set is
+            # handed over rather than a guess being made here. Six of eleven
+            # losses over one sample were exactly this: a usable excerpt
+            # discarded because the *file* was not unique.
+            if quoted is None or not cited:
+                return Skip(
+                    SkipCause.NO_LOCATION,
+                    "no stated location, and the finding cites either no Solidity file or "
+                    "several with nothing quoted to choose between them",
+                )
+            file = cited[0]
+            alternatives = tuple(dict.fromkeys(c.path for c in cited[1:] if c.path != file.path))
+        named = _named_function(finding.title, finding.body)
         if named is None and quoted is None:
             return Skip(
                 SkipCause.NO_LOCATION,
@@ -239,6 +263,7 @@ class Code4renaAdapter:
             repo_url=file.repo_url,
             commit=file.ref,
             path=file.path,
+            alternative_paths=alternatives,
             contract=contract,
             function=function,
             quoted_source=quoted,
@@ -274,7 +299,14 @@ class Code4renaAdapter:
         if not candidate.classes:
             return Skip(SkipCause.UNMAPPED_CLASS, f"title: {finding.title[:80]}")
 
+        audited = _audited_repository(report.body)
         citation = _cite(finding.body) or self._from_excerpt(report, finding)
+        if citation is not None and audited is not None and citation.repo_url != audited:
+            return Skip(
+                SkipCause.CITES_ANOTHER_REPOSITORY,
+                f"cites {citation.repo_url.split('/')[-1]}/{citation.path}, which is not "
+                "the code under review",
+            )
         if citation is not None and not citation.is_pinned:
             # A branch or tag names whatever it currently points at, so the
             # location is not reproducible. Counted rather than resolved:
@@ -285,7 +317,7 @@ class Code4renaAdapter:
                 f"cites {citation.path} at {citation.ref!r}, which names a moving target",
             )
         if citation is None:
-            return self._by_name(report, candidate, finding)
+            return self._by_name(report, candidate, finding, audited)
         if not citation.path.endswith(".sol"):
             return Skip(SkipCause.NO_FILE_PATH, f"cited {citation.path}, which is not Solidity")
 
@@ -333,17 +365,52 @@ def _named_function(title: str, body: str) -> tuple[str | None, str] | None:
     return None
 
 
-def _sole_solidity_file(body: str) -> SourceCitation | None:
-    """The one Solidity file a finding cites, ignoring which lines it cites in it.
+def _audited_repository(report_body: str) -> str | None:
+    """The repository under review, from the whole report rather than one finding.
 
-    A finding citing several lines of one file has not stated a span, but it has
-    stated a file -- and a file plus a name the prose supplies, or an excerpt it
-    quotes, is enough for `normalize` to resolve. A finding citing several files
-    has stated neither.
+    A finding quotes a dependency to show what the audited code was derived
+    from, or ought to have done. An excerpt matched in that dependency would
+    attribute the defect to a third party the report never claimed was
+    defective, and the first run of the quote route produced exactly that: a
+    record pinned to an upstream library for a finding about a port of it.
+
+    Decided across the report because within one finding the dependency can
+    easily be cited more often than the code under review -- which is how that
+    record got made. Across a report the reviewed repository dominates by one
+    to two orders of magnitude, so this is a count rather than a tie-break, and
+    a tie returns nothing rather than choosing.
     """
-    cited = [c for c in permalinks(body) if c.is_solidity and c.is_pinned]
-    paths = {c.path for c in cited}
-    return cited[0] if len(paths) == 1 else None
+    counts: Counter[str] = Counter(
+        citation.repo_url for citation in permalinks(report_body) if citation.is_solidity
+    )
+    if not counts:
+        return None
+    ranked = counts.most_common()
+    if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
+        return None
+    return ranked[0][0]
+
+
+def _solidity_files(body: str, repository: str | None) -> list[SourceCitation]:
+    """Pinned Solidity files a finding cites *in the audited repository*.
+
+    The candidate set a quoted excerpt is adjudicated against. Ordered by first
+    appearance so a rerun hands over the same set -- which of them ends up in
+    `path` is not load-bearing, since `normalize` requires the excerpt to occur
+    in exactly one of them however they are ordered.
+    """
+    if repository is None:
+        return []
+    seen: dict[str, SourceCitation] = {}
+    for citation in permalinks(body):
+        if (
+            citation.is_solidity
+            and citation.is_pinned
+            and citation.repo_url == repository
+            and citation.path not in seen
+        ):
+            seen[citation.path] = citation
+    return list(seen.values())
 
 
 def _cite(body: str) -> SourceCitation | None:

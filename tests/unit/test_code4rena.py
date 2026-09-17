@@ -431,3 +431,66 @@ See <{REPO}/blob/{SHA}/src/Vault.sol#L10> and <{REPO}/blob/{SHA}/src/Vault.sol#L
         result = harvest(Code4renaAdapter(), [a_report(body)])
         assert result.drafts == ()
         assert result.by_cause == {SkipCause.NO_LOCATION: 1}
+
+
+class TestOnlyTheCodeUnderReview:
+    """A citation outside the reviewed repository has not located a defect in it.
+
+    A report cites a dependency to show what the reviewed code was derived from
+    or ought to have done. The first run of the quote route pinned a record to
+    an upstream library for a finding about a port of it, which is a defect
+    attributed to a third party the report never claimed was defective.
+    """
+
+    SCOPE = "\n".join(
+        f"https://github.com/code-423n4/2024-08-x/blob/{'a' * 40}/src/Vault{n}.sol#L{n}"
+        for n in range(1, 8)
+    )
+
+    def _body(self, citation: str) -> str:
+        return (
+            "# Overview\n\n" + self.SCOPE + "\n\n# High Risk Findings (1)\n\n"
+            "## [[H-01] Reentrancy in the withdrawal path](https://github.com/x/y/issues/1)\n\n"
+            f"{citation}\n\n```solidity\n"
+            "    function withdraw(uint256 amount) external {\n"
+            "        payable(msg.sender).transfer(amount);\n"
+            "        balances[msg.sender] -= amount;\n"
+            "    }\n```\n"
+        )
+
+    def _extract(self, citation: str):  # type: ignore[no-untyped-def]
+        report = a_report(self._body(citation))
+        adapter = Code4renaAdapter()
+        [candidate] = adapter.candidates(report)
+        return adapter.extract(report, candidate)
+
+    def test_the_reviewed_repository_is_read_from_the_whole_report(self) -> None:
+        # Within one finding a dependency can easily be cited more often than
+        # the code under review, which is how the bad record was made.
+        outcome = self._extract(
+            f"https://github.com/code-423n4/2024-08-x/blob/{'a' * 40}/src/Vault1.sol#L10-L14"
+        )
+        assert isinstance(outcome, DraftRecord)
+        assert outcome.repo_url == "https://github.com/code-423n4/2024-08-x"
+
+    def test_a_citation_elsewhere_is_refused_with_its_own_cause(self) -> None:
+        # Not `no_file_path`: the fix is to read the report's scope, not to
+        # parse a path better.
+        outcome = self._extract(
+            f"https://github.com/Uniswap/v3-core/blob/{'b' * 40}/contracts/Position.sol#L61-L76"
+        )
+        assert isinstance(outcome, Skip)
+        assert outcome.cause is SkipCause.CITES_ANOTHER_REPOSITORY
+
+    def test_a_sole_citation_elsewhere_does_not_slip_past_as_a_file(self) -> None:
+        # The check had to hold in three places and held in two, so a finding
+        # whose single Solidity citation was a dependency went through as "the
+        # one file it cites". The candidate set is now restricted once.
+        outcome = self._extract(
+            f"https://github.com/Uniswap/v3-core/blob/{'b' * 40}/contracts/Position.sol"
+        )
+        assert isinstance(outcome, Skip)
+        assert outcome.cause in (
+            SkipCause.CITES_ANOTHER_REPOSITORY,
+            SkipCause.NO_LOCATION,
+        )

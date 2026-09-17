@@ -1,0 +1,32 @@
+{
+  "record_id": "2024-08-phi-access-control-29dcde94",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/PhiFactory.sol",
+    "sha256": "d703528eb201d7ec28b3e787a4335bce010ee82743d56c8f88f71239ac017e1f",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-08-phi",
+    "commit": "8c0985f7a10b231f916a51af5d506dd6b0c54120"
+  },
+  "locator": {
+    "file": "src/PhiFactory.sol",
+    "contract": "PhiFactory",
+    "function": "batchClaim",
+    "start_line": 320,
+    "end_line": 324
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-08-phi-findings/issues/254",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}
