@@ -138,6 +138,16 @@ whatever they turn out to be. Where it gives numbers alone, open the file at
 them and check that what is there is what the finding describes — and if it is
 not, the finding has not given you a location.
 
+**An adjudication is worth as much as the thing it settles.** The first one
+written to unblock a ranking took ten minutes and was decided by a single fact
+in the analysed unit: a loop bounded by a storage array whose only writer is an
+initializer guarded against being called twice, so nothing can lengthen the work
+it does. Say which fact settled it and what the record does *not* cover -- that
+one says nothing about the rest of the file, and nothing about the same report's
+own denial of service elsewhere, which is reached through a price check rather
+than through iteration. An adjudication that cannot name its deciding fact is
+one to refuse.
+
 **Read every record against its source before writing it.** Two defects in one
 afternoon were invisible to the pipeline and obvious on sight: the above, and a
 pin published as resting on an inference when the report had stated the commit

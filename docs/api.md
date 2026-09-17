@@ -326,8 +326,9 @@ run = run_detector(
 A harness that produced findings without any model says so explicitly:
 
 ```python
-run = run_detector(detector, ctx, model_findings=deterministic_findings,
-                   produced_without_a_model=True)
+run = run_detector(
+    detector, ctx, model_findings=deterministic_findings, produced_without_a_model=True
+)
 ```
 
 Findings with neither raise. "No model is named" and "no model ran" are
@@ -363,6 +364,13 @@ $ contract-assay rank \
 `rank` takes each submission's *runs*, not its score document, so that every row
 is computed against one corpus with one weighting in one invocation. A
 leaderboard assembled from figures cannot check that they were.
+
+`--over` names the classes the ranking covers, and is the exercise's statement
+rather than something to infer. Omitted, every class the submissions share must
+have an F1 — safe, and rarely what was meant: a mean over whichever classes
+happened to have figures ranks a submission on its corpus's readiness instead of
+on itself. One class whose pool is fully judged is a real ranking; eight classes
+where one is waiting on adjudication is no ranking at all.
 
 `--weights` is yours to supply — the engine ships none, because a weighting
 states what the exercise values. Without it the per-class figures are still

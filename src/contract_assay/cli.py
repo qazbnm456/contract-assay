@@ -18,7 +18,7 @@ from contract_assay import __version__
 from contract_assay.corpus.records import CorpusRecord, SourcePin
 from contract_assay.corpus.verify import verify_all
 from contract_assay.evidence.solidity import index_source
-from contract_assay.models import DetectorRun, DifficultyLevel
+from contract_assay.models import DetectorRun, DifficultyLevel, VulnerabilityClass
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import score
 from contract_assay.report.wire import leaderboard_document, score_document
@@ -315,6 +315,14 @@ def rank_command(
             "are listed apart rather than ranked.",
         ),
     ] = None,
+    over: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--over",
+            help="A class the ranking covers. Repeat for each; omitted, every class "
+            "the reports share is required.",
+        ),
+    ] = None,
     out: Annotated[
         Path | None, typer.Option("--out", help="Write the leaderboard here instead of stdout.")
     ] = None,
@@ -346,7 +354,21 @@ def rank_command(
         submission = score_submission(submission_id, report, weights=weighting)
         scores.append(submission)
         documents[submission_id] = score_document(submission, held)
-    board = leaderboard(scores, baseline=baseline)
+    # Stated, not inferred. Omitted, `leaderboard` requires every class the
+    # submissions share, which is the safe default and rarely the intended one:
+    # an exercise ranks on the classes it says it ranks on, and a mean over
+    # whichever classes happened to have figures ranks a submission on its
+    # corpus's readiness instead of on itself.
+    wanted: list[VulnerabilityClass] | None = None
+    if over:
+        wanted = []
+        for name in over:
+            try:
+                wanted.append(VulnerabilityClass(name))
+            except ValueError as unknown:
+                typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED)
+                raise typer.Exit(1) from unknown
+    board = leaderboard(scores, baseline=baseline, over=wanted)
     document = json.dumps(
         leaderboard_document(board, held, documents=documents, baseline=baseline),
         indent=1,

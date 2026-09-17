@@ -209,15 +209,18 @@ class Leaderboard:
             f"ranked, at the {self.at_least.value} strength floor over {classes}."
         ]
         if self.unrankable:
+            one = len(self.unrankable) == 1
             parts.append(
-                f"{len(self.unrankable)} could not be ranked and are listed with the "
-                "reason rather than placed last: an unrankable submission is not a "
-                "worse one, and ordering it below a ranked one would assert something "
-                "nobody measured."
+                f"{len(self.unrankable)} could not be ranked and "
+                f"{'is' if one else 'are'} listed with the reason rather than placed "
+                "last: an unrankable submission is not a worse one, and ordering it "
+                "below a ranked one would assert something nobody measured."
             )
         if self.incomparable:
+            one = len(self.incomparable) == 1
             parts.append(
-                f"{len(self.incomparable)} of those were not compared at all rather than "
+                f"{len(self.incomparable)} of those "
+                f"{'was' if one else 'were'} not compared at all rather than "
                 "scored and found wanting: "
                 + "; ".join(f"{name} -- {why}" for name, why in sorted(self.incomparable.items()))
                 + "."

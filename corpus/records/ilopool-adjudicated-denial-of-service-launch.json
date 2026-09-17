@@ -1,0 +1,37 @@
+{
+  "record_id": "ilopool-adjudicated-denial-of-service-launch",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/ILOPool.sol",
+    "sha256": "a07e9376d8ef243f2c817a2fdff1753bef4d362abd42644e37e4a9b51e333dc7",
+    "resolved_from": null,
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-06-vultisig",
+    "commit": "58ebda57ccf6a74bdef2b88eb18a62ec4ad46112"
+  },
+  "locator": {
+    "file": "src/ILOPool.sol",
+    "contract": "ILOPool",
+    "function": "launch",
+    "start_line": 269,
+    "end_line": 335
+  },
+  "classes": [],
+  "negative_for": [
+    "denial_of_service"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "anchor_line": null,
+  "negative_kind": "adjudicated",
+  "derived_from": null,
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/code-423n4/2024-06-vultisig/blob/58ebda57ccf6a74bdef2b88eb18a62ec4ad46112/src/ILOPool.sol#L269-L335",
+    "reported_severity": null,
+    "fix_commit": null
+  },
+  "notes": "Examined `for (uint256 index = 1; index < _vestingConfigs.length; index++)` and the inner loop over `projectConfig.schedule.length`. The iteration is bounded by a storage array, which is the shape this class names, and the array has exactly one writer in the analysed unit: `initialize()`, guarded by `whenNotInitialized()`, pushing from `params.vestingConfigs` after `_validateSharesAndVests`. It cannot grow after initialisation at all, so no caller -- privileged or not -- can lengthen the work this loop does. Not an instance of denial_of_service at this location. This says nothing about the rest of the file, and nothing about the report's own H-03, which is a denial of service in `ILOManager.launch` reached through a price check rather than through iteration."
+}

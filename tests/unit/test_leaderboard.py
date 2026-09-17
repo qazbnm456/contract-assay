@@ -315,3 +315,34 @@ class TestTheSameBaselineOrNoComparison:
             baseline="agreed-model",
         )
         assert [row.score.submission_id for row in board.ranked] == ["bob"]
+
+
+class TestTheClassSetIsStated:
+    """`over` is what the exercise says it ranks on, not what happened to work.
+
+    Left to itself the ranking requires every class the submissions share, which
+    is the safe default and rarely the intended one: a mean over whichever
+    classes had figures ranks a submission on its corpus's readiness instead of
+    on itself.
+    """
+
+    def test_ranking_over_one_ready_class_ignores_the_rest(self) -> None:
+        ready, waiting = CLS, VulnerabilityClass.REENTRANCY
+        report = ScoreReport(
+            by_class={
+                ready: a_class_score(cls=ready),
+                waiting: a_class_score(cls=waiting, judged=1),
+            },
+            models=(ModelUse(model_id="agreed", role=ModelRole.MAIN),),
+        )
+        submission = score_submission(
+            "alice", report, weights=WEIGHTS, at_least=MatchStrength.EXACT
+        )
+        assert leaderboard([submission], baseline="agreed").ranked == ()
+        [row] = leaderboard([submission], baseline="agreed", over=[ready]).ranked
+        assert row.total == pytest.approx(0.5)
+
+    def test_the_statement_reads_for_one_submission(self) -> None:
+        board = leaderboard([under("other", "bob")], baseline="agreed")
+        assert "1 could not be ranked and is listed" in board.statement()
+        assert "1 of those was not compared" in board.statement()
