@@ -777,9 +777,12 @@ class TestWhatTheCorpusHasStandingToJudge:
 
     def test_the_statement_says_the_corpus_cannot_judge_them(self) -> None:
         statement = score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()).statement()
-        assert "1 prediction fell in a unit no negative record covers" in statement
+        assert "1 prediction is not yet adjudicated" in statement
         assert "no standing to call it right or wrong" in statement
-        assert "No negative record establishes completeness for reentrancy" in statement
+        # Named per class with a count, because the number is the work
+        # outstanding rather than a property of the source.
+        assert "reentrancy 1" in statement
+        assert "driven by what was predicted" in statement
 
 
 class TestOnlySomeNegativesLicenseCompleteness:

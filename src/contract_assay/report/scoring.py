@@ -468,24 +468,30 @@ class ScoreReport:
 
         unjudged = sum(s.unjudged_predictions for s in self.by_class.values())
         if unjudged:
-            without_negatives = sorted(
-                cls.value
-                for cls, score in self.by_class.items()
-                if score.unjudged_predictions and not score.completeness_records
+            # A work item with a number on it, not an unadjudicable pile. The
+            # earlier wording said these "fell in a unit no negative record
+            # covers", which was true of file-wide negatives and wrong of
+            # adjudications -- those judge a location, so a prediction can be
+            # unjudged in a unit that has several.
+            waiting = ", ".join(
+                f"{cls.value} {score.unjudged_predictions}"
+                for cls, score in sorted(self.by_class.items())
+                if score.unjudged_predictions
             )
-            because = (
-                " No negative record establishes completeness for "
-                + ", ".join(without_negatives)
-                + ", so nothing there licenses a precision figure at all."
-                if without_negatives
+            adjudicated = sum(s.adjudications for s in self.by_class.values())
+            done = (
+                f" {_plural(adjudicated, 'location')} "
+                f"{'has' if adjudicated == 1 else 'have'} been adjudicated so far."
+                if adjudicated
                 else ""
             )
             parts.append(
-                f"{_plural(unjudged, 'prediction')} fell in a unit no negative record "
-                "covers, so the corpus has no standing to call "
-                f"{'it' if unjudged == 1 else 'them'} right or wrong: a positive record "
-                "asserts an instance at a location, not the absence of others in the "
-                f"same file. Counted here and in no precision figure.{because}"
+                f"{_plural(unjudged, 'prediction')} {'is' if unjudged == 1 else 'are'} "
+                "not yet adjudicated, so the corpus has no standing to call "
+                f"{'it' if unjudged == 1 else 'them'} right or wrong and precision is "
+                f"unavailable where any remain -- {waiting}.{done} Judging is driven by "
+                "what was predicted rather than by the size of the corpus, so this count "
+                "is the work outstanding and not a property of the source."
             )
 
         qualified = sum(s.qualified_negatives for s in self.by_class.values())
