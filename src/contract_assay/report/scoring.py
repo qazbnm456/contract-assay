@@ -45,7 +45,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from contract_assay.corpus.records import CorpusRecord, LocatorProvenance, Population
+from contract_assay.corpus.records import (
+    CorpusRecord,
+    LocatorProvenance,
+    NegativeKind,
+    Population,
+)
 from contract_assay.corpus.verify import SourceResolver
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
@@ -136,6 +141,16 @@ class ClassScore:
     invalid_runs: int = 0
     skipped_runs: int = 0
     measured_runs: int = 0
+    adjudications: int = 0
+    """Locations examined and found to hold no instance of this class.
+
+    Counted apart from `completeness_records` because the two license different
+    things: one judges a whole file, the other judges the predictions that
+    overlap it. Merging them would lose whether precision rests on a file-wide
+    assertion or on the predictions actually being adjudicated -- and only the
+    second scales with what was claimed rather than with the corpus.
+    """
+
     completeness_records: int = 0
     """Negative records for this class, each asserting a file holds no instance.
 
@@ -153,6 +168,16 @@ class ClassScore:
 
     judged_by_strength: Mapping[MatchStrength, int] = field(default_factory=dict)
     """Matches in judged units, by strength. The numerator of precision."""
+
+    @property
+    def pool_is_fully_judged(self) -> bool:
+        """Whether every prediction has been adjudicated, which precision needs.
+
+        The condition is about the predictions, not about the corpus: judging
+        scales with what was claimed rather than with the size of the source,
+        and nothing has to assert what a file does not contain.
+        """
+        return bool(self.predictions) and self.judged_predictions == self.predictions
 
     @property
     def unjudged_predictions(self) -> int:
@@ -228,7 +253,16 @@ class ClassScore:
         matched below the floor is a miss at that floor, and dropping it would
         raise the figure by discarding the evidence against it.
         """
-        if not self.judged_units:
+        # Available only when the pool is *fully* judged -- every prediction
+        # either matched a known positive or was adjudicated as not an instance.
+        # Both partial cases are degenerate rather than merely weak: a judged
+        # set made only of matches is identically 1.0, since a match is correct
+        # by definition, and one made only of adjudicated non-instances is
+        # identically 0. Neither says anything about the detector, and both look
+        # like a figure. So the condition is completeness *with respect to what
+        # was predicted*, which is what makes precision reachable without any
+        # claim about what a file does not contain.
+        if not self.predictions or self.judged_predictions < self.predictions:
             return None
         hits = sum(c for s, c in self.judged_by_strength.items() if s.rank >= at_least.rank)
         claimed = self.judged_predictions + self.unverifiable_claims
@@ -582,7 +616,18 @@ def score(
     # Which files a negative record says hold no instance of a class. The only
     # thing that licenses a precision figure: a positive record asserts an
     # instance exists at one location and nothing about the rest of its file.
+    # Two ways a prediction can be judged, and they are different claims.
+    # `complete_for` is file-wide: no instance of the class anywhere in that
+    # file. `adjudicated_for` is one examined location, judging exactly the
+    # predictions that overlap it -- so if what gets judged is the set of
+    # locations something predicted, every prediction is judged and precision is
+    # defined over them, while nothing asserts what a file does not contain.
     complete_for: dict[VulnerabilityClass, set[str]] = {}
+    adjudicated_for: dict[VulnerabilityClass, list[Locator]] = {}
+    for record in records:
+        if record.negative_kind is NegativeKind.ADJUDICATED and record.locator is not None:
+            for cls in record.negative_for:
+                adjudicated_for.setdefault(cls, []).append(record.locator)
     for record in records:
         # Gated on the *kind*, because only some negatives assert completeness.
         # A post-fix negative says the reported instance is gone, which is not
@@ -659,8 +704,17 @@ def score(
             if finding.status is CitationStatus.VERIFIED
         ]
         judged_files = complete_for.get(cls, set())
-        judged = [
-            index for index, prediction in enumerate(predictions) if prediction.file in judged_files
+        adjudications = adjudicated_for.get(cls, [])
+        covered = [
+            index
+            for index, prediction in enumerate(predictions)
+            if prediction.file in judged_files
+            or any(
+                adjudication.file == prediction.file
+                and prediction.start_line <= adjudication.end_line
+                and adjudication.start_line <= prediction.end_line
+                for adjudication in adjudications
+            )
         ]
         # A claim that failed its citation measured nothing about the source, and
         # costs precision so that emitting many is not free (§7.2).
@@ -692,6 +746,14 @@ def score(
                 used_predictions.add(pi)
                 used_records.add(ri)
 
+        # A prediction that matched a positive record is already judged: the
+        # record asserts an instance is there. So the judged set is everything
+        # the corpus speaks to at that location -- a positive it matched, a
+        # file-wide negative covering it, or an adjudication overlapping it.
+        # Leaving matches out made precision count only the predictions somebody
+        # had bothered to adjudicate, which is every hit discarded and every
+        # miss kept.
+        judged = sorted(set(covered) | set(assigned))
         strengths: Counter[MatchStrength] = Counter(m.strength for m in assigned.values())
         judged_strengths: Counter[MatchStrength] = Counter(
             match.strength for index, match in assigned.items() if index in set(judged)
@@ -725,9 +787,8 @@ def score(
                 and r.negative_kind is not None
                 and r.negative_kind.licenses_completeness
             ),
-            judged_units=len(
-                {prediction.file for prediction in predictions if prediction.file in judged_files}
-            ),
+            adjudications=len(adjudications),
+            judged_units=len({predictions[index].file for index in judged}),
             judged_predictions=len(judged),
             judged_by_strength=dict(judged_strengths),
             exact_unavailable=sum(

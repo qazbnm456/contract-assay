@@ -37,6 +37,7 @@ __all__ = [
     "LocatorLabel",
     "LocatorProvenance",
     "NegativeKind",
+    "NegativeScope",
     "Population",
     "Provenance",
     "SourcePin",
@@ -208,6 +209,35 @@ class CorpusSplit(StrEnum):
         return self is CorpusSplit.PUBLIC
 
 
+class NegativeScope(StrEnum):
+    """How much of the source a negative record speaks for.
+
+    Made explicit rather than inferred from whether a locator is present,
+    because an implicit scope is two claims sharing one appearance -- the shape
+    this design keeps having to separate.
+    """
+
+    FILE = "file"
+    """No instance of the class exists anywhere in the pinned file.
+
+    The only scope that licenses a precision figure over a whole unit, and the
+    only one a human can assert without examining every prediction.
+    """
+
+    LOCATION = "location"
+    """This location was examined and holds no instance of the class.
+
+    Judges exactly the predictions that overlap it and nothing else. Bounded and
+    reviewable in a way a file-wide claim is not: "this read of a
+    producer-chosen value is a deadline, not a source of unpredictability" is
+    checkable by reading five lines, where "this file contains no such use
+    anywhere" is not checkable at all.
+    """
+
+    NOTHING = "nothing"
+    """Speaks for no region. The claim is about a change, not about a region."""
+
+
 class NegativeKind(StrEnum):
     """Why a record is a negative sample.
 
@@ -239,6 +269,34 @@ class NegativeKind(StrEnum):
     A human asserts completeness directly and records how they confirmed it.
     """
 
+    ADJUDICATED = "adjudicated"
+    """One location examined and found to hold no instance of the class.
+
+    The kind that makes a precision figure reachable without a completeness
+    claim anywhere. If what gets judged is the set of locations something
+    *predicted*, then every prediction is judged by construction and precision
+    is defined over them -- while no record ever asserts what a file does not
+    contain. Judging is driven by what was claimed rather than by the size of
+    the corpus, which is the standard treatment of incomplete relevance
+    judgements in information retrieval (pooled judgements, and `bpref` for the
+    metric side).
+
+    It is also the only form of hand review that is worth anything here. A
+    confirmation resting on a structural absence licenses nothing, because the
+    absence that makes it cheap is the absence the predicate looks for (§6.2) --
+    so review has to happen exactly where a detector has an opinion, and that is
+    a location rather than a file.
+    """
+
+    @property
+    def scope(self) -> NegativeScope:
+        """How much of the source this kind speaks for."""
+        if self is NegativeKind.POST_FIX:
+            return NegativeScope.NOTHING
+        if self is NegativeKind.ADJUDICATED:
+            return NegativeScope.LOCATION
+        return NegativeScope.FILE
+
     @property
     def licenses_completeness(self) -> bool:
         """Whether this kind asserts the file holds *no* instance of the class.
@@ -253,10 +311,11 @@ class NegativeKind(StrEnum):
 
         Bridging that to completeness needs the assumption that the audit found
         every instance of the class in the file, which is the corpus-
-        completeness assumption §7.3 exists to refuse. So the two
-        human-asserted kinds license it and the mechanical one does not.
+        completeness assumption §7.3 exists to refuse. So the two file-wide
+        human-asserted kinds license it; the mechanical one and the
+        location-scoped one do not, for different reasons.
         """
-        return self is not NegativeKind.POST_FIX
+        return self.scope is NegativeScope.FILE
 
 
 class _Pin(BaseModel):
@@ -677,6 +736,18 @@ class CorpusRecord(BaseModel):
                     "collected to provide does not exist"
                 )
 
+            if self.negative_kind is NegativeKind.ADJUDICATED:
+                if self.locator is None:
+                    raise ValueError(
+                        "an adjudicated negative must say which location was examined; "
+                        "without one it is a file-wide claim wearing a narrower name"
+                    )
+                if not self.notes.strip():
+                    raise ValueError(
+                        "an adjudicated negative must record what was found at that "
+                        "location and why it is not an instance; the judgement is the "
+                        "record's whole content and 'examined' is not reviewable"
+                    )
             if self.negative_kind is NegativeKind.CONFIRMED_CLEAN and not self.notes.strip():
                 raise ValueError(
                     "a confirmed-clean negative must record how it was confirmed; "

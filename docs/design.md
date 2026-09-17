@@ -1076,9 +1076,45 @@ producer-chosen value rather than a use of it as if unpredictable. That is
 genuine review, not a re-checkable premise, and its cost is the number of
 flagged sites rather than the number of files.
 
-Which also says what such a negative is worth. A file with dozens of flagged
-sites and no instance of the class is the record that turns an unadjudicated
-pile into a precision figure, and it is the only kind of negative that can. That is the opposite of where the
+Which also says what such a negative is worth, and where the cost actually
+belongs.
+
+**Judge what was predicted, not what the corpus contains.** This situation —
+some true positives known, the rest unenumerable — is *incomplete relevance
+judgements*, and information retrieval has treated it for decades. The standard
+answer is not to complete the judgements. It is to judge the **pool**: the union
+of what submissions actually claimed. Then the cost scales with what was claimed
+rather than with the corpus, nothing asserts what a file does not contain, and
+the locations nobody pointed at are left unjudged because judging them changes
+no score. See TREC's pooled relevance judgements, and `bpref` for a metric
+built to ignore unjudged items.
+
+So the corpus gains a location-scoped negative, `NegativeKind.ADJUDICATED`:
+*this location was examined and holds no instance of this class*. Its scope is
+explicit on the kind (`NegativeScope`) rather than inferred from whether a
+locator is present, because an implicit scope is two claims sharing one
+appearance. It must carry both a location and a statement of what was found —
+the judgement is the record's whole content, and "examined" is not reviewable.
+
+**Precision is then available exactly when the pool is fully judged**, and that
+condition is not a nicety. A judged set made only of matches is identically
+1.0, because a match is correct by definition; one made only of adjudicated
+non-instances is identically 0. Both are degenerate and both look like a
+figure. So `precision()` returns nothing until every prediction has been
+adjudicated — by matching a known positive, by a file-wide negative covering it,
+or by an adjudication of its own location.
+
+What this buys, against the alternative it replaces:
+
+| | count | the claim being made |
+| --- | --- | --- |
+| file-wide confirmation | one per (file, class) | no instance anywhere in this file — not checkable by reading |
+| adjudication | one per flagged location | this read sets a deadline and nothing treats it as unpredictable — checkable by reading five lines |
+
+The same order of work, a far weaker claim, and the weaker claim is the one a
+reviewer can actually check. Which is the shape §2.2 already uses in a different
+place: the strict side is strict, and it is strict about something narrow enough
+to be right about. That is the opposite of where the
 cheapness argument pointed. The argument was right about verification cost —
 verifying a post-fix negative needs no human judgement at all — and wrong to
 treat cheap-to-verify as sufficient-for-purpose, which are different properties.

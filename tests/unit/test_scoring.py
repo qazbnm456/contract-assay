@@ -17,6 +17,7 @@ from contract_assay.corpus.records import (
     LocatorLabel,
     LocatorProvenance,
     NegativeKind,
+    NegativeScope,
     Population,
     Provenance,
     SourcePin,
@@ -730,9 +731,12 @@ class TestWhatTheCorpusHasStandingToJudge:
         assert got.precision(MatchStrength.FILE) is None
 
     def test_the_unjudged_predictions_are_counted(self) -> None:
+        # The matched one is judged: the record it matched asserts an instance
+        # is there. The other is not, and precision needs both.
         got = only(score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()))
-        assert got.unjudged_predictions == 2
-        assert got.judged_predictions == 0
+        assert got.unjudged_predictions == 1
+        assert got.judged_predictions == 1
+        assert got.pool_is_fully_judged is False
 
     def test_a_negative_record_licenses_it(self) -> None:
         got = only(score([a_run([(5, 6), (15, 16)])], [a_record(), a_negative()], resolver()))
@@ -750,11 +754,14 @@ class TestWhatTheCorpusHasStandingToJudge:
 
     def test_no_negative_is_distinguishable_from_an_uncovered_unit(self) -> None:
         # Two states that would otherwise share the single appearance of n/a.
-        absent = only(score([a_run([(5, 6)])], [a_record()], resolver()))
+        # Judged units counts where something was judged, so a prediction in
+        # the record's own file lands in one at file strength -- which is the
+        # known weakness of that floor (§7) rather than a surprise here.
+        absent = only(score([a_run([(5, 6)], file="src/Other.sol")], [a_record()], resolver()))
         assert absent.completeness_records == 0 and absent.judged_units == 0
         elsewhere = only(
             score(
-                [a_run([(5, 6)], file="src/Other.sol")],
+                [a_run([(15, 16)], file="src/Other.sol")],
                 [a_record(), a_negative()],
                 resolver(),
             )
@@ -763,8 +770,8 @@ class TestWhatTheCorpusHasStandingToJudge:
 
     def test_the_statement_says_the_corpus_cannot_judge_them(self) -> None:
         statement = score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()).statement()
-        assert "2 predictions fell in a unit no negative record covers" in statement
-        assert "no standing to call them right or wrong" in statement
+        assert "1 prediction fell in a unit no negative record covers" in statement
+        assert "no standing to call it right or wrong" in statement
         assert "No negative record establishes completeness for reentrancy" in statement
 
 
@@ -805,7 +812,12 @@ class TestOnlySomeNegativesLicenseCompleteness:
         )
         assert got.completeness_records == 0
         assert got.precision(MatchStrength.FILE) is None
-        assert got.unjudged_predictions == 2
+        # One prediction is assigned to the single record and judged by it.
+        # Matching is one-to-one, so the second cannot be, and the post-fix
+        # negative speaks for no region -- the pool is not fully judged and
+        # precision stays absent.
+        assert got.unjudged_predictions == 1
+        assert got.pool_is_fully_judged is False
 
     def test_a_confirmed_clean_negative_licenses_it(self) -> None:
         got = only(
@@ -837,3 +849,100 @@ class TestOnlySomeNegativesLicenseCompleteness:
         assert NegativeKind.POST_FIX.licenses_completeness is False
         assert NegativeKind.CROSS_CLASS.licenses_completeness is True
         assert NegativeKind.CONFIRMED_CLEAN.licenses_completeness is True
+
+
+class TestJudgingWhatWasPredicted:
+    """Precision without a completeness claim anywhere.
+
+    If what gets judged is the set of locations something predicted, then every
+    prediction is judged by construction and precision is defined over them --
+    while no record asserts what a file does not contain. Judging is driven by
+    what was claimed rather than by the size of the corpus, which is the
+    standard treatment of incomplete relevance judgements.
+
+    It is also the only hand review worth doing here: a confirmation resting on
+    a structural absence licenses nothing, because the absence that makes it
+    cheap is the absence the predicate looks for.
+    """
+
+    def _adjudication(self, start: int, end: int, record_id: str) -> CorpusRecord:
+        return a_negative(record_id=record_id).model_copy(
+            update={
+                "negative_kind": NegativeKind.ADJUDICATED,
+                "locator": Locator(
+                    file=PATH,
+                    contract="Vault",
+                    function="unrelated",
+                    start_line=start,
+                    end_line=end,
+                ),
+                "locator_provenance": LocatorProvenance.STATED,
+                "notes": "The read here sets a deadline; nothing treats it as unpredictable.",
+            }
+        )
+
+    def test_an_adjudication_judges_the_prediction_it_overlaps(self) -> None:
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16)])],
+                [a_record(), self._adjudication(15, 16, "vault-adjudicated-1")],
+                resolver(),
+            )
+        )
+        # Two judged: the one that matched a record, and the one adjudicated as
+        # not an instance. Which is the whole pool, so precision is available.
+        assert got.judged_predictions == 2
+        assert got.unjudged_predictions == 0
+        assert got.adjudications == 1
+        assert got.pool_is_fully_judged is True
+
+    def test_judging_every_prediction_defines_precision(self) -> None:
+        # The whole point: two predictions, one matched, one adjudicated as not
+        # an instance, and precision is 50% with no file-wide claim made.
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16)])],
+                [a_record(), self._adjudication(15, 16, "vault-adjudicated-1")],
+                resolver(),
+            )
+        )
+        assert got.completeness_records == 0
+        assert got.precision(MatchStrength.FILE) == 0.5
+
+    def test_an_adjudication_licenses_no_completeness(self) -> None:
+        # It speaks for a location, so it must not be counted among the records
+        # that speak for a file.
+        assert NegativeKind.ADJUDICATED.licenses_completeness is False
+        assert NegativeKind.ADJUDICATED.scope is NegativeScope.LOCATION
+        assert NegativeKind.CONFIRMED_CLEAN.scope is NegativeScope.FILE
+        assert NegativeKind.POST_FIX.scope is NegativeScope.NOTHING
+
+    def test_an_adjudication_elsewhere_judges_nothing(self) -> None:
+        got = only(
+            score(
+                [a_run([(15, 16)], file="src/Other.sol")],
+                [a_record(), self._adjudication(30, 31, "vault-adjudicated-2")],
+                resolver(),
+            )
+        )
+        assert got.adjudications == 1
+        assert got.judged_predictions == 0
+        assert got.precision(MatchStrength.FILE) is None
+
+    def test_an_adjudication_must_say_where(self) -> None:
+        # Without a location it is a file-wide claim wearing a narrower name.
+        payload = a_negative().model_dump(mode="json") | {
+            "negative_kind": "adjudicated",
+            "locator": None,
+        }
+        with pytest.raises(ValidationError, match="must say which location"):
+            CorpusRecord.model_validate(payload)
+
+    def test_an_adjudication_must_say_what_was_found(self) -> None:
+        # The judgement is the record's whole content, and "examined" is not
+        # reviewable.
+        payload = self._adjudication(15, 16, "vault-adjudicated-1").model_dump(mode="json")
+        payload["notes"] = "   "
+        payload["locator_provenance"] = LocatorProvenance.STATED.value
+        with pytest.raises(ValidationError, match="must record what was found"):
+            CorpusRecord.model_validate(payload)
