@@ -65,6 +65,25 @@ __all__ = [
 
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
 _COMMENT = re.compile(r"//.*?$|/\*.*?\*/", re.M | re.S)
+
+
+def _blank_comments(text: str) -> str:
+    """Comments removed **without moving any line**.
+
+    `sub("", ...)` collapses a block comment spanning several lines into
+    nothing, which removes its newlines and shifts the number of every line
+    after it. A quoted excerpt then matched at a plausible-looking but wrong
+    span -- one file's banner comments shifted a match by 28 lines -- and the
+    match was *unique*, so nothing in the matcher noticed.
+
+    What noticed was `verify`, whose declaration check found the named function
+    absent from the matched span. That is the whole reason a record is checked
+    against the source after being built rather than trusted from the stage
+    that built it.
+    """
+    return _COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
+
 _LINE_PREFIX = re.compile(r"^\s*\d+:\s?")
 _ELISION = frozenset({"...", "\u2026", "..", "/* ... */"})
 
@@ -151,7 +170,7 @@ def _match_quote(quote: str, source: str) -> tuple[int, int] | NormalizeCause | 
 
     numbered = [
         (n, " ".join(_LINE_PREFIX.sub("", raw).split()))
-        for n, raw in enumerate(_COMMENT.sub("", source).split("\n"), 1)
+        for n, raw in enumerate(_blank_comments(source).split("\n"), 1)
     ]
     kept = [(n, line) for n, line in numbered if line and line not in _ELISION]
     haystack = [line for _, line in kept]

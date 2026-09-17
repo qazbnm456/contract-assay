@@ -730,3 +730,60 @@ contract Other {
         report = self._run({"src/Vault.sol": VAULT})
         [record] = report.records
         assert record.pin.path == "src/Vault.sol"
+
+
+class TestRemovingCommentsMustNotMoveALine:
+    """A unique match at the wrong span is the worst thing a matcher can do.
+
+    Comments are stripped before matching so that a report quoting code without
+    its comments still locates. Substituting the empty string for a block
+    comment removes its newlines and shifts the number of every line after it,
+    and one real file's banner comments shifted a match by 28 lines. The match
+    was *unique*, so nothing in the matcher noticed.
+
+    What noticed was `verify`, whose declaration check found the named function
+    absent from the matched span -- which is the whole reason a record is checked
+    against the source after being built rather than trusted from the stage that
+    built it.
+    """
+
+    SOURCE = """\
+contract Banner {
+    /*//////////////////////////////////////////////////////////////
+                              A SECTION
+    //////////////////////////////////////////////////////////////*/
+
+    /*//////////////////////////////////////////////////////////////
+                            ANOTHER SECTION
+    //////////////////////////////////////////////////////////////*/
+
+    function target(uint256 a) external {
+        total = a;
+        emit Changed(a);
+    }
+}
+"""
+
+    QUOTE = (
+        "    function target(uint256 a) external {\n        total = a;\n        emit Changed(a);"
+    )
+
+    def test_the_span_is_where_the_code_actually_is(self) -> None:
+        report = run(
+            a_draft(contract="Banner", function="target", quoted_source=self.QUOTE),
+            source=self.SOURCE,
+        )
+        [record] = report.records
+        assert record.locator_provenance is LocatorProvenance.QUOTED
+        # `function target` is on line 10 of the source above. A collapsing
+        # comment stripper reports it near line 4.
+        assert record.locator.start_line == 10
+
+    def test_a_line_comment_does_not_shift_anything_either(self) -> None:
+        source = self.SOURCE.replace("contract Banner {", "// a leading note\ncontract Banner {")
+        report = run(
+            a_draft(contract="Banner", function="target", quoted_source=self.QUOTE),
+            source=source,
+        )
+        [record] = report.records
+        assert record.locator.start_line == 11

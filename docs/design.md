@@ -1341,6 +1341,20 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   Over six held reports the yield went from 6 drafts to 8, and of the records
   admitted, two are located by excerpt rather than by citation.
 
+  **The matcher had a defect that only verification could catch**, and it is the
+  kind worth naming. Comments are stripped before matching so that a report
+  quoting code without them still locates. Substituting the empty string for a
+  block comment removes its newlines and shifts the number of every line after
+  it — one file's banner comments shifted a match by 28 lines. The match was
+  **unique**, so nothing in the matcher noticed: uniqueness is a property of the
+  text, not of the position.
+
+  `verify`'s declaration check found the named function absent from the matched
+  span and rejected the record. Which is the whole reason a record is checked
+  against the source after being built rather than trusted from the stage that
+  built it — and the reason every existing quoted record was re-verified after
+  the fix rather than assumed unaffected.
+
   **It also produced the worst record this corpus has held, which is worth
   recording.** A report cites a dependency to show what the reviewed code was
   derived from or ought to have done. A finding about a Rust port cited the

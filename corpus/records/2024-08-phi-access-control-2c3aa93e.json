@@ -1,0 +1,35 @@
+{
+  "record_id": "2024-08-phi-access-control-2c3aa93e",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/Cred.sol",
+    "sha256": "ba605680a70fb58271f68f7f15afc55b5a14e4bd2059fcc7fa3986a2930b0163",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-08-phi",
+    "commit": "8c0985f7a10b231f916a51af5d506dd6b0c54120"
+  },
+  "locator": {
+    "file": "src/Cred.sol",
+    "contract": "Cred",
+    "function": "_addCredIdPerAddress",
+    "start_line": 685,
+    "end_line": 692
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [
+    "contract",
+    "function"
+  ],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-08-phi-findings/issues/51",
+    "reported_severity": "high"
+  },
+  "notes": "Class hand-assigned per docs/curation.md: the finding's title names the defect in words no keyword table reaches, which is the measured in-the-nine-but-unreachable-by-keywords case. The source is the report, which names both functions and quotes them; this project's detectors agreed with it, and agreement is not authorship -- a record created because a detector flagged something would make the corpus measure that detector against its own output (§1.3)."
+}
