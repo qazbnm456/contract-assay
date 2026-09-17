@@ -9,7 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from contract_assay.models import DifficultyLevel, VulnerabilityClass
+from contract_assay.models import (
+    DifficultyLevel,
+    ModelRole,
+    ModelUse,
+    VulnerabilityClass,
+)
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import ClassScore, MatchStrength, ScoreReport
 
@@ -216,3 +221,97 @@ class TestTheStatementsSayWhatHappened:
         board = leaderboard([])
         assert "0 of 0 submissions ranked" in board.statement()
         assert "no classes" in board.statement()
+
+
+def under(model: str | None, submission_id: str = "alice", *, deterministic: int = 0):  # type: ignore[no-untyped-def]
+    """A submission whose runs named `model` as their main model, or none."""
+    report = ScoreReport(
+        by_class={CLS: a_class_score()},
+        models=(
+            (ModelUse(model_id=model, role=ModelRole.MAIN, calls=3, tokens=900),)
+            if model is not None
+            else ()
+        ),
+        deterministic_runs=deterministic,
+    )
+    return score_submission(submission_id, report, weights=WEIGHTS, at_least=MatchStrength.EXACT)
+
+
+class TestTheSameBaselineOrNoComparison:
+    """An exercise that agrees one model is making a claim about process.
+
+    A leaderboard that cannot name the model behind a row cannot check that
+    claim, and a reader shown no model assumes the agreed one. These rows carry
+    real figures -- the refusal is about the comparison, not the submission, and
+    `incomparable` is kept apart from a missing F1 for exactly that reason.
+    """
+
+    def test_rows_under_the_agreed_baseline_are_ranked(self) -> None:
+        board = leaderboard(
+            [under("agreed-model", "alice"), under("agreed-model", "bob")],
+            baseline="agreed-model",
+        )
+        assert len(board.ranked) == 2
+        assert board.incomparable == {}
+
+    def test_a_row_under_another_model_is_listed_apart_with_the_reason(self) -> None:
+        board = leaderboard(
+            [under("agreed-model", "alice"), under("other-model", "bob")],
+            baseline="agreed-model",
+        )
+        assert [row.score.submission_id for row in board.ranked] == ["alice"]
+        assert "other-model" in board.incomparable["bob"]
+        assert "agreed-model" in board.incomparable["bob"]
+
+    def test_deterministic_findings_are_a_different_measurement_not_a_worse_one(self) -> None:
+        board = leaderboard(
+            [under("agreed-model", "alice"), under(None, "bob", deterministic=4)],
+            baseline="agreed-model",
+        )
+        assert [row.score.submission_id for row in board.ranked] == ["alice"]
+        assert "deterministic" in board.incomparable["bob"]
+        # Not placed last: an unranked row asserts no comparison at all.
+        assert all(row.score.submission_id != "bob" for row in board.ranked)
+
+    def test_runs_naming_two_main_models_are_a_mixture(self) -> None:
+        mixed = ScoreReport(
+            by_class={CLS: a_class_score()},
+            models=(
+                ModelUse(model_id="one", role=ModelRole.MAIN, calls=1),
+                ModelUse(model_id="two", role=ModelRole.MAIN, calls=1),
+            ),
+        )
+        board = leaderboard(
+            [score_submission("bob", mixed, weights=WEIGHTS, at_least=MatchStrength.EXACT)],
+            baseline="one",
+        )
+        assert board.ranked == ()
+        assert "more than one main model" in board.incomparable["bob"]
+
+    def test_with_no_agreed_baseline_disagreeing_rows_rank_nothing(self) -> None:
+        # Ranking whichever models happen to agree would turn the exercise's
+        # silence into a decision it never made.
+        board = leaderboard([under("one", "alice"), under("two", "bob")])
+        assert board.ranked == ()
+        assert set(board.incomparable) == {"alice", "bob"}
+        assert "nothing states which was agreed" in board.incomparable["alice"]
+
+    def test_with_no_agreed_baseline_and_one_model_everything_ranks(self) -> None:
+        board = leaderboard([under("one", "alice"), under("one", "bob")])
+        assert len(board.ranked) == 2
+
+    def test_a_sub_model_does_not_block_a_comparison(self) -> None:
+        # Which helpers a harness calls is what the exercise is comparing; the
+        # budgets are what meter them. Only the main model has to match.
+        report = ScoreReport(
+            by_class={CLS: a_class_score()},
+            models=(
+                ModelUse(model_id="agreed-model", role=ModelRole.MAIN, calls=2),
+                ModelUse(model_id="a-reranker", role=ModelRole.SUB, calls=9, tokens=50),
+            ),
+        )
+        board = leaderboard(
+            [score_submission("bob", report, weights=WEIGHTS, at_least=MatchStrength.EXACT)],
+            baseline="agreed-model",
+        )
+        assert [row.score.submission_id for row in board.ranked] == ["bob"]

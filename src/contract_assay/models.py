@@ -630,6 +630,36 @@ class SkipReason(StrEnum):
     """The unit declares no contract, library or interface."""
 
 
+class ModelRole(StrEnum):
+    """Which part a model played in one run."""
+
+    MAIN = "main"
+    """The model the exercise agreed on. At most one per run."""
+
+    SUB = "sub"
+    """A helper the harness also called -- a summariser, a re-ranker, a judge."""
+
+
+class ModelUse(_Frozen):
+    """One model a run called, and what the call cost.
+
+    Recorded because the whole comparability claim rests on it. An exercise that
+    agrees a baseline model and runs every submission against it is making a
+    statement about *process*; a leaderboard that cannot name the model behind
+    each row cannot check that statement, and two rows produced under different
+    models are not comparable however similar the numbers look.
+
+    `Escalation` already names the models involved in a hand-off. This is the
+    ordinary case, where nothing was handed off and the run still has to say
+    what it called.
+    """
+
+    model_id: str = Field(min_length=1, description="Exactly the identifier the host called.")
+    role: ModelRole
+    calls: int = Field(default=0, ge=0)
+    tokens: int = Field(default=0, ge=0)
+
+
 class Escalation(_Frozen):
     """One hand-off from the working model to a larger one.
 
@@ -698,6 +728,19 @@ class DetectorRun(_Frozen):
     skip_reason: SkipReason | None = None
     escalations: list[Escalation] = Field(default_factory=list)
     trace_path: str | None = Field(default=None, description="Path to the run's JSONL trajectory.")
+
+    models: list[ModelUse] = Field(
+        default_factory=list,
+        description="Every model this run called, recorded by the host that called them.",
+    )
+    produced_without_a_model: bool = Field(
+        default=False,
+        description=(
+            "Set when the findings came from deterministic code rather than a model. "
+            "Explicit, because 'no model is named' and 'no model ran' are different "
+            "claims and only one of them supports a baseline comparison."
+        ),
+    )
 
     @property
     def established_evidence(self) -> list[EvidenceRef]:
@@ -785,6 +828,31 @@ class DetectorRun(_Frozen):
                     )
                 if self.escalations:
                     raise ValueError("a skipped source never ran, so it cannot have escalated")
+
+        # A finding with no named producer is the gap this closes. The host
+        # supplies the findings, so only the host knows whether a model made
+        # them; a run that says nothing leaves a leaderboard unable to state
+        # what it measured, and "unknown" then reads as "the agreed baseline".
+        if self.findings and not self.models and not self.produced_without_a_model:
+            raise ValueError(
+                "findings name no producer: record the models called, or set "
+                "produced_without_a_model when deterministic code made them"
+            )
+        if self.models and self.produced_without_a_model:
+            raise ValueError("a run cannot both call a model and produce findings without one")
+        if sum(1 for use in self.models if use.role is ModelRole.MAIN) > 1:
+            raise ValueError("a run has at most one main model; the rest are sub models")
+        named = {use.model_id for use in self.models}
+        if named:
+            for escalation in self.escalations:
+                for model in (escalation.from_model, escalation.to_model):
+                    if model not in named:
+                        raise ValueError(
+                            f"escalation names {model!r}, which is not among the models "
+                            "this run records calling"
+                        )
+        if self.outcome is Outcome.SKIPPED and (self.models or self.produced_without_a_model):
+            raise ValueError("a skipped source never ran, so nothing produced findings for it")
 
         if self.outcome is not Outcome.INVALID and self.invalid_reason is not None:
             raise ValueError(f"invalid_reason set on a {self.outcome.value} outcome")

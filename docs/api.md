@@ -299,3 +299,105 @@ it is stopped from outside, or not at all.
 - [ ] Module body does no work.
 - [ ] Text fields fit their caps.
 - [ ] `validate_claim` is clean for every claim, if you classify.
+
+## 8. Running submissions, and the documents that come out
+
+This section is for whoever *runs* the exercise rather than whoever writes a
+detector: a marking script, a queue worker, a web front end. The scoring engine
+is here, and a surface built on it should call it rather than reimplement any
+part of it — §7.6's refusals are one `or 0` away from becoming defaults, and the
+loss shows up in the cell a reader believes.
+
+### The model is yours to name
+
+`plan()` says what to ask; the model is called **outside** the detector, by you.
+That is what lets an exercise put every submission through one agreed model. It
+also means the engine cannot observe which model ran, so you tell it:
+
+```python
+run = run_detector(
+    detector,
+    ctx,
+    model_findings=findings_the_model_returned,
+    models=[ModelUse(model_id="the-agreed-model", role=ModelRole.MAIN, calls=1, tokens=812)],
+)
+```
+
+A harness that produced findings without any model says so explicitly:
+
+```python
+run = run_detector(detector, ctx, model_findings=deterministic_findings,
+                   produced_without_a_model=True)
+```
+
+Findings with neither raise. "No model is named" and "no model ran" are
+different claims, and only one of them supports a comparison against a
+baseline; a run that says nothing would leave a leaderboard reporting an unknown
+model as the agreed one.
+
+Sub-models are declared the same way with `role=ModelRole.SUB`. They do not
+block a comparison — which helpers a harness calls is part of what the exercise
+compares — and their calls and tokens count against the same budgets.
+
+### Two commands
+
+Runs are JSON Lines, one `DetectorRun` per line, because a harness writes them
+as units finish and a truncated stream is still readable where a truncated array
+is not. A malformed line stops the load rather than being skipped: a scoring run
+that silently dropped part of a submission would report its own recall as the
+submission's.
+
+```console
+$ contract-assay score runs.jsonl \
+    --records corpus/records --submission-id team-alpha \
+    --source-root ./checkout --weights weights.json --out team-alpha.json
+wrote team-alpha.json -- 110 prediction(s) await adjudication before precision exists
+
+$ contract-assay rank \
+    --submission team-alpha=team-alpha-runs.jsonl \
+    --submission team-beta=team-beta-runs.jsonl \
+    --records corpus/records --source-root ./checkout \
+    --weights weights.json --baseline the-agreed-model --out board.json
+```
+
+`rank` takes each submission's *runs*, not its score document, so that every row
+is computed against one corpus with one weighting in one invocation. A
+leaderboard assembled from figures cannot check that they were.
+
+`--weights` is yours to supply — the engine ships none, because a weighting
+states what the exercise values. Without it the per-class figures are still
+reported and the aggregate is refused, with that as its stated reason.
+
+### What the documents guarantee
+
+Both documents carry `schema_version`, `engine_version` and a `corpus` digest
+over every record's identity and verified bytes. Two rows with different digests
+were not measured against the same ground truth.
+
+Every measurement is `{"value": …, "unavailable": …}`:
+
+```json
+{
+  "class": "access_control",
+  "records": 6, "predictions": 66, "matched": 5,
+  "recall": {"value": 0.83, "unavailable": null},
+  "precision": {"value": null, "unavailable": "59 of its predictions are not yet adjudicated"},
+  "f1": {"value": null, "unavailable": "..."},
+  "below_minimum": true
+}
+```
+
+A `null` value always has a reason beside it. **Render the value and you print
+an empty cell; default it and you have published a number this engine refused to
+state.**
+
+`adjudication_queue` lists every prediction nothing in the corpus judges, with
+its unit, detector and line range. Precision waits on that list, and the list is
+the exercise's own work rather than a defect in the submission — which is also
+why the count in it agrees with the sentence in `precision.unavailable`.
+
+`unrankable` rows carry two different kinds of "cannot": `reasons` is per class,
+for figures the corpus or the submission cannot yet support, and `incomparable`
+is set when the figures exist and the comparison does not — a different baseline
+model, none named, or two. An unrankable row is not a worse one, and placing it
+last would assert a comparison nobody measured.

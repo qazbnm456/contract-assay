@@ -25,6 +25,8 @@ from contract_assay.models import (
     Finding,
     InvalidReason,
     Locator,
+    ModelRole,
+    ModelUse,
     Outcome,
     RejectionKind,
     SkipReason,
@@ -94,6 +96,9 @@ def a_run(**over: object) -> DetectorRun:
         "evidence_tier": EvidenceTier.SEMANTIC,
         "findings": [a_verified()],
         "evidence": [an_evidence_ref()],
+        # A run carrying findings names what produced them. This fixture is a
+        # model-driven detector, so it names a model.
+        "models": [ModelUse(model_id="baseline-main", role=ModelRole.MAIN, calls=1, tokens=120)],
     }
     return DetectorRun(**{**base, **over})  # type: ignore[arg-type]
 
@@ -339,6 +344,7 @@ class TestSkippedMeansNothingWasAnalysed:
             evidence_tier=None,
             findings=[],
             evidence=[],
+            models=[],
         )
         assert not run.outcome.is_measurement
 
@@ -387,6 +393,10 @@ class TestEscalationPolicy:
         with pytest.raises(ValidationError, match="graded S"):
             a_run(
                 class_id=VulnerabilityClass.UNCHECKED_EXTERNAL_CALL,
+                models=[
+                    ModelUse(model_id="small", role=ModelRole.MAIN, calls=1),
+                    ModelUse(model_id="large", role=ModelRole.SUB, calls=1),
+                ],
                 escalations=[
                     Escalation(
                         reason="unsure", from_model="small", to_model="large", changed_verdict=True
@@ -396,6 +406,10 @@ class TestEscalationPolicy:
 
     def test_a_q_level_class_may_escalate(self) -> None:
         run = a_run(
+            models=[
+                ModelUse(model_id="small", role=ModelRole.MAIN, calls=1),
+                ModelUse(model_id="large", role=ModelRole.SUB, calls=2),
+            ],
             escalations=[
                 Escalation(
                     reason="needs protocol knowledge",
@@ -403,7 +417,7 @@ class TestEscalationPolicy:
                     to_model="large",
                     changed_verdict=True,
                 )
-            ]
+            ],
         )
         assert run.escalations[0].changed_verdict
 
@@ -554,6 +568,7 @@ class TestIndeterminacyDoesNotBecomeAnError:
             "outcome": outcome,
             "evidence_tier": EvidenceTier.SYNTACTIC,
             "evidence": evidence,
+            "produced_without_a_model": True,
         }
         return DetectorRun(**{**base, **over})  # type: ignore[arg-type]
 

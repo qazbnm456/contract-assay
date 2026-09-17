@@ -60,6 +60,8 @@ from contract_assay.models import (
     DifficultyLevel,
     EvidenceTier,
     Locator,
+    ModelRole,
+    ModelUse,
     Outcome,
     VulnerabilityClass,
 )
@@ -133,6 +135,24 @@ class Match:
     strength: MatchStrength
     exact_available: bool
     function_available: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Unjudged:
+    """A prediction nothing in the corpus has judged.
+
+    The block on precision, as data rather than as a count. A leaderboard says
+    "59 of its predictions are not yet adjudicated" and that sentence is only
+    actionable if the 59 can be listed: judging scales with what was claimed, so
+    the work the exercise owes is exactly this list. Carried per prediction with
+    the unit and the detector that claimed it, which is what an adjudicator has
+    to open.
+    """
+
+    class_id: VulnerabilityClass
+    source_id: str
+    detector_id: str
+    locator: Locator
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,6 +333,20 @@ class ScoreReport:
     by_provenance: Mapping[LocatorProvenance, int] = field(default_factory=dict)
     by_population: Mapping[Population, int] = field(default_factory=dict)
     matches: tuple[Match, ...] = ()
+    models: tuple[ModelUse, ...] = ()
+    """Every model the scored runs called, with calls and tokens summed.
+
+    Collected from the runs for the same reason declared limits are: the scorer
+    never sees the detectors, and a figure that cannot say what produced it
+    cannot be compared against one produced by something else.
+    """
+
+    deterministic_runs: int = 0
+    """Runs whose findings came from code rather than a model, as they declared."""
+
+    unjudged: tuple[Unjudged, ...] = ()
+    """Predictions no negative record judges, per class. See `Unjudged`."""
+
     unscoreable_claims: Mapping[VulnerabilityClass, int] = field(default_factory=dict)
     """Verified findings in classes the corpus holds no record for.
 
@@ -344,6 +378,16 @@ class ScoreReport:
     inside the uncertain one loses the certain half and makes both read as
     provisional. See `models.DeclaredLimit`.
     """
+
+    @property
+    def main_models(self) -> tuple[str, ...]:
+        """The main models these runs name -- one, if the exercise held.
+
+        More than one means the submission was run against two baselines and its
+        figures are a mixture; none means either nothing claimed anything or the
+        findings were deterministic, which `deterministic_runs` distinguishes.
+        """
+        return tuple(sorted({use.model_id for use in self.models if use.role is ModelRole.MAIN}))
 
     @property
     def limits_by_record(self) -> Mapping[str, tuple[DeclaredLimit, ...]]:
@@ -699,6 +743,7 @@ def score(
 
     by_class: dict[VulnerabilityClass, ClassScore] = {}
     all_matches: list[Match] = []
+    all_unjudged: list[Unjudged] = []
     by_level: Counter[DifficultyLevel] = Counter()
     by_tier: Counter[EvidenceTier] = Counter()
     by_provenance: Counter[LocatorProvenance] = Counter()
@@ -739,6 +784,18 @@ def score(
             if entry not in bucket:
                 bucket.append(entry)
 
+    # The same argument, for the same reason: what produced a figure is a
+    # property of the run, and a leaderboard cannot ask the harness afterwards.
+    usage: dict[tuple[str, ModelRole], list[int]] = {}
+    deterministic_runs = 0
+    for run in runs:
+        if run.produced_without_a_model:
+            deterministic_runs += 1
+        for use in run.models:
+            totals = usage.setdefault((use.model_id, use.role), [0, 0])
+            totals[0] += use.calls
+            totals[1] += use.tokens
+
     # Any record speaking to a class puts it in the matrix, positive or negative.
     # Taking only positives meant a class whose predictions had all been
     # adjudicated still reported nothing -- its findings stayed "unscoreable"
@@ -764,12 +821,13 @@ def score(
         class_records = [r for r in truths if cls in r.classes]
         class_runs = [run for run in runs if run.class_id is cls]
 
-        predictions = [
-            finding.finding.locator
+        claimed = [
+            (run.source_id, run.detector_id, finding.finding.locator)
             for run in class_runs
             for finding in run.findings
             if finding.status is CitationStatus.VERIFIED
         ]
+        predictions = [locator for _, _, locator in claimed]
         judged_files = complete_for.get(cls, set())
         adjudications = adjudicated_for.get(cls, [])
         covered = [
@@ -826,6 +884,15 @@ def score(
         # had bothered to adjudicate, which is every hit discarded and every
         # miss kept.
         judged = sorted(set(covered) | set(assigned))
+        # Built from `judged`, not from `covered`: a prediction that matched a
+        # positive record needs no adjudication, and queueing it would ask for
+        # work the corpus has already done -- while making this list disagree
+        # with the sentence the leaderboard prints from the same counts.
+        all_unjudged.extend(
+            Unjudged(class_id=cls, source_id=source_id, detector_id=detector_id, locator=locator)
+            for index, (source_id, detector_id, locator) in enumerate(claimed)
+            if index not in set(judged)
+        )
         strengths: Counter[MatchStrength] = Counter(m.strength for m in assigned.values())
         judged_strengths: Counter[MatchStrength] = Counter(
             match.strength for index, match in assigned.items() if index in set(judged)
@@ -879,6 +946,14 @@ def score(
         by_provenance=dict(by_provenance),
         by_population=dict(by_population),
         matches=tuple(all_matches),
+        models=tuple(
+            ModelUse(model_id=model_id, role=role, calls=calls, tokens=tokens)
+            for (model_id, role), (calls, tokens) in sorted(
+                usage.items(), key=lambda item: (item[0][1].value, item[0][0])
+            )
+        ),
+        deterministic_runs=deterministic_runs,
+        unjudged=tuple(all_unjudged),
         unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},
         unscoreable_runs=dict(sorted(unscoreable_runs.items())),
         declared_limits={c: tuple(v) for c, v in sorted(limits.items())},

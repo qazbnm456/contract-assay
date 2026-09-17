@@ -101,6 +101,7 @@ class TestAMeasuredRun:
             UncheckedExternalCallDetector(),
             a_context(DifficultyLevel.S),
             model_findings=[a_finding(10, 10, 'to.call("");')],
+            produced_without_a_model=True,
         )
         assert run.outcome is Outcome.VULNERABLE
         assert run.outcome.is_measurement
@@ -130,6 +131,7 @@ class TestAMeasuredRun:
             UncheckedExternalCallDetector(),
             a_context(DifficultyLevel.S),
             model_findings=[a_finding(2, 2, "address owner;")],
+            produced_without_a_model=True,
         )
         assert run.outcome is Outcome.CLEAN
         assert run.verified_findings == []
@@ -154,6 +156,7 @@ class TestRunsThatAreNotMeasurements:
             UncheckedExternalCallDetector(),
             a_context(DifficultyLevel.S),
             model_findings=[a_finding(10, 10, "selfdestruct(owner);")],
+            produced_without_a_model=True,
         )
         assert run.outcome is Outcome.INVALID
         assert not run.outcome.is_measurement
@@ -170,6 +173,7 @@ class TestRunsThatAreNotMeasurements:
                 a_finding(10, 10, 'to.call("");'),
                 a_finding(10, 10, "selfdestruct(owner);"),
             ],
+            produced_without_a_model=True,
         )
         assert run.outcome is Outcome.VULNERABLE
         assert len(run.verified_findings) == 1
@@ -274,7 +278,12 @@ class TestTheRecordIsSelfConsistent:
         detector = cls()
         ctx = a_context(detector.level, source=source)
         for start, end, quote in self.CLAIMS:
-            run = run_detector(detector, ctx, model_findings=[a_finding(start, end, quote)])
+            run = run_detector(
+                detector,
+                ctx,
+                model_findings=[a_finding(start, end, quote)],
+                produced_without_a_model=True,
+            )
             # The invariants the type promises, restated as assertions so a
             # failure names which one broke.
             assert run.outcome.is_measurement == (
@@ -300,6 +309,7 @@ class TestTheRecordIsSelfConsistent:
             detector,
             a_context(detector.level),
             model_findings=[a_finding(10, 10, 'to.call("");')],
+            produced_without_a_model=True,
         )
         restored: Any = type(run).model_validate_json(run.model_dump_json())
         assert restored == run

@@ -174,6 +174,9 @@ def a_run(
         findings=[] if outcome is Outcome.SKIPPED else findings,
         invalid_reason=InvalidReason.SCHEMA_VIOLATION if outcome is Outcome.INVALID else None,
         skip_reason=SkipReason.UNPARSEABLE if outcome is Outcome.SKIPPED else None,
+        # Named, because a run carrying findings has to say what produced them.
+        # These fixtures are deterministic, which is a claim rather than a gap.
+        produced_without_a_model=outcome is not Outcome.SKIPPED,
     )
 
 

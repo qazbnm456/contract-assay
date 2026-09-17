@@ -2375,6 +2375,63 @@ own statement says exactly which classes are waiting on how many
 adjudications, so the outstanding work is visible before the round rather than
 discovered during it.
 
+### 7.7 The boundary a submission surface is built on
+
+A ranking is eventually read on a page, and the page is a different program.
+That program must not re-implement any of §7.6, because **a second
+implementation of a refusal is a first implementation of a default**: every rule
+above is one line of `or 0` away from being lost, and the loss is invisible
+precisely where it matters, in the cell a reader believes.
+
+So the engine emits documents rather than prose, and three rules shape them.
+
+- **A figure and its absence are the same shape.** Every measurement is
+  `{"value": …, "unavailable": …}`. A `null` value always arrives with a
+  sentence saying why, so a consumer that renders the value prints an empty cell
+  rather than a zero. Omitting the key instead would make "0" and "not
+  licensed" indistinguishable to every caller that defaults.
+- **A number a human is told is a list a human can act on.** "59 of its
+  predictions are not yet adjudicated" is actionable only if the 59 can be
+  opened, so the document carries them with unit, detector and line range. That
+  also keeps the count and the sentence from drifting: the queue is built from
+  the same judged set the figure is, which caught a first version listing
+  predictions that had matched a positive record — work the corpus had already
+  done.
+- **A document says what it was measured against.** A corpus digest over every
+  record's identity and verified bytes, so a stored row can be checked rather
+  than trusted. Two rows with different digests were not measured against the
+  same ground truth and are not comparable, whatever the numbers say.
+
+#### The model behind a row
+
+An exercise that agrees one baseline model and runs every submission against it
+is making a claim about *process*. Nothing in the run record could check it:
+`DetectorRun` named no model, `AnalysisContext` carried budgets and no identity,
+and `Escalation` named models only when a hand-off happened. A leaderboard could
+therefore not say what produced a row — and a reader shown no model assumes the
+agreed one, which is the same failure as a missing figure read as zero.
+
+The host is the only thing that knows, because `plan()` says what to ask and the
+model is called outside the detector. So a run records `models` — each
+`model_id` with its role, calls and tokens — and a run whose findings came from
+deterministic code says `produced_without_a_model` **explicitly**. "No model is
+named" and "no model ran" are different claims and only one of them supports a
+baseline comparison, so findings with neither are refused at construction, with
+the message pointing at the host rather than at the submission.
+
+Ranking then enforces the claim instead of assuming it. A row is ranked only
+when its runs name one main model and that model is the agreed baseline; a row
+under another model, or naming none, or naming two, is listed apart with its own
+reason. That reason is kept in a separate field from a missing F1, because the
+two are different work for different people: an unlicensed precision is the
+exercise's adjudication debt, where a mismatched baseline is a row that was
+never comparable. Sub-models do not block a comparison — which helpers a harness
+calls is part of what is being compared, and the call and token budgets are what
+meter them. And with no baseline stated, submissions are still checked against
+each other: if they name different main models, none is ranked, because ranking
+whichever ones happen to agree would turn the exercise's silence into a decision
+it never made.
+
 ## 8. Layout and status
 
 Status is stated per component because a design document that describes planned

@@ -44,6 +44,7 @@ from contract_assay.models import (
     EvidenceRef,
     Finding,
     InvalidReason,
+    ModelUse,
     Outcome,
     VerifiedFinding,
 )
@@ -56,12 +57,27 @@ def run_detector(
     ctx: AnalysisContext,
     *,
     model_findings: Sequence[Finding] = (),
+    models: Sequence[ModelUse] = (),
+    produced_without_a_model: bool = False,
 ) -> DetectorRun:
     """Run one detector over one unit and record what happened.
 
     `model_findings` are what the model claimed. An empty sequence is the
     ordinary case for a detector that runs no model, not an error.
+
+    `models` is what the host called to obtain them, and it is the host's to
+    state because only the host knows: `plan()` says what to ask and the model
+    is called outside this function. A finding whose producer is unnamed leaves
+    a leaderboard unable to say what it measured, and an exercise that agreed a
+    baseline cannot check that the baseline is what ran -- so findings with
+    neither `models` nor `produced_without_a_model` raise here rather than being
+    recorded as a submission fault. The omission is the host's.
     """
+    if model_findings and not models and not produced_without_a_model:
+        raise ValueError(
+            "model_findings were supplied with no producer: pass `models` for what was "
+            "called, or `produced_without_a_model=True` for findings deterministic code made"
+        )
     skip_reason = gate(ctx.source)
     if skip_reason is not None:
         # A skipped unit was never analysed, so it reports no tier, no evidence
@@ -96,6 +112,8 @@ def run_detector(
             declared_limits=list(detector.declared_limits),
             evidence_tier=ctx.tier,
             trace_path=None,
+            models=list(models),
+            produced_without_a_model=produced_without_a_model,
         )
 
     verified = [f for f in findings if f.status is CitationStatus.VERIFIED]
@@ -117,6 +135,8 @@ def run_detector(
         evidence_tier=ctx.tier,
         findings=findings,
         evidence=list(evidence),
+        models=list(models),
+        produced_without_a_model=produced_without_a_model,
         # Copied by the harness, not asserted by the submission at report time:
         # a detector cannot have its score printed without its declared
         # blindnesses travelling beside it.

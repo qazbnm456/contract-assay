@@ -28,7 +28,7 @@ one that does not, and an error must never be counted as a judgement.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from contract_assay.models import DifficultyLevel, VulnerabilityClass
 from contract_assay.report.scoring import MatchStrength, ScoreReport
@@ -183,6 +183,16 @@ class Leaderboard:
 
     ranked: tuple[Ranked, ...] = ()
     unrankable: tuple[SubmissionScore, ...] = ()
+    incomparable: Mapping[str, str] = field(default_factory=dict)
+    """Why a submission was not ranked *for a reason other than its figures*.
+
+    Keyed by submission id. A missing F1 is already explained per class by
+    `SubmissionScore.unavailable`; this is for the other kind, where the figures
+    exist and the comparison does not -- a different baseline model, or none
+    named. Kept apart because the two are different work for different people:
+    one is the corpus's or the submission's, the other is the exercise's.
+    """
+
     over: tuple[VulnerabilityClass, ...] = ()
     at_least: MatchStrength = MatchStrength.FUNCTION
 
@@ -205,6 +215,13 @@ class Leaderboard:
                 "worse one, and ordering it below a ranked one would assert something "
                 "nobody measured."
             )
+        if self.incomparable:
+            parts.append(
+                f"{len(self.incomparable)} of those were not compared at all rather than "
+                "scored and found wanting: "
+                + "; ".join(f"{name} -- {why}" for name, why in sorted(self.incomparable.items()))
+                + "."
+            )
         return " ".join(parts)
 
 
@@ -221,12 +238,52 @@ def score_submission(
     )
 
 
+def _baseline_objection(score: SubmissionScore, baseline: str | None) -> str | None:
+    """Why this submission's figures cannot be compared with the others', if they cannot.
+
+    An exercise that agrees one model and runs every submission against it is
+    making a claim about process. A leaderboard that cannot name the model
+    behind a row cannot check that claim, and "unknown" then reads as "the
+    agreed one" -- so a row is ranked only when its runs say which main model
+    produced them and that model is the agreed baseline.
+
+    A submission whose findings came from deterministic code is *not* at fault
+    and is not worse; it was measured under different conditions, which is
+    exactly what an unrankable row with a reason is for.
+    """
+    named = score.report.main_models
+    if len(named) > 1:
+        return (
+            "its runs name more than one main model (" + ", ".join(named) + "), so its "
+            "figures are a mixture of two measurements"
+        )
+    if baseline is None:
+        return None
+    if not named:
+        return f"the agreed baseline is {baseline}, and its runs name no main model" + (
+            " -- its findings were produced deterministically, which is a different "
+            "measurement rather than a worse one"
+            if score.report.deterministic_runs
+            else ""
+        )
+    if named[0] != baseline:
+        return f"it ran under {named[0]}, not the agreed baseline {baseline}"
+    return None
+
+
 def leaderboard(
     scores: Iterable[SubmissionScore],
     *,
     over: Sequence[VulnerabilityClass] | None = None,
+    baseline: str | None = None,
 ) -> Leaderboard:
     """Rank what can be ranked and list the rest with a reason.
+
+    `baseline` is the main model the exercise agreed on. Given, a submission run
+    under anything else is listed apart with that as its reason. Left out, the
+    submissions are still checked against *each other*: if they name different
+    main models, none of them is ranked, because picking the majority would
+    publish a comparison nobody agreed to.
 
     An unrankable submission is *not* placed last. Ordering it below a ranked
     one asserts a comparison nobody measured, and the usual cause is work the
@@ -244,9 +301,35 @@ def leaderboard(
         shared = {cls for score in scores for cls in score.classes}
         wanted = tuple(sorted(shared))
 
+    agreed = baseline
+    if agreed is None:
+        distinct = {score.report.main_models for score in scores}
+        if len(distinct) > 1:
+            # Nothing states which baseline was agreed and the runs disagree.
+            # Ranking the ones that happen to share a model would make the
+            # exercise's silence into a decision.
+            named = sorted({model for models in distinct for model in models})
+            reason = (
+                "these submissions name different main models ("
+                + (", ".join(named) or "and some name none")
+                + ") and nothing states which was agreed"
+            )
+            return Leaderboard(
+                unrankable=tuple(sorted(scores, key=lambda s: s.submission_id)),
+                incomparable={score.submission_id: reason for score in scores},
+                over=wanted,
+                at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
+            )
+
     rankable: list[tuple[float, SubmissionScore]] = []
     unrankable: list[SubmissionScore] = []
+    incomparable: dict[str, str] = {}
     for score in scores:
+        objection = _baseline_objection(score, agreed)
+        if objection is not None:
+            incomparable[score.submission_id] = objection
+            unrankable.append(score)
+            continue
         total = score.total(wanted)
         if total is None:
             unrankable.append(score)
@@ -261,6 +344,7 @@ def leaderboard(
     return Leaderboard(
         ranked=ranked,
         unrankable=tuple(sorted(unrankable, key=lambda s: s.submission_id)),
+        incomparable=incomparable,
         over=wanted,
         at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
     )

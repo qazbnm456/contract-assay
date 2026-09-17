@@ -18,6 +18,10 @@ from contract_assay import __version__
 from contract_assay.corpus.records import CorpusRecord, SourcePin
 from contract_assay.corpus.verify import verify_all
 from contract_assay.evidence.solidity import index_source
+from contract_assay.models import DetectorRun, DifficultyLevel
+from contract_assay.report.leaderboard import leaderboard, score_submission
+from contract_assay.report.scoring import score
+from contract_assay.report.wire import leaderboard_document, score_document
 
 app = typer.Typer(
     name="contract-assay",
@@ -174,3 +178,182 @@ def declarations_command(
         typer.echo(
             f"  {decl.start_line:>5}-{decl.end_line:<5} {decl.kind.value:<20} {scope}{names}"
         )
+
+
+def _records_from(directory: Path) -> list[CorpusRecord]:
+    paths = sorted(directory.glob("*.json")) if directory.is_dir() else [directory]
+    records: list[CorpusRecord] = []
+    for path in paths:
+        try:
+            records.append(CorpusRecord.model_validate_json(path.read_text(encoding="utf-8")))
+        except ValidationError as invalid:
+            typer.secho(f"{path.name}: {invalid.error_count()} problems", fg=typer.colors.RED)
+            raise typer.Exit(1) from invalid
+    if not records:
+        typer.secho(f"no records under {directory}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    return records
+
+
+def _runs_from(path: Path) -> list[DetectorRun]:
+    """A submission's output, one `DetectorRun` document per line.
+
+    JSON Lines rather than one array, because a harness writes runs as it
+    finishes units and a truncated array is unreadable where a truncated stream
+    is short. A malformed line stops the load rather than being skipped: a
+    scoring run that silently dropped part of a submission would report its
+    recall as the submission's.
+    """
+    runs: list[DetectorRun] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            runs.append(DetectorRun.model_validate_json(line))
+        except ValidationError as invalid:
+            typer.secho(
+                f"{path.name}:{number}: {invalid.error_count()} problems", fg=typer.colors.RED
+            )
+            raise typer.Exit(1) from invalid
+    return runs
+
+
+def _weights_from(path: Path | None) -> dict[DifficultyLevel, float]:
+    """The exercise's difficulty weighting, which this engine does not supply.
+
+    Absent, the per-class figures are still reported and the aggregate is
+    refused with that as its stated reason. A default here would be this
+    project asserting what the exercise values, which is the caller's to say.
+    """
+    if path is None:
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    weights: dict[DifficultyLevel, float] = {}
+    for key, value in raw.items():
+        try:
+            weights[DifficultyLevel(key)] = float(value)
+        except (ValueError, TypeError) as bad:
+            typer.secho(f"{path.name}: {key!r} is not a difficulty level", fg=typer.colors.RED)
+            raise typer.Exit(1) from bad
+    return weights
+
+
+@app.command("score")
+def score_command(
+    runs: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, help="A submission's runs, one JSON per line."),
+    ],
+    records: Annotated[
+        Path, typer.Option("--records", exists=True, help="Corpus record file or directory.")
+    ],
+    submission_id: Annotated[
+        str, typer.Option("--submission-id", help="Identifies this submission in the document.")
+    ],
+    source_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--source-root",
+            exists=True,
+            file_okay=False,
+            help="Checkout to read source from, enabling function-strength matching.",
+        ),
+    ] = None,
+    weights: Annotated[
+        Path | None,
+        typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Write the document here instead of stdout.")
+    ] = None,
+) -> None:
+    """Score one submission's runs against the corpus and emit a JSON document.
+
+    The document is the boundary a submission surface is built on: every figure
+    carries its own absence and reason, so a caller cannot render a refusal as a
+    zero, and the adjudication queue is carried in full so that "precision is
+    unlicensed" is a list of work rather than a verdict.
+    """
+    resolve = _local_resolver(source_root) if source_root is not None else None
+    held = _records_from(records)
+    report = score(_runs_from(runs), held, resolve)
+    submission = score_submission(submission_id, report, weights=_weights_from(weights))
+    document = json.dumps(score_document(submission, held), indent=1, ensure_ascii=False)
+    if out is None:
+        typer.echo(document)
+        return
+    out.write_text(document + "\n", encoding="utf-8")
+    queued = len(report.unjudged)
+    typer.echo(f"wrote {out} -- {queued} prediction(s) await adjudication before precision exists")
+
+
+@app.command("rank")
+def rank_command(
+    submissions: Annotated[
+        list[str],
+        typer.Option(
+            "--submission",
+            help="One submission, as `id=path/to/runs.jsonl`. Repeat for each.",
+        ),
+    ],
+    records: Annotated[
+        Path, typer.Option("--records", exists=True, help="Corpus record file or directory.")
+    ],
+    source_root: Annotated[
+        Path | None,
+        typer.Option("--source-root", exists=True, file_okay=False, help="Checkout for source."),
+    ] = None,
+    weights: Annotated[
+        Path | None,
+        typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
+    ] = None,
+    baseline: Annotated[
+        str | None,
+        typer.Option(
+            "--baseline",
+            help="The main model the exercise agreed on. Rows run under anything else "
+            "are listed apart rather than ranked.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Write the leaderboard here instead of stdout.")
+    ] = None,
+) -> None:
+    """Rank what can be ranked, and list the rest with the reason.
+
+    Takes each submission's *runs* rather than its score document, because a
+    leaderboard assembled from figures cannot check that they were computed
+    against the same corpus -- and two submissions scored against different
+    ground truth are not comparable however similar the numbers look. Scoring
+    them here, against one corpus and one weighting, is what makes the row
+    comparison mean anything.
+    """
+    held = _records_from(records)
+    resolve = _local_resolver(source_root) if source_root is not None else None
+    weighting = _weights_from(weights)
+    scores = []
+    documents: dict[str, dict[str, object]] = {}
+    for entry in submissions:
+        submission_id, separator, runs_path = entry.partition("=")
+        if not separator or not submission_id:
+            typer.secho(f"{entry!r} is not `id=path`", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        path = Path(runs_path)
+        if not path.is_file():
+            typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        report = score(_runs_from(path), held, resolve)
+        submission = score_submission(submission_id, report, weights=weighting)
+        scores.append(submission)
+        documents[submission_id] = score_document(submission, held)
+    board = leaderboard(scores, baseline=baseline)
+    document = json.dumps(
+        leaderboard_document(board, held, documents=documents, baseline=baseline),
+        indent=1,
+        ensure_ascii=False,
+    )
+    if out is None:
+        typer.echo(document)
+        return
+    out.write_text(document + "\n", encoding="utf-8")
+    typer.echo(f"wrote {out} -- {board.statement()}")
