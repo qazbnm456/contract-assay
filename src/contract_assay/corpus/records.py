@@ -218,13 +218,45 @@ class NegativeKind(StrEnum):
     """
 
     POST_FIX = "post_fix"
-    """The same source at the fix commit. Everything identical except the defect."""
+    """The same source at the fix commit. The reported instance is gone.
+
+    Deliberately *not* "the file is clean for this class". A fix removes the
+    defect that was reported; other instances of the same class may remain, and
+    nothing in the fix speaks to them. The strongest control for a
+    pair-differential (§6.4) and no completeness claim at all.
+    """
 
     CROSS_CLASS = "cross_class"
-    """Vulnerable to another class, clean for this one."""
+    """Vulnerable to another class, clean for this one.
+
+    A human asserts the cleanliness, having had to name what the file *is*
+    vulnerable to, so the assertion is reviewable and covers the whole file.
+    """
 
     CONFIRMED_CLEAN = "confirmed_clean"
-    """Manually verified as carrying no instance of this class."""
+    """Manually verified as carrying no instance of this class.
+
+    A human asserts completeness directly and records how they confirmed it.
+    """
+
+    @property
+    def licenses_completeness(self) -> bool:
+        """Whether this kind asserts the file holds *no* instance of the class.
+
+        The distinction that decides whether a negative can license a precision
+        figure (§7.3), and it is a property of the kind rather than of negatives
+        in general -- which is the error it exists to prevent. "Cheap to verify"
+        and "sufficient for the purpose" are different properties, and a
+        post-fix negative has the first without the second: its verification
+        needs no human judgement at all, and what it verifies is that one
+        reported defect is gone.
+
+        Bridging that to completeness needs the assumption that the audit found
+        every instance of the class in the file, which is the corpus-
+        completeness assumption §7.3 exists to refuse. So the two
+        human-asserted kinds license it and the mechanical one does not.
+        """
+        return self is not NegativeKind.POST_FIX
 
 
 class _Pin(BaseModel):

@@ -1040,13 +1040,31 @@ reach the leaderboard figure. What it does reach is §6.4's pair-differential,
 where the claim it licenses is the claim it makes: the same file one commit
 apart, bytes-confirmed, with the defect present in one and absent in the other.
 
-The repair, recorded and not built, is the pattern used elsewhere: a kind that
-asserts what the fix licenses — *this instance is gone* — without claiming
-completeness, leaving the consumer to decide what it supports. Which leaves
-**confirmed-clean as the only kind that licenses precision**, because a human
-asserts completeness directly and records how they confirmed it. That is the
-opposite of where the cheapness argument pointed, and it was found by
-constructing the cheap route rather than by reasoning about it.
+**The repair needs no new kind**, which is the better shape: `post_fix` already
+*is* the kind that asserts a fixed instance, and what was wrong was the semantics
+attributed to it. So licensing completeness is now a property of the **kind**
+rather than of negatives in general —
+`NegativeKind.licenses_completeness` — false for `post_fix`, true for the two
+kinds a human asserts. The scorer reads that when deciding which units it may
+judge, and a post-fix negative licenses nothing there.
+
+Which leaves the two human-asserted kinds as the only ones that license
+precision, `confirmed_clean` most cheaply, because a human asserts completeness
+directly and records how they confirmed it. That is the opposite of where the
+cheapness argument pointed. The argument was right about verification cost —
+verifying a post-fix negative needs no human judgement at all — and wrong to
+treat cheap-to-verify as sufficient-for-purpose, which are different properties.
+
+**And the post-fix pairs are not wasted for precision either: they say which
+files are cheapest to hand-confirm.** A file that was audited and then fixed has
+already had expert attention on that class, so asserting completeness there is
+far better founded, and cheaper, than for an arbitrary file. The pairs are a
+prioritisation signal for the hand-confirmation they cannot themselves replace.
+
+The general form, and it is the fourth instance: **reasoning from what a thing
+is, rather than from what this one claims.** A negative record, therefore it
+licenses what negative records license. Filing one and reading the field found
+it; reasoning about the kinds would not have.
 
 **A post-fix negative requires a commit pin, and what that costs is the control
 rather than the executable half.** "After the fix" is identified by a commit,

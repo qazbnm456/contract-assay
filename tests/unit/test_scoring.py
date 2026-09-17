@@ -766,3 +766,74 @@ class TestWhatTheCorpusHasStandingToJudge:
         assert "2 predictions fell in a unit no negative record covers" in statement
         assert "no standing to call them right or wrong" in statement
         assert "No negative record establishes completeness for reentrancy" in statement
+
+
+class TestOnlySomeNegativesLicenseCompleteness:
+    """ "Cheap to verify" and "sufficient for the purpose" are different properties.
+
+    A post-fix negative needs no human judgement to verify -- the same file at
+    the fix commit, and the verifier confirms it -- and what it verifies is that
+    one reported defect is gone. Other instances of the class may remain.
+    Bridging that to completeness needs the assumption that the audit found
+    every instance in the file, which is the corpus-completeness assumption
+    §7.3 refuses one level down.
+
+    Found by trying to file one and reading what the field claims, not by
+    reasoning about the kinds.
+    """
+
+    def _negative(self, kind: NegativeKind) -> CorpusRecord:
+        extra: dict[str, object] = {}
+        if kind is NegativeKind.POST_FIX:
+            extra = {
+                "pin": CommitPin(repo_url="https://github.com/x/y", commit="b" * 40, path=PATH),
+                "provenance": Provenance(
+                    platform="p", report_url="https://x/3", fix_commit="b" * 40
+                ),
+            }
+        elif kind is NegativeKind.CROSS_CLASS:
+            extra = {"vulnerable_to": [VulnerabilityClass.INSECURE_RANDOMNESS]}
+        return a_negative().model_copy(update={"negative_kind": kind, **extra})
+
+    def test_a_post_fix_negative_licenses_nothing(self) -> None:
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16)])],
+                [a_record(), self._negative(NegativeKind.POST_FIX)],
+                resolver(),
+            )
+        )
+        assert got.completeness_records == 0
+        assert got.precision(MatchStrength.FILE) is None
+        assert got.unjudged_predictions == 2
+
+    def test_a_confirmed_clean_negative_licenses_it(self) -> None:
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16)])],
+                [a_record(), self._negative(NegativeKind.CONFIRMED_CLEAN)],
+                resolver(),
+            )
+        )
+        assert got.completeness_records == 1
+        assert got.precision(MatchStrength.FILE) == 0.5
+
+    def test_a_cross_class_negative_licenses_it(self) -> None:
+        # The human had to name what the file *is* vulnerable to, so the
+        # assertion is reviewable and covers the whole file.
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16)])],
+                [a_record(), self._negative(NegativeKind.CROSS_CLASS)],
+                resolver(),
+            )
+        )
+        assert got.completeness_records == 1
+        assert got.precision(MatchStrength.FILE) == 0.5
+
+    def test_the_kind_carries_the_distinction(self) -> None:
+        # A property of the kind, not of negatives in general, which is the
+        # error it exists to prevent.
+        assert NegativeKind.POST_FIX.licenses_completeness is False
+        assert NegativeKind.CROSS_CLASS.licenses_completeness is True
+        assert NegativeKind.CONFIRMED_CLEAN.licenses_completeness is True

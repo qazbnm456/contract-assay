@@ -584,6 +584,13 @@ def score(
     # instance exists at one location and nothing about the rest of its file.
     complete_for: dict[VulnerabilityClass, set[str]] = {}
     for record in records:
+        # Gated on the *kind*, because only some negatives assert completeness.
+        # A post-fix negative says the reported instance is gone, which is not
+        # the same claim and does not license a precision figure -- treating
+        # every negative alike was the error one level up from the one §7.3
+        # corrects, and it is the cheaper of the two to make.
+        if record.negative_kind is None or not record.negative_kind.licenses_completeness:
+            continue
         for cls in record.negative_for:
             complete_for.setdefault(cls, set()).add(record.pin.path)
 
@@ -707,7 +714,17 @@ def score(
             skipped_runs=sum(1 for r in class_runs if r.outcome is Outcome.SKIPPED),
             measured_runs=sum(1 for r in class_runs if r.outcome.is_measurement),
             qualified_negatives=sum(1 for r in class_runs if not r.negative_is_established),
-            completeness_records=sum(1 for r in records if cls in r.negative_for),
+            # Gated on kind for the same reason `complete_for` is: this count
+            # exists to tell "nothing licenses completeness here" from
+            # "something does and nothing ran against it", and a post-fix
+            # negative belongs in neither.
+            completeness_records=sum(
+                1
+                for r in records
+                if cls in r.negative_for
+                and r.negative_kind is not None
+                and r.negative_kind.licenses_completeness
+            ),
             judged_units=len(
                 {prediction.file for prediction in predictions if prediction.file in judged_files}
             ),
