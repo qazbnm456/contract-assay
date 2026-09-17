@@ -51,6 +51,7 @@ from contract_assay.evidence.predicates import (
     mentions_the_sender,
     run_all,
 )
+from contract_assay.evidence.solidity import DeclarationKind
 from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, FunctionSite, Syntax
 from contract_assay.models import (
     DeclaredLimit,
@@ -450,6 +451,30 @@ class AccessControlDetector(_SyntacticDetector):
     def _host_failures(self, host: FunctionSite, parsed: Syntax) -> list[FailedCheck]:
         """What stops this one function from being an unguarded state change."""
         failures: list[FailedCheck] = []
+        # The predicate's first line skips constructors and modifiers, and the
+        # verdict did not -- so all eleven predictions left in this class's
+        # adjudication queue were one or the other: seven constructors assigning
+        # their immutables and four re-entrancy guards writing their own lock.
+        # Neither is callable by anyone after deployment, which is what the
+        # class is about. Fifth instance of the same split and the second inside
+        # this detector, which is the argument for the shared helpers: a
+        # condition written in one layer protects nothing until the other asks.
+        if host.declaration.kind is DeclarationKind.CONSTRUCTOR:
+            failures.append(
+                _reject(
+                    "host_is_a_constructor",
+                    "a constructor runs once, at deployment, called by whoever deploys, "
+                    "so there is no caller for an access check to exclude",
+                )
+            )
+        if host.declaration.kind is DeclarationKind.MODIFIER:
+            failures.append(
+                _reject(
+                    "host_is_a_modifier",
+                    "a modifier is not callable; the state it writes is its own bookkeeping "
+                    "and the functions carrying it are where reachability is decided",
+                )
+            )
         if not host.is_externally_reachable:
             failures.append(
                 _reject(

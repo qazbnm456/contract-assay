@@ -2488,6 +2488,40 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### The eleven that were left
+
+Access control's remaining eleven predictions were going to be adjudicated by
+hand. Opening them first: seven constructors assigning their immutables and
+four re-entrancy modifiers writing their own lock. Both write state; neither is
+callable by anyone after deployment; and the predicate's *first line* skips
+`CONSTRUCTOR` and `MODIFIER`. Fifth instance of the split, second inside the
+same detector.
+
+So the answer was eleven fewer adjudications rather than eleven adjudications.
+The class went to 4 predictions, its pool fully judged with no curation at all,
+and precision 0.75 on recall 0.5 — F1 0.6, the best in the corpus. The two
+matches the change removed were at *file* strength, which the function floor
+never counted, so recall did not move.
+
+Third time `docs/curation.md`'s "fix the instrument before adjudicating the
+pool" has paid, and the tally is worth keeping: two slippage adjudications
+avoided, then eleven access-control ones, against one denial-of-service
+adjudication that was genuinely needed. The queue over the whole corpus went
+110 → 15, and none of that came from judging anything.
+
+With three classes licensed, the leaderboard ranks over three:
+
+```
+over: access_control, denial_of_service, slippage | baseline: claude-sonnet-5
+
+  #1 agreed: total=0.2190  completion=1.0
+       access_control     f1=0.600
+       denial_of_service  f1=0.167
+       slippage           f1=0.000
+
+  apart: other -- it ran under some-other-model, not the agreed baseline
+```
+
 #### The same split, four times, and what it was worth
 
 Access control was the fourth and the largest. Its predicate observes four

@@ -874,3 +874,52 @@ class TestReadingTheSenderIsNotGuardingOnIt:
 
     def test_an_unguarded_setter_still_stands(self) -> None:
         assert self._verdict(8, 10, "    function setOwner(") == []
+
+
+class TestNobodyCallsAConstructorOrAModifier:
+    """The predicate's first line skips both, and the verdict did not.
+
+    Every one of the eleven predictions left in this class's adjudication queue
+    was one or the other: seven constructors assigning their immutables and
+    four re-entrancy guards writing their own lock. Both write state, neither is
+    callable after deployment, and the class is about who can call a function.
+    Fifth instance of the same split and the second inside this detector.
+    """
+
+    SOURCE = """contract G {
+    uint256 locked;
+    address owner;
+
+    constructor(address who) {
+        owner = who;
+    }
+
+    modifier nonReentrant() {
+        require(locked == 1);
+        locked = 2;
+        _;
+        locked = 1;
+    }
+
+    function setOwner(address who) external {
+        owner = who;
+    }
+}
+"""
+
+    def _verdict(self, lo: int, hi: int, cited: str) -> list[str]:
+        detector = AccessControlDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [
+            check.check
+            for check in detector.verdict(ctx, a_finding(lo, hi, cited), detector.evidence(ctx))
+        ]
+
+    def test_a_constructor_is_refuted(self) -> None:
+        assert "host_is_a_constructor" in self._verdict(5, 7, "    constructor(address who) {")
+
+    def test_a_modifier_is_refuted(self) -> None:
+        assert "host_is_a_modifier" in self._verdict(9, 14, "    modifier nonReentrant() {")
+
+    def test_an_ordinary_unguarded_setter_still_stands(self) -> None:
+        assert self._verdict(16, 18, "    function setOwner(") == []
