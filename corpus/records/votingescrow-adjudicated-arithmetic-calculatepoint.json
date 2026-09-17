@@ -1,0 +1,31 @@
+{
+  "record_id": "votingescrow-adjudicated-arithmetic-calculatepoint",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/VotingEscrow.sol",
+    "kind": "commit",
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f"
+  },
+  "locator": {
+    "file": "src/VotingEscrow.sol",
+    "contract": "VotingEscrow",
+    "function": "_calculatePoint",
+    "start_line": 1155,
+    "end_line": 1162
+  },
+  "classes": [],
+  "negative_for": [
+    "arithmetic_rounding"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "negative_kind": "adjudicated",
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/alchemix-finance/alchemix-v2-dao/blob/f1007439ad3a32e412468c4c42f62f676822dc1f/src/VotingEscrow.sol#L1155-L1162"
+  },
+  "notes": "Examined `((int256(_locked.amount) * iMULTIPLIER) / iMAXTIME) * (int256(_locked.end - _time))`. The division does precede the multiplication and a different order would keep more precision, which is what the predicate reports. It is required here: line 1157 stores `point.slope` as exactly `(int256(_locked.amount) * iMULTIPLIER) / iMAXTIME`, and line 1160 computes the other branch's bias as `point.slope * (int256(_locked.end - _time))`. This expression is that product inlined, so computing it at higher precision would make `bias` differ from `slope * remaining` -- an inconsistency the checkpoint decay arithmetic depends on not existing. The truncation is a consistency requirement rather than a discarded quotient. Checkable by reading lines 1157, 1159 and 1160 together. Not an instance of arithmetic_rounding at this location. This says nothing about the rest of the file."
+}

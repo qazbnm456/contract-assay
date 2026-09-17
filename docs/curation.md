@@ -210,3 +210,47 @@ A **post-fix negative**, because "after the fix" is identified by a commit and
 an address pin has none (§6.2). The positive half of §6.4 survives — the proof
 of concept demonstrates the defect executably, which no prose record can — but
 the control does not. Record the positive and do not improvise a negative.
+
+
+## Adjudicating a prediction
+
+A negative record that licenses a precision figure is asserted at a **location**
+a detector actually pointed at, and says what was found there and why it is not
+an instance (§6.2). One per flagged location, not one per file.
+
+The note is the record's whole content. It has to let a reviewer reach the same
+conclusion by reading the cited lines, so it names the expression or statement
+examined, says what the code does with the value, and says why that is not the
+class. "Examined" is not a note.
+
+### Refuse what you cannot settle
+
+**An uncertain adjudication is worse than an unadjudicated prediction**, because
+it enters a precision figure as a fact while a gap merely leaves the figure
+unavailable. So the answer "I cannot tell from this code" is a correct outcome
+and the prediction stays unjudged.
+
+Three arithmetic predictions over one corpus, after the rounding idiom was
+excluded, went two ways. One was settleable: the division was required for
+consistency with a value stored three lines above, and reading those three lines
+settles it. The other two were not — one turned on whether a count of whole
+epochs is intended or an accumulating undercount, and one on whether a scaling
+loss is material at the magnitudes involved. Neither is answerable from the
+source, and filing either would have put a guess into a licensed figure.
+
+That is the cost of this route stated honestly: the pool is not always
+completable by reading, so some classes will not have a precision figure until
+somebody who can settle those questions does. The alternative is not a better
+figure; it is the same figure with a guess inside it.
+
+### Fix the instrument before adjudicating the pool
+
+Check first whether the predictions share a shape. The arithmetic pool was 28
+predictions, and 24 were one idiom — `(a / b) * b`, rounding down to a multiple
+of `b`, where the truncation is the point. Narrowing the predicate on that
+stated property left four, of which one already matched a record. Adjudicating
+28 by hand would have produced 24 notes all saying the same thing, and left the
+predicate reporting the idiom forever.
+
+So: group the pool by shape, look for an idiom, and narrow the predicate if the
+idiom is a property rather than a threshold. Then adjudicate what remains.

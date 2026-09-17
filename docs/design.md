@@ -660,6 +660,29 @@ is the *source of the answer* -- `IVisor(from).owner() == msg.sender` asks a
 caller-chosen contract to adjudicate a check on itself -- and that distinction
 is the receiver position of a call inside the condition, which fires 4 times.
 
+**Fix the instrument before adjudicating the pool**, which the arithmetic class
+demonstrated at a cost of one afternoon avoided. Its pool was 28 predictions, and
+24 were a single idiom: `(a / b) * b`, rounding down to a multiple of `b`, where
+the truncation is the point rather than a discarded quotient. Narrowing the
+predicate on that stated property — the multiplier differs from the divisor, or
+it does not — left four, one of which already matched a record. Adjudicating 28
+by hand would have produced 24 notes saying the same thing and left the predicate
+reporting the idiom forever.
+
+Which answers a question left open earlier. A predicate firing 28 times for 2
+records was read as either unfixable noise or an artefact of the corpus's
+standing to judge; it was neither. It was one recognisable shape accounting for
+86% of the firings, removable on a property. The lesson is the ordering: group
+the pool by shape and look for an idiom *before* paying to adjudicate it.
+
+Narrowing it also broke a real match and the break is worth recording, because
+the first version of the narrowing looked correct. Defining the multiplier as
+"the operand with no arithmetic of its own" missed `(a / b) * (c + d)`, so a
+corpus record went from an exact match to a miss. The right condition is the
+operand with no *division* of its own, and what surfaced the mistake was recall
+falling rather than any test — which is the argument for scoring against real
+records after every predicate change, not only after new ones.
+
 The property remains **real and insufficient**, and the predicate's name is
 careful not to claim otherwise. One corpus source guards with
 `require(IAlchemechNFT(_nft).ownerOf(id) == msg.sender)` inside

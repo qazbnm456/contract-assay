@@ -1051,3 +1051,53 @@ class TestNameLookupWithinAUnit:
         assert syntax is not None
         assert syntax.declarations_of("_helper") == 1
         assert syntax.declarations_of("_twice") == 2
+
+
+class TestRoundingToAMultipleIsNotPrecisionLoss:
+    """`(a / b) * b` truncates on purpose; `(a / b) * c` loses what `(a * c) / b` keeps.
+
+    The first version of this predicate treated them alike and reported 28 sites
+    over one corpus, 24 of them the rounding idiom -- a systematic false
+    positive with one recognisable shape rather than noise. The narrowing is a
+    stated property, the multiplier differs from the divisor or it does not, and
+    not a threshold.
+    """
+
+    ID = "division_evaluated_before_multiplication"
+
+    def _fires(self, body: str) -> bool:
+        source = (
+            "contract A {\n"
+            "    uint256 WEEK;\n"
+            "    function f(uint256 a, uint256 b, uint256 c, uint256 t)\n"
+            "        external view returns (uint256)\n"
+            f"    {{\n        {body}\n    }}\n}}\n"
+        )
+        return any(e.predicate == self.ID for e in evidence(source))
+
+    def test_rounding_down_to_a_multiple_does_not_fire(self) -> None:
+        assert not self._fires("return (t / WEEK) * WEEK;")
+
+    def test_rounding_up_to_a_multiple_does_not_fire(self) -> None:
+        assert not self._fires("return ((t + WEEK - 1) / WEEK) * WEEK;")
+
+    def test_a_parenthesised_divisor_still_compares_equal(self) -> None:
+        assert not self._fires("return (t / (WEEK)) * WEEK;")
+
+    def test_scaling_by_something_else_fires(self) -> None:
+        assert self._fires("return (a / b) * c;")
+
+    def test_a_multiplier_with_arithmetic_of_its_own_still_fires(self) -> None:
+        # The condition is "the operand without a division", not "the operand
+        # without arithmetic". Gating on the second dropped a real corpus record
+        # from a match to a miss, which is how the mistake surfaced.
+        assert self._fires("return (a / b) * (c + 1);")
+
+    def test_rounding_then_scaling_fires_for_the_scaling(self) -> None:
+        # The shape of a real record: divide and multiply by the same thing,
+        # then multiply by something else. The rounding level is exempt and the
+        # scaling level is not.
+        assert self._fires("return ((a * b) / c) * c * (t + 1);")
+
+    def test_multiplying_first_still_does_not_fire(self) -> None:
+        assert not self._fires("return (a * c) / b;")

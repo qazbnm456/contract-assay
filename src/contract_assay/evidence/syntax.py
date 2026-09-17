@@ -277,6 +277,19 @@ class WriteSite:
 _ARITHMETIC_OPERATORS = frozenset({"*", "/", "%", "+", "-", "**", "<<", ">>"})
 
 
+def _normalised(text: str) -> str:
+    """Whitespace collapsed and redundant outer parentheses removed.
+
+    Enough for `(WEEK)` and `WEEK ` to compare equal, and deliberately no more:
+    an expression normaliser that tried to see through arithmetic would be
+    deciding value identity, which is a different and much larger claim.
+    """
+    stripped = " ".join(text.split())
+    while stripped.startswith("(") and stripped.endswith(")") and stripped.count("(") == 1:
+        stripped = stripped[1:-1].strip()
+    return stripped
+
+
 @dataclass(frozen=True, slots=True)
 class LoopSite:
     """One loop, described by what bounds it rather than by what it does."""
@@ -304,11 +317,38 @@ class Destructuring:
 
 @dataclass(frozen=True, slots=True)
 class ArithmeticSite:
-    """One binary arithmetic expression and the operators inside its operands."""
+    """One binary arithmetic expression, its operator, and what it divides by."""
 
     site: Site
     operator: str
     operand_operators: tuple[str, ...]
+
+    divisors: tuple[str, ...] = ()
+    """What a divided operand of this expression divided by, normalised.
+
+    Text compared for *identity*, which is a shape question -- did this divide
+    and then multiply by the same thing -- and not a name lookup: no external
+    list of names is consulted, so §2.3's objection does not apply. What text
+    comparison costs is a divisor and multiplier that are the same value written
+    differently, `WEEK` against `7 days`. Those are not recognised as identical,
+    so the expression is reported, which is the safe direction: evidence
+    over-reports and the verdict layer is the strict side (§2.2).
+    """
+
+    multipliers: tuple[str, ...] = ()
+    """What this expression multiplies by, normalised the same way."""
+
+    @property
+    def divides_then_scales(self) -> bool:
+        """Whether it multiplies a divided value by something *else*.
+
+        `(a / b) * b` rounds down to a multiple of `b`, and the truncation is
+        the point -- an epoch boundary, a tick size. `(a / b) * c` discards
+        precision that `(a * c) / b` would have kept, and only the second is the
+        property this class is about. Measured over one corpus, treating them
+        alike made twenty-two of twenty-six reported sites the rounding idiom.
+        """
+        return bool(self.divisors) and bool(set(self.multipliers) - set(self.divisors))
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,16 +727,33 @@ class Syntax:
             if operator is None:
                 continue
             operand_operators: set[str] = set()
+            divisors: set[str] = set()
+            multipliers: set[str] = set()
             for operand in (c for c in node.children if c.type == "expression"):
-                for inner in self._descendants(operand, "binary_expression"):
+                inner = self._descendants(operand, "binary_expression")
+                for expression in inner:
                     operand_operators |= {
-                        c.type for c in inner.children if c.type in _ARITHMETIC_OPERATORS
+                        c.type for c in expression.children if c.type in _ARITHMETIC_OPERATORS
                     }
+                    if not any(c.type == "/" for c in expression.children):
+                        continue
+                    parts = [c for c in expression.children if c.type == "expression"]
+                    if len(parts) == 2:
+                        divisors.add(_normalised(self.text(parts[1])))
+                # The operand that is *not* the divided one is what this
+                # expression scales by. Gating on "has no arithmetic at all"
+                # instead missed `(a / b) * (c + d)`, whose multiplier has a
+                # `+` of its own -- and that dropped a real corpus record from
+                # a match to a miss, which is how the mistake surfaced.
+                if not any(c.type == "/" for expression in inner for c in expression.children):
+                    multipliers.add(_normalised(self.text(operand)))
             found.append(
                 ArithmeticSite(
                     site=self._site(node),
                     operator=operator,
                     operand_operators=tuple(sorted(operand_operators)),
+                    divisors=tuple(sorted(divisors)),
+                    multipliers=tuple(sorted(multipliers)),
                 )
             )
         return tuple(found)

@@ -810,18 +810,44 @@ def _division_evaluated_before_multiplication(syntax: Syntax, path: str) -> list
     Not established: that the loss matters. Dividing first is correct when the
     quotient is exact or the scale is deliberate, which is why this is evidence
     about a shape rather than a verdict (§2.1).
+
+    What it will not report, because the shape says the truncation is intended:
+    `(a / b) * b`, which rounds down to a multiple of `b`. That idiom accounted
+    for twenty-two of twenty-six sites the first version reported over one
+    corpus, and excluding it is a narrowing on a stated property rather than a
+    threshold -- the multiplier differs from the divisor, or it does not. The
+    cost is a divisor and multiplier that are the same value written
+    differently, which is reported rather than excluded (§2.2's lenient side).
     """
     found: list[EvidenceRef] = []
     for expression in syntax.arithmetic:
         if expression.operator != "*" or "/" not in expression.operand_operators:
+            continue
+        # Multiplying a divided value by *the same thing* rounds it down to a
+        # multiple of that thing, and the truncation is the point: an epoch
+        # boundary, a tick size. Only a different multiplier discards precision
+        # the other order would have kept. Measured over one corpus, treating
+        # them alike made twenty-two of twenty-six reported sites the rounding
+        # idiom -- a systematic false positive with one recognisable shape
+        # rather than noise, which is why it is narrowed here and not left to
+        # the verdict.
+        if not expression.divides_then_scales:
             continue
         found.append(
             EvidenceRef(
                 predicate="division_evaluated_before_multiplication",
                 tier=_SYNTACTIC,
                 locator=expression.site.locator(path),
-                detail={"outer_operator": "*", "divides_in_operand": True},
-                diagnostic={"expression": expression.site.text[:120]},
+                detail={
+                    "outer_operator": "*",
+                    "divides_in_operand": True,
+                    "scales_by_the_divisor": False,
+                },
+                diagnostic={
+                    "expression": expression.site.text[:120],
+                    "divisors": ",".join(expression.divisors),
+                    "multipliers": ",".join(expression.multipliers),
+                },
             )
         )
     return found
