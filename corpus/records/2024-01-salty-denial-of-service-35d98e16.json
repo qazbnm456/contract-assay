@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-01-salty-denial-of-service-35d98e16",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/dao/Proposals.sol",
+  "sha256": "eb7dd5ea9590e417b3393be80d1896c367d4b03a47bc3b35c99bfa867dfbad55",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-01-salty",
+  "commit": "53516c2cdfdfacb662cdea6417c52f23c94d5b5b"
+ },
+ "locator": {
+  "file": "src/dao/Proposals.sol",
+  "contract": "Proposals",
+  "function": "proposeTokenWhitelisting",
+  "start_line": 162,
+  "end_line": 177
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "derived",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-01-salty-findings/issues/991",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

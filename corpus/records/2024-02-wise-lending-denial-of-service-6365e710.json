@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-02-wise-lending-denial-of-service-6365e710",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/PowerFarms/PendlePowerFarmController/PendlePowerFarmToken.sol",
+  "sha256": "f06b91fd9b70b2f96cbcb14d445f9571b88d2234881447a3ba91c5b91f1289be",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-02-wise-lending",
+  "commit": "79186b243d8553e66358c05497e5ccfd9488b5e2"
+ },
+ "locator": {
+  "file": "contracts/PowerFarms/PendlePowerFarmController/PendlePowerFarmToken.sol",
+  "contract": "PendlePowerFarmToken",
+  "function": "addCompoundRewards",
+  "start_line": 502,
+  "end_line": 524
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-02-wise-lending-findings/issues/123",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

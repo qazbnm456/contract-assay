@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-01-curves-denial-of-service-9aeee743",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/FeeSplitter.sol",
+  "sha256": "eaafa2342360398d14071a45b43f076277faf12421043497260abdd25282a64d",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-01-curves",
+  "commit": "516aedb7b9a8d341d0d2666c23780d2bd8a9a600"
+ },
+ "locator": {
+  "file": "contracts/FeeSplitter.sol",
+  "contract": "FeeSplitter",
+  "function": "addFees",
+  "start_line": 89,
+  "end_line": 94
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-01-curves-findings/issues/403",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

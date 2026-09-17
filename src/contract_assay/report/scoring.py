@@ -332,6 +332,23 @@ class ScoreReport:
     by_tier: Mapping[EvidenceTier, int] = field(default_factory=dict)
     by_provenance: Mapping[LocatorProvenance, int] = field(default_factory=dict)
     by_population: Mapping[Population, int] = field(default_factory=dict)
+    by_platform: Mapping[str, int] = field(default_factory=dict)
+    """Positive records scored, by the platform their report came from.
+
+    Added when one harvest took the corpus from 32 records to 166 and 81% of
+    them came from a single platform. Every figure computed over it was then
+    mostly a statement about that platform's submission style -- a template with
+    a `### Root Cause` section produces located findings at a rate a
+    consolidated report does not -- and nothing in the report said so. §6.6 is
+    about what the corpus is a sample of, and a sample's composition belongs in
+    the same place as the numbers drawn from it.
+    """
+
+    by_repository: Mapping[str, int] = field(default_factory=dict)
+    """Positive records scored, by repository. Twenty-seven of them held 166
+    records, with five holding more than half, so a recall figure is also a
+    statement about a handful of codebases."""
+
     matches: tuple[Match, ...] = ()
     models: tuple[ModelUse, ...] = ()
     """Every model the scored runs called, with calls and tokens summed.
@@ -576,6 +593,21 @@ class ScoreReport:
             f"{invalid} runs were invalid and {skipped} skipped; both are reported here "
             "and enter no confusion matrix."
         )
+        if self.by_platform:
+            total = sum(self.by_platform.values())
+            platform, count = max(self.by_platform.items(), key=lambda kv: (kv[1], kv[0]))
+            repo, repo_count = max(
+                self.by_repository.items(), key=lambda kv: (kv[1], kv[0]), default=("none", 0)
+            )
+            parts.append(
+                f"The {total} records scored come from {len(self.by_platform)} "
+                f"{_plural(len(self.by_platform), 'platform')[2:]} and "
+                f"{len(self.by_repository)} repositories; the largest share is "
+                f"{platform} at {100 * count // total}% and the largest single "
+                f"repository is {repo} at {100 * repo_count // total}%. A figure over a "
+                "corpus is a figure about its composition, and this is that composition "
+                "rather than a warning about it."
+            )
         parts.append(
             "Assignment is maximum matching per strength tier, strongest first, which "
             "differs from greedy."
@@ -704,6 +736,14 @@ def _maximum_matching(edges: Sequence[tuple[int, int]], left: int) -> dict[int, 
     return {a: b for b, a in pair_right.items()}
 
 
+def _repository_of(record: CorpusRecord) -> str:
+    """The unit a record's pin names, as a short label for stratification."""
+    pin = record.pin
+    if pin.kind == "commit":
+        return pin.repo_url.rstrip("/").rsplit("/", 1)[-1]
+    return f"chain {pin.chain_id}:{pin.address[:10]}"
+
+
 def score(
     runs: Iterable[DetectorRun],
     records: Iterable[CorpusRecord],
@@ -752,9 +792,13 @@ def score(
     by_tier: Counter[EvidenceTier] = Counter()
     by_provenance: Counter[LocatorProvenance] = Counter()
     by_population: Counter[Population] = Counter()
+    by_platform: Counter[str] = Counter()
+    by_repository: Counter[str] = Counter()
 
     for record in truths:
         by_population[record.population] += 1
+        by_platform[record.provenance.platform] += 1
+        by_repository[_repository_of(record)] += 1
         if record.locator_provenance is not None:
             by_provenance[record.locator_provenance] += 1
 
@@ -949,6 +993,8 @@ def score(
         by_tier=dict(by_tier),
         by_provenance=dict(by_provenance),
         by_population=dict(by_population),
+        by_platform=dict(sorted(by_platform.items())),
+        by_repository=dict(sorted(by_repository.items())),
         matches=tuple(all_matches),
         models=tuple(
             ModelUse(model_id=model_id, role=role, calls=calls, tokens=tokens)

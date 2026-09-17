@@ -2488,6 +2488,36 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### Three adapters, and what each platform's ceiling is
+
+There are three platform adapters and all three were run. The differences are
+not preferences; they are measured properties of the platforms, and they decide
+what the corpus can be made of.
+
+| Platform | Input | Records | What the ceiling is |
+| --- | --- | --- | --- |
+| Sherlock | 7,154 submissions, 22 contests | 134 | A fixed template with a `### Root Cause` section, and citations mostly pinned to a commit. 4,913 of the submissions were lost to class mapping and 1,062 to a branch citation with no date to resolve it against. |
+| Code4rena | 927 findings, 76 reports | 44 | One consolidated report per contest; 691 lost to class mapping, and the location has to be recovered from citations, excerpts or prose. |
+| Immunefi | 275 files, 10 projects | 1 | 79 of the files are smart-contract reports, ~84 carry a severity in scope, 57 of those map to no class, and most of the rest cite a deployed **address** rather than a repository. |
+
+Immunefi's number is the platform rather than the pipeline, and the way to know
+that was to remove the probe's own defect first: the date reader accepted full
+month names against a platform that writes `Aug 20th 2024`, so it reported zero
+dated reports out of 275. Fixed, 264 of 275 carry a date -- and the yield did
+not move, because the losses are class mapping and address targets. An address
+target is not a gap in this pipeline either: `AddressPin` exists for exactly it,
+and what is missing is verified source at an address, which is a fetching
+capability rather than a parsing one.
+
+**Composition is now part of the report.** 81% of one harvest came from a single
+platform, and every figure over it was mostly a statement about that platform's
+submission style with nothing saying so. `by_platform` and `by_repository` sit
+beside the other stratifications, and the statement names the largest share of
+each -- no threshold, because the shares are the fact and a threshold would be a
+policy. Harvesting 59 more Code4rena reports took the largest share from 81% to
+68% and the repository count from 27 to 43, which is the answer to the skew:
+another platform's worth of records, not a caveat.
+
 #### Five times the corpus, and what it said
 
 The corpus went from 32 records to 166 by harvesting a second platform through

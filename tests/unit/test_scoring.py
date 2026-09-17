@@ -86,12 +86,14 @@ def a_record(
     provenance: LocatorProvenance = LocatorProvenance.STATED,
     anchor: int | None = None,
     cls: VulnerabilityClass = CLS,
+    platform: str = "p",
+    repo: str = "y",
 ) -> CorpusRecord:
     return CorpusRecord(
         record_id=record_id,
         population=Population.AUDIT_REVIEW,
         split=CorpusSplit.PUBLIC,
-        pin=CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
+        pin=CommitPin(repo_url=f"https://github.com/x/{repo}", commit="a" * 40, path=PATH),
         locator=Locator(
             file=PATH, contract="Vault", function=function, start_line=start, end_line=end
         ),
@@ -99,7 +101,7 @@ def a_record(
         anchor_line=anchor,
         asserted_labels=[LocatorLabel.CONTRACT, LocatorLabel.FUNCTION],
         classes=[cls],
-        provenance=Provenance(platform="p", report_url="https://x/1"),
+        provenance=Provenance(platform=platform, report_url="https://x/1"),
     )
 
 
@@ -1042,3 +1044,38 @@ contract Vault {
         )
         assert got.recall(MatchStrength.FUNCTION) == 0.0
         assert got.recall(MatchStrength.CALL_ADJACENT) == 1.0
+
+
+class TestAFigureIsAboutItsCorpusComposition:
+    """One harvest took the corpus from 32 records to 166, 81% from one platform.
+
+    Every figure over it was then mostly a statement about that platform's
+    submission style -- a template with a `### Root Cause` section produces
+    located findings at a rate a consolidated report does not -- and nothing in
+    the report said so. Stratified here rather than described in a document,
+    because a sample's composition belongs beside the numbers drawn from it.
+    """
+
+    def _three(self) -> list[CorpusRecord]:
+        return [
+            a_record(record_id="one", platform="sherlock", repo="alpha"),
+            a_record(record_id="two", platform="sherlock", repo="alpha", start=20, end=22),
+            a_record(record_id="three", platform="code4rena", repo="beta", start=30, end=32),
+        ]
+
+    def test_records_are_counted_by_platform_and_repository(self) -> None:
+        report = score([a_run([(5, 6)])], self._three(), resolver())
+        assert report.by_platform == {"code4rena": 1, "sherlock": 2}
+        assert report.by_repository == {"alpha": 2, "beta": 1}
+
+    def test_the_statement_names_the_largest_shares(self) -> None:
+        statement = score([a_run([(5, 6)])], self._three(), resolver()).statement()
+        assert "3 records scored come from 2 platforms and 2 repositories" in statement
+        assert "largest share is sherlock at 66%" in statement
+
+    def test_a_single_platform_corpus_says_so_rather_than_saying_nothing(self) -> None:
+        statement = score(
+            [a_run([(5, 6)])], [a_record(platform="sherlock")], resolver()
+        ).statement()
+        assert "1 records scored come from 1 platform and 1 repositories" in statement
+        assert "sherlock at 100%" in statement

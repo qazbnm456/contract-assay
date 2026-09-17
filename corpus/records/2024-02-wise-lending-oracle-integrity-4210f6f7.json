@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-02-wise-lending-oracle-integrity-4210f6f7",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/WiseOracleHub/OracleHelper.sol",
+  "sha256": "16c22c5706d1b203411e8e9191c415d4d016018971bf84976209bff4f8c84051",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-02-wise-lending",
+  "commit": "1240a22a3bbffc13d5f8ae6300ef45de5edc7c19"
+ },
+ "locator": {
+  "file": "contracts/WiseOracleHub/OracleHelper.sol",
+  "contract": "OracleHelper",
+  "function": "_chainLinkIsDead",
+  "start_line": 579,
+  "end_line": 585
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-02-wise-lending-findings/issues/87",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

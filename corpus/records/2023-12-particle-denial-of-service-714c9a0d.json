@@ -1,0 +1,34 @@
+{
+ "record_id": "2023-12-particle-denial-of-service-714c9a0d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/protocol/ParticlePositionManager.sol",
+  "sha256": "10f32863fa408eb1a0a4d8f448ff06187f5d6a8f1b98820bf5f450da4f6753ca",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2023-12-particle",
+  "commit": "a3af40839b24aa13f5764d4f84933dbfa8bc8134"
+ },
+ "locator": {
+  "file": "contracts/protocol/ParticlePositionManager.sol",
+  "contract": "ParticlePositionManager",
+  "function": "liquidatePosition",
+  "start_line": 349,
+  "end_line": 354
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2023-12-particle-findings/issues/61",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

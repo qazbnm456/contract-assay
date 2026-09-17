@@ -248,6 +248,12 @@ def score_document(
             "by_tier": {tier.value: n for tier, n in sorted(report.by_tier.items())},
             "by_provenance": {p.value: n for p, n in sorted(report.by_provenance.items())},
             "by_population": {p.value: n for p, n in sorted(report.by_population.items())},
+            # What the corpus these figures came from is made of. One harvest
+            # took it from 32 records to 166 with 81% from a single platform,
+            # and every figure over it became mostly a statement about that
+            # platform's submission style with nothing saying so.
+            "by_platform": dict(sorted(report.by_platform.items())),
+            "by_repository": dict(sorted(report.by_repository.items())),
         },
         "unscoreable": {
             "claims": {cls.value: n for cls, n in sorted(report.unscoreable_claims.items())},

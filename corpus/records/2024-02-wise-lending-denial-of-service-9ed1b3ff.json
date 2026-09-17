@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-02-wise-lending-denial-of-service-9ed1b3ff",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/WiseSecurity/WiseSecurity.sol",
+  "sha256": "472d93d8ecf3dd9223cdb0b06a47fc968565299321e1f1c4e5099871a9eaad56",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-02-wise-lending",
+  "commit": "79186b243d8553e66358c05497e5ccfd9488b5e2"
+ },
+ "locator": {
+  "file": "contracts/WiseSecurity/WiseSecurity.sol",
+  "contract": "WiseSecurity",
+  "function": "checkBadDebtLiquidation",
+  "start_line": 405,
+  "end_line": 436
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-02-wise-lending-findings/issues/74",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

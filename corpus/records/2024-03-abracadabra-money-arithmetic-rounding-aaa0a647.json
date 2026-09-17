@@ -1,0 +1,35 @@
+{
+ "record_id": "2024-03-abracadabra-money-arithmetic-rounding-aaa0a647",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/mimswap/libraries/Math.sol",
+  "sha256": "4b41b5ee12315f92e362199d41e1709f75fa8d779525f099aeec1cbb453009d8",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-03-abracadabra-money",
+  "commit": "1f4693fdbf33e9ad28132643e2d6f7635834c6c6"
+ },
+ "locator": {
+  "file": "src/mimswap/libraries/Math.sol",
+  "contract": "Math",
+  "function": "_GeneralIntegrate",
+  "start_line": 51,
+  "end_line": 65
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-03-abracadabra-money-findings/issues/71",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

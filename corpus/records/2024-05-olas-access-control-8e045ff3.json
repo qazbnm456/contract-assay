@@ -1,0 +1,35 @@
+{
+ "record_id": "2024-05-olas-access-control-8e045ff3",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "tokenomics/contracts/Dispenser.sol",
+  "sha256": "208b2778412113c4f876ea7b099ff119c40cd62466492e5f287cfe438d8c4798",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-05-olas",
+  "commit": "3ce502ec8b475885b90668e617f3983cea3ae29f"
+ },
+ "locator": {
+  "file": "tokenomics/contracts/Dispenser.sol",
+  "contract": "Dispenser",
+  "function": "claimStakingIncentives",
+  "start_line": 953,
+  "end_line": 1047
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "derived",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-05-olas-findings/issues/27",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

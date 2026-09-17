@@ -1,0 +1,35 @@
+{
+ "record_id": "2023-12-initcapital-denial-of-service-b03acafa",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/core/PosManager.sol",
+  "sha256": "3faaf31328c4025a89cc10d3a2c72961bfb8e983deb9a1e334c19f34f1c4bccd",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2023-12-initcapital",
+  "commit": "a53e401529451b208095b3af11862984d0b32177"
+ },
+ "locator": {
+  "file": "contracts/core/PosManager.sol",
+  "contract": "PosManager",
+  "function": "updatePosDebtShares",
+  "start_line": 170,
+  "end_line": 187
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "derived",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2023-12-initcapital-findings/issues/42",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

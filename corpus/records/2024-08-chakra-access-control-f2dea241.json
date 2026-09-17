@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-08-chakra-access-control-f2dea241",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "solidity/settlement/contracts/ChakraSettlement.sol",
+  "sha256": "48ea2379a9672cac68342660dbacc4c1a31d8f8649e0e02a830f0fb0972fab85",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-08-chakra",
+  "commit": "f61c899c22492bdf5bdcb07cdb62ea9b4cd38825"
+ },
+ "locator": {
+  "file": "solidity/settlement/contracts/ChakraSettlement.sol",
+  "contract": "ChakraSettlement",
+  "function": "send_cross_chain_msg",
+  "start_line": 111,
+  "end_line": 133
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-08-chakra-findings/issues/156",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

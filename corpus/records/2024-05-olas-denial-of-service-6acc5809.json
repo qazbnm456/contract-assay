@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-05-olas-denial-of-service-6acc5809",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "registries/contracts/staking/StakingBase.sol",
+  "sha256": "b53c34a5383b9d104b533e014850c14bc69936157f276d67a0ceea9f20ad0b50",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-05-olas",
+  "commit": "3ce502ec8b475885b90668e617f3983cea3ae29f"
+ },
+ "locator": {
+  "file": "registries/contracts/staking/StakingBase.sol",
+  "contract": "StakingBase",
+  "function": "checkpoint",
+  "start_line": 591,
+  "end_line": 713
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-05-olas-findings/issues/57",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

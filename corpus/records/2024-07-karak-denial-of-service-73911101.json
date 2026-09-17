@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-07-karak-denial-of-service-73911101",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/entities/SlasherLib.sol",
+  "sha256": "45a2088eb399c95a6ba52bff72c2b77c4f7a37a4f951db3a0c1ca4aa9820e65f",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-karak",
+  "commit": "f5e52fdcb4c20c4318d532a9f08f7876e9afb321"
+ },
+ "locator": {
+  "file": "src/entities/SlasherLib.sol",
+  "contract": "SlasherLib",
+  "function": "finalizeSlashing",
+  "start_line": 126,
+  "end_line": 151
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-karak-findings/issues/7",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

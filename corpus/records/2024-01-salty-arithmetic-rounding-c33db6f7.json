@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-01-salty-arithmetic-rounding-c33db6f7",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/pools/PoolMath.sol",
+  "sha256": "64a268d0bbab60cfa5a74d43bac46f8399302a07ec548e8203979bba805b5038",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-01-salty",
+  "commit": "53516c2cdfdfacb662cdea6417c52f23c94d5b5b"
+ },
+ "locator": {
+  "file": "src/pools/PoolMath.sol",
+  "contract": "PoolMath",
+  "function": "_zapSwapAmount",
+  "start_line": 152,
+  "end_line": 207
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-01-salty-findings/issues/232",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

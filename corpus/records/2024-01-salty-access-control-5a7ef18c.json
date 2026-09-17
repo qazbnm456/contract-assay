@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-01-salty-access-control-5a7ef18c",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/Upkeep.sol",
+  "sha256": "56ccfc03591d4d770ddf83ff7a51369c249ed4fa4966a480e722ad8d62747e2b",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-01-salty",
+  "commit": "53516c2cdfdfacb662cdea6417c52f23c94d5b5b"
+ },
+ "locator": {
+  "file": "src/Upkeep.sol",
+  "contract": "Upkeep",
+  "function": "step11",
+  "start_line": 231,
+  "end_line": 239
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-01-salty-findings/issues/712",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

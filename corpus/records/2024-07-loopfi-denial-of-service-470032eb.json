@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-07-loopfi-denial-of-service-470032eb",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/proxy/PositionAction.sol",
+  "sha256": "69aa4bdca778cf40cdf41a87ed2c792077ca38d791896ffec714998f9a61a74a",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-loopfi",
+  "commit": "57871f64bdea450c1f04c9a53dc1a78223719164"
+ },
+ "locator": {
+  "file": "src/proxy/PositionAction.sol",
+  "contract": "PositionAction",
+  "function": "onFlashLoan",
+  "start_line": 416,
+  "end_line": 422
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-loopfi-findings/issues/245",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "2023-12-particle-arithmetic-rounding-b438571c",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/libraries/Base.sol",
+  "sha256": "ca4d3550b1b4c829eb5c7b327710647760dda179a3f7f8b9eab53dd11335044f",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2023-12-particle",
+  "commit": "a3af40839b24aa13f5764d4f84933dbfa8bc8134"
+ },
+ "locator": {
+  "file": "contracts/libraries/Base.sol",
+  "contract": "Base",
+  "function": "getFeeGrowthInside",
+  "start_line": 318,
+  "end_line": 342
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2023-12-particle-findings/issues/10",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

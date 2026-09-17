@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-02-althea-liquid-infrastructure-denial-of-service-fe7acee1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "liquid-infrastructure/contracts/LiquidInfrastructureERC20.sol",
+  "sha256": "08fb59f3dc80f7bccbc40b6171840a07549aee8ebc7b9dc2517fcb7b376cf89a",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-02-althea-liquid-infrastructure",
+  "commit": "bd6ee47162368e1999a0a5b8b17b701347cf9a7d"
+ },
+ "locator": {
+  "file": "liquid-infrastructure/contracts/LiquidInfrastructureERC20.sol",
+  "contract": "LiquidInfrastructureERC20",
+  "function": "distribute",
+  "start_line": 214,
+  "end_line": 231
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-02-althea-liquid-infrastructure-findings/issues/77",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "2023-12-revolutionprotocol-denial-of-service-dac3b8cd",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "packages/revolution/src/AuctionHouse.sol",
+  "sha256": "92b2e2031dff6d8364f7176af8c76be4589ba459f4bb153e6f548d9bd7ba0713",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2023-12-revolutionprotocol",
+  "commit": "d42cc62b873a1b2b44f57310f9d4bbfdd875e8d6"
+ },
+ "locator": {
+  "file": "packages/revolution/src/AuctionHouse.sol",
+  "contract": "AuctionHouse",
+  "function": "_settleAuction",
+  "start_line": 383,
+  "end_line": 396
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2023-12-revolutionprotocol-findings/issues/160",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

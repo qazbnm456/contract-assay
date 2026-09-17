@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-03-revert-lend-denial-of-service-5dbd9a10",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/transformers/AutoCompound.sol",
+  "sha256": "6ee7a468c35bd1024e1e491a40e3181d3fac6310b0b431c56fa4637a73d5f489",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-03-revert-lend",
+  "commit": "435b054f9ad2404173f36f0f74a5096c894b12b7"
+ },
+ "locator": {
+  "file": "src/transformers/AutoCompound.sol",
+  "contract": "AutoCompound",
+  "function": "withdrawLeftoverBalances",
+  "start_line": 200,
+  "end_line": 219
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-03-revert-lend-findings/issues/365",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

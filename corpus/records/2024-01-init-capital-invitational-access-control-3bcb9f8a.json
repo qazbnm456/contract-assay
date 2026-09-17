@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-01-init-capital-invitational-access-control-3bcb9f8a",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/hook/MarginTradingHook.sol",
+  "sha256": "09aa1d0370531091f4722f0fb6b53f88e2ff44dde8b7458af3674ca46aaf79f4",
+  "resolved_from": "the commit the report states for the contest, the finding's excerpt naming none, and the directory the report's own citation of this file name gives",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-01-init-capital-invitational",
+  "commit": "a01c4de620be98f9e57a60cf6a82d4feaec54f58"
+ },
+ "locator": {
+  "file": "contracts/hook/MarginTradingHook.sol",
+  "contract": "MarginTradingHook",
+  "function": "updateOrder",
+  "start_line": 504,
+  "end_line": 526
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-01-init-capital-invitational-findings/issues/34",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

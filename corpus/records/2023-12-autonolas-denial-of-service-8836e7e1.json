@@ -1,0 +1,35 @@
+{
+ "record_id": "2023-12-autonolas-denial-of-service-8836e7e1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "lockbox-solana/solidity/liquidity_lockbox.sol",
+  "sha256": "7d35690c11a251081c265c2b604a05b13dee21924509a4a76501499a27e3730c",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2023-12-autonolas",
+  "commit": "ddcf4dbd8ad9b2daa87e190280deb4d41ac9d647"
+ },
+ "locator": {
+  "file": "lockbox-solana/solidity/liquidity_lockbox.sol",
+  "contract": "liquidity_lockbox",
+  "function": "deposit",
+  "start_line": 140,
+  "end_line": 190
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "derived",
+ "asserted_labels": [
+  "function"
+ ],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2023-12-autonolas-findings/issues/445",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}
