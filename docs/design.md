@@ -145,6 +145,26 @@ derivation ran, and assert the rejection.
 The two questions are complementary. The first asks whether a mechanism can see
 past itself. The second asks whether it exists.
 
+**This schema's limits present as missing capabilities**, and that has happened
+three times now, each discovered only when something tried to use the schema for
+a thing it had never been asked to express:
+
+- An exploited contract with no repository read as "the incident population is
+  not pinnable" (§6.6). `SourcePin` could not express an address.
+- A mutated variant read as "the variant cannot be verified". The bytes existed
+  somewhere the pin could not describe.
+- Ten records in twelve failing to compile reads as "the toolchain needs
+  managing" (§4.2). `SourcePin` pins one file and not a dependency set, so the
+  submodule versions are not recorded and no toolchain management recovers them.
+
+The shape is always the same: a capability appears absent because the thing that
+would have named its inputs cannot name them, and the missing expressiveness is
+invisible from the outside because a schema that cannot say something also
+cannot say that it cannot. So the question to ask of any apparent capability gap
+is **whether the schema can express the thing the capability would need** —
+before the capability is priced, because the answer changes what is being
+priced. Two of the three above changed a plan; the third changed it back.
+
 A third rule belongs here rather than in any one subsystem's section, because it
 now governs three of them and the next person to record a cause somewhere new
 will not think to look under harvest:
