@@ -55,6 +55,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,9 +106,15 @@ class Proposals(BaseModel):
 
 
 _CONFIGURED = False
+MAX_ITERATIONS = int(os.environ.get("RUNNER_MAX_ITERATIONS", "10"))
+"""The planner turn budget. Read from the environment so the cost of a sweep can
+be changed without editing a harness, which is a property of the run rather than
+of the submission."""
 
 
-def setup(*, model: str, sub_model: str, max_tokens: int, max_calls: int) -> None:
+def setup(
+    *, model: str, sub_model: str, max_tokens: int, max_calls: int, max_iterations: int = 10
+) -> None:
     """Configure the harness once: models from the caller, endpoint from the environment.
 
     The split is the thing to copy. `rlm-harness` will read `RLM_MAIN_MODEL` and
@@ -161,6 +168,18 @@ def setup(*, model: str, sub_model: str, max_tokens: int, max_calls: int) -> Non
             # truncation. The unit budget then bounds how many such calls fit.
             max_tokens=max_tokens,
             max_llm_calls=max_calls,
+            # The planner's turn budget, and the dominant cost here. A
+            # `ModelTaskSpec.max_steps` is per detector while `configure` is
+            # process-global, so this runner cannot honour both -- a submission's
+            # `max_steps` is treated as advisory and this is the ceiling. Said
+            # out loud because a harness author reading only the interface would
+            # expect their number to be the one in force.
+            #
+            # Worth knowing before choosing it: an RLM planner exists to explore
+            # context too large to prompt with, and one Solidity file is not
+            # that. Ten turns over a 300-line contract is mostly overhead, and
+            # with a reasoning main model each turn costs its chain-of-thought.
+            max_iterations=max_iterations,
         )
     )
     _CONFIGURED = True
@@ -180,6 +199,10 @@ class Answer:
     findings: tuple[Finding, ...]
     tokens: int
     failed: str | None = None
+    seconds: float = 0.0
+    """Wall clock for the call. Recorded because `docs/rules.md` budgets it from
+    outside, and a harness whose calls take longer than the round allows is not
+    a harness that scores badly -- it is one every run of which is killed."""
 
 
 def units_from(records: Path, source_root: Path) -> Iterator[Unit]:
@@ -225,6 +248,7 @@ def ask(
         sub_model=sub_model,
         max_tokens=ctx.limits.max_tokens,
         max_calls=ctx.limits.max_model_calls,
+        max_iterations=MAX_ITERATIONS,
     )
 
     class Detect(RLMTask):  # type: ignore[misc]
@@ -237,17 +261,24 @@ def ask(
         )
 
     tokens = 0
+    started = time.monotonic()
     try:
         with dspy.track_usage() as tracker:
             result = Detect().run(instruction=instruction, source=ctx.source)
     except Exception as failure:
-        return Answer(findings=(), tokens=0, failed=f"{type(failure).__name__}: {failure}")
+        return Answer(
+            findings=(),
+            tokens=0,
+            failed=f"{type(failure).__name__}: {failure}",
+            seconds=time.monotonic() - started,
+        )
     for calls in getattr(tracker, "usage_data", {}).values():
         for call in calls:
             tokens += int(call.get("total_tokens") or 0) or (
                 int(call.get("prompt_tokens") or 0) + int(call.get("completion_tokens") or 0)
             )
     return Answer(
+        seconds=time.monotonic() - started,
         findings=tuple(
             Finding(
                 detector_id=detector.detector_id,
@@ -343,6 +374,16 @@ def run_one(
     # cap that counts is the scorer's `--predictions-per-unit`: it is the only
     # layer that sees a whole submission's runs at once, and a cap applied per
     # run cannot see two detectors for one class using the quota between them.
+    if answer.seconds > ctx.limits.wall_seconds:
+        # Not a warning about performance. A round kills a call that overruns,
+        # so a harness like this does not score badly -- every run of it is
+        # killed, which is a different fact and one the author cannot see from
+        # a score.
+        print(
+            f"  {detector.detector_id}: {answer.seconds:.0f}s exceeds the "
+            f"{ctx.limits.wall_seconds}s a round allows",
+            file=sys.stderr,
+        )
     return run_detector(
         detector,
         ctx,
