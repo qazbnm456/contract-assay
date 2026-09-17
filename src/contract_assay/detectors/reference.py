@@ -45,7 +45,7 @@ from functools import lru_cache
 from typing import ClassVar
 
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, TaskOutput
-from contract_assay.evidence.predicates import run_all
+from contract_assay.evidence.predicates import looks_like_a_time, run_all
 from contract_assay.evidence.syntax import CHAIN_STATE_MEMBERS, FunctionSite, Syntax
 from contract_assay.models import (
     DeclaredLimit,
@@ -685,6 +685,52 @@ class OracleIntegrityDetector(_SyntacticDetector):
     detector_id = "reference-oracle-integrity"
     class_id = VulnerabilityClass.ORACLE_INTEGRITY
     api_version = "1.1"
+
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a freshness value discarded at the binding site rather than after it: "
+                "`(, int256 quoteAnswer,,,) = feed.latestRoundData()` names two of five "
+                "slots and drops the rest, so there is no binding whose type and name "
+                "could be tested for time-ness"
+            ),
+            demonstrated_by="2024-05-predy-oracle-integrity-b01cf382",
+            isolated=True,
+            unpatched_because=(
+                "an unbound slot carries neither a type nor a name, so which of the "
+                "dropped slots was the timestamp is not in the analysed unit at all. A "
+                "rule that fired on any tuple with an unbound slot would report every "
+                "discarded success flag as a discarded freshness claim, which is the "
+                "false positive this detector was just narrowed to stop making."
+            ),
+            closed_when=(
+                "the callee's return signature comes into scope, naming the slots a "
+                "caller chose not to bind"
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a freshness value that does reach a guard, where the guard does not "
+                "establish freshness: `require(updatedAt != 0)` consults the value and "
+                "asserts only that a round exists"
+            ),
+            demonstrated_by="2024-07-benddao-oracle-integrity-4fd907a4",
+            isolated=True,
+            unpatched_because=(
+                "a guard comparing the value against a stored timestamp is a sound "
+                "freshness check and a guard comparing it against zero is not, and both "
+                "are a comparison of the bound name against another expression. "
+                "Distinguishing them means deciding what the other side *is*."
+            ),
+            closed_when=(
+                "a predicate for the comparison rather than the mention: the freshness "
+                "value measured against a chain time source, or against a bound that can "
+                "be shown to be one. Not a tier matter -- the shapes are all in the unit"
+            ),
+        ),
+    )
     predicate_ids = frozenset({"multi_return_timestamp_never_reaches_a_guard"})
     instruction = (
         "Find places where a value is used after the freshness information returned "
@@ -723,8 +769,6 @@ class OracleIntegrityDetector(_SyntacticDetector):
                 )
             ]
 
-        failures: list[FailedCheck] = []
-        bound = {name for d in unpacked for name in d.names}
         mentioned = {
             identifier
             for guard in parsed.guards
@@ -732,12 +776,36 @@ class OracleIntegrityDetector(_SyntacticDetector):
             if function.site.start_line <= guard.site.start_line <= function.site.end_line
             for identifier in guard.identifiers
         }
-        if bound & mentioned:
+        # The class is about a *freshness* value, and the conjunction was about
+        # any multi-return: fifteen firings over one sample, none of them an
+        # oracle -- an `EnumerableMap.tryGet` whose discarded slot is a success
+        # flag, an internal `_claimable(...)` discarding three values, a bridge
+        # adapter returning an amount and a payload. The evidence layer had the
+        # right rule all along and the verdict did not ask for it, so the same
+        # test is used here rather than a second one written beside it.
+        timed = [
+            (declared, name)
+            for destructuring in unpacked
+            for declared, name in destructuring.bindings
+            if looks_like_a_time(declared, name)
+        ]
+        if not timed:
+            return [
+                _reject(
+                    "no_time_typed_binding_at_locator",
+                    "nothing unpacked here is a freshness value by type and name, so a "
+                    "discarded binding is a discarded value of some other kind -- a "
+                    "success flag, an amount -- and not a discarded freshness claim",
+                )
+            ]
+
+        failures: list[FailedCheck] = []
+        if all(name in mentioned for _, name in timed):
             failures.append(
                 _reject(
-                    "an_unpacked_value_does_reach_a_guard",
-                    "a value unpacked here is mentioned in a condition in the same "
-                    "function, so the freshness information was not discarded",
+                    "the_freshness_value_does_reach_a_guard",
+                    "every freshness value unpacked here is mentioned in a condition in "
+                    "the same function, so the freshness information was not discarded",
                 )
             )
         return failures

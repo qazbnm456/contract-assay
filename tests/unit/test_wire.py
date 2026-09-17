@@ -192,3 +192,32 @@ class TestTheModelBehindEachRow:
         [unranked] = document["unrankable"]
         assert "other" in unranked["incomparable"]
         assert unranked["models"]["main"] == "other"
+
+
+class TestAFieldsTypeIsPartOfItsMeaning:
+    """`demonstrated_by` is a record id, and `list()` on a string spreads it.
+
+    The document carried one entry per character and a consumer would have
+    rendered that faithfully. Caught by reading the output, which is the only
+    thing that catches it: every type checks, every test passed, and the JSON
+    was well formed.
+    """
+
+    def test_a_declared_limit_names_one_record(self) -> None:
+        from contract_assay.models import DeclaredLimit, LimitKind
+
+        limit = DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape="a shape this tier cannot see",
+            demonstrated_by="some-record-id",
+            isolated=True,
+            unpatched_because="because",
+            closed_when="when",
+        )
+        report = ScoreReport(
+            by_class={CLS: ClassScore(cls=CLS, records=1)},
+            declared_limits={CLS: (limit,)},
+        )
+        document = score_document(a_submission(report), [a_record()])
+        [entry] = document["classes"]
+        assert entry["declared_limits"][0]["demonstrated_by"] == "some-record-id"

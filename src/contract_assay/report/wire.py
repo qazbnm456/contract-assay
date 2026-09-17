@@ -115,7 +115,10 @@ def _limits(report: ScoreReport, cls: VulnerabilityClass) -> list[dict[str, Any]
         {
             "kind": limit.kind.value,
             "shape": limit.shape,
-            "demonstrated_by": list(limit.demonstrated_by),
+            # A record id, not a sequence of them: `list()` on a string spread
+            # it into one entry per character, and a consumer would have
+            # rendered that faithfully.
+            "demonstrated_by": limit.demonstrated_by,
             "unpatched_because": limit.unpatched_because,
             "closed_when": limit.closed_when,
             "closed_by": limit.closed_by,

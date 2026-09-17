@@ -2375,6 +2375,42 @@ own statement says exactly which classes are waiting on how many
 adjudications, so the outstanding work is visible before the round rather than
 discovered during it.
 
+#### A verdict must be strict about the property its evidence names
+
+Oracle integrity reported 15 predictions, 0 hits and 2 missed records, and the
+zero was a claim about the instrument. Opening all fifteen: an
+`EnumerableMap.tryGet` whose discarded slot is a success flag, an internal
+`_claimable(...)` dropping three values, a bridge adapter returning an amount
+and a payload. **None of the fifteen was an oracle read.**
+
+The cause was a split between the two deterministic layers. The evidence layer's
+predicate requires a binding that is a time by declared type *and* name and that
+reaches no condition. The verdict asked only whether the span unpacks several
+values whose names never reach a guard — so it accepted any multi-return, and
+the class's own property was established by the layer that does not decide.
+Requiring the predicate's test in the verdict took the class from 15 predictions
+to 0, all fifteen having been non-instances.
+
+A gate was written for this in the shared base — reject any finding this
+detector's predicates say nothing about — and reverted, because two existing
+tests say why: `IERC20.transfer` returns a discardable bool that no predicate
+can tell from `address.transfer`, and **a model that finds it must be able to
+score for it**. Bounding the verdict by the evidence caps a model's reach at the
+deterministic tier's, which is the one thing the three layers exist to avoid. So
+the strictness belongs in the class conjunction, re-derived from the source at
+the stated location, and the evidence argument stays unconsulted.
+
+Both missed records are now declared rather than left unexplained, and they are
+two different limits. One discards its freshness slots *at the binding site* —
+`(, int256 quoteAnswer,,,)` names two of five — so no binding carries a type or
+a name to test, and which dropped slot was the timestamp is not in the unit at
+all. The other binds the value and does reach a guard, but the guard is
+`require(updatedAt != 0)`, which asserts that a round exists and not that a
+price is recent; telling that from a sound comparison against a stored timestamp
+means deciding what the other side of the comparison *is*. With both declared,
+the class's unexplained misses go to zero while its recall stays at zero — which
+is the distinction §7.5 exists to draw.
+
 #### A class about one site is checked at one site
 
 Three verdicts had their conditions quantified over a *set* of sites rather than

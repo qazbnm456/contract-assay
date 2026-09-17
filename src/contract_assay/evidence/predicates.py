@@ -88,6 +88,7 @@ __all__ = [
     "RAW_EXTERNAL_CALL_MEMBERS",
     "PredicateSpec",
     "coverage_by_class",
+    "looks_like_a_time",
     "predicates",
     "run_all",
 ]
@@ -772,7 +773,7 @@ def _multi_return_timestamp_never_reaches_a_guard(syntax: Syntax, path: str) -> 
             stale = sorted(
                 name
                 for declared, name in destructuring.bindings
-                if _looks_like_a_time(declared, name) and name not in mentioned
+                if looks_like_a_time(declared, name) and name not in mentioned
             )
             if not stale:
                 continue
@@ -853,7 +854,7 @@ def _division_evaluated_before_multiplication(syntax: Syntax, path: str) -> list
     return found
 
 
-def _looks_like_a_time(declared: str, name: str) -> bool:
+def looks_like_a_time(declared: str, name: str) -> bool:
     """Whether a binding is a timestamp, from its declared type and its name.
 
     Both, because either alone is wrong in a common case: every `uint256` is not

@@ -196,11 +196,15 @@ class TestVerdictIsNotBoundedByEvidence:
         assert all(ref.locator.start_line != 13 for ref in detector.evidence(ctx))
 
         finding = a_finding(13, 13, "token.transfer(to, a);")
-        assert detector.verdict(ctx, finding, []) == []
+        assert detector.verdict(ctx, finding, detector.evidence(ctx)) == []
 
     def test_the_verdict_does_not_consult_the_evidence_argument(self) -> None:
         # Passing no evidence at all must not change any outcome; the rules are
-        # re-derived from the source at the stated location.
+        # re-derived from the source at the stated location. A gate requiring
+        # this detector's own evidence at the locator was written and reverted
+        # against this test and the one above: it would cap a model's reach at
+        # the deterministic tier's, which is the one thing the three layers
+        # exist to avoid.
         detector = UncheckedExternalCallDetector()
         ctx = a_context(detector.level)
         finding = a_finding(9, 9, 'to.call("");')
@@ -211,7 +215,8 @@ class TestVerdictIsNotBoundedByEvidence:
 class TestUncheckedExternalCallVerdict:
     def _verdict(self, finding: Finding) -> list[str]:
         detector = UncheckedExternalCallDetector()
-        return [check.check for check in detector.verdict(a_context(detector.level), finding, [])]
+        ctx = a_context(detector.level)
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_discarded_result_stands(self) -> None:
         assert self._verdict(a_finding(9, 9, 'to.call("");')) == []
@@ -235,14 +240,15 @@ class TestUncheckedExternalCallVerdict:
         # measurement. Reporting it as a citation failure would turn a
         # conclusion into an infrastructure error.
         detector = UncheckedExternalCallDetector()
-        checks = detector.verdict(a_context(detector.level), a_finding(2, 2, "address owner;"), [])
+        ctx = a_context(detector.level)
+        checks = detector.verdict(ctx, a_finding(2, 2, "address owner;"), detector.evidence(ctx))
         assert all(check.kind is RejectionKind.VERDICT for check in checks)
 
     def test_an_unparseable_unit_is_a_citation_failure_not_a_verdict(self) -> None:
         # The claim could not be checked at all, so nothing was measured.
         detector = UncheckedExternalCallDetector()
         ctx = a_context(detector.level, source="}{ not solidity ][")
-        [check] = detector.verdict(ctx, a_finding(1, 1, "x"), [])
+        [check] = detector.verdict(ctx, a_finding(1, 1, "x"), detector.evidence(ctx))
         assert check.kind is RejectionKind.CITATION
 
 
@@ -250,7 +256,7 @@ class TestInsecureRandomnessVerdict:
     def _verdict(self, finding: Finding, **over: object) -> list[str]:
         detector = InsecureRandomnessDetector()
         ctx = a_context(detector.level, **over)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_blockhash_read_stands(self) -> None:
         assert self._verdict(a_finding(16, 16, "uint256(blockhash(block.number))")) == []
@@ -279,7 +285,7 @@ class TestAccessControlVerdict:
     def _verdict(self, finding: Finding, **over: object) -> list[str]:
         detector = AccessControlDetector()
         ctx = a_context(detector.level, **over)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_an_unguarded_external_setter_stands(self) -> None:
         assert self._verdict(a_finding(6, 6, "function setOwner(address o) external")) == []
@@ -358,7 +364,7 @@ class TestDenialOfServiceVerdict:
     def _verdict(self, finding: Finding, source: str | None = None) -> list[str]:
         detector = DenialOfServiceDetector()
         ctx = a_context(detector.level, source=source or self.SOURCE)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_loop_over_a_growable_array_stands(self) -> None:
         assert self._verdict(a_finding(6, 6, "for (uint256 i = 0; i < voters.length; i++)")) == []
@@ -402,18 +408,53 @@ class TestOracleIntegrityVerdict:
     def _verdict(self, finding: Finding) -> list[str]:
         detector = OracleIntegrityDetector()
         ctx = a_context(detector.level, source=self.SOURCE)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_discarded_freshness_value_stands(self) -> None:
         assert self._verdict(a_finding(4, 6, "function stale(address feed) external")) == []
 
     def test_a_consulted_one_is_refuted(self) -> None:
-        assert "an_unpacked_value_does_reach_a_guard" in self._verdict(
+        assert "the_freshness_value_does_reach_a_guard" in self._verdict(
             a_finding(8, 12, "function fresh(address feed) external")
         )
 
     def test_a_location_unpacking_nothing_is_refuted(self) -> None:
         assert self._verdict(a_finding(2, 2, "uint256 last;")) == ["no_multi_return_at_locator"]
+
+    OTHER_MULTI_RETURNS = """contract M {
+    uint256 last;
+
+    function holder(uint256 id, address who) external returns (bool) {
+        (, uint256 amount) = shares[id].tryGet(who);
+        return amount > 0;
+    }
+    function claimable(uint256 id) external returns (uint256) {
+        (uint256 toDistribute, , , ) = _claimable(id);
+        return toDistribute;
+    }
+}
+"""
+
+    @pytest.mark.parametrize(
+        ("lo", "hi", "cited"),
+        [(4, 7, "function holder("), (8, 11, "function claimable(")],
+    )
+    def test_a_discarded_value_of_another_kind_is_not_a_freshness_claim(
+        self, lo: int, hi: int, cited: str
+    ) -> None:
+        # The conjunction used to be about any multi-return, and this is what
+        # that admitted: a success flag from `EnumerableMap.tryGet` and three
+        # unnamed slots from an internal call. Fifteen firings over one sample,
+        # none of them an oracle, while the evidence layer had the right rule --
+        # a binding that is a time by type *and* name -- and the verdict never
+        # asked for it.
+        detector = OracleIntegrityDetector()
+        ctx = a_context(detector.level, source=self.OTHER_MULTI_RETURNS)
+        checks = [
+            check.check
+            for check in detector.verdict(ctx, a_finding(lo, hi, cited), detector.evidence(ctx))
+        ]
+        assert checks == ["no_time_typed_binding_at_locator"]
 
 
 class TestArithmeticRoundingVerdict:
@@ -434,7 +475,7 @@ class TestArithmeticRoundingVerdict:
     def _verdict(self, finding: Finding) -> list[str]:
         detector = ArithmeticRoundingDetector()
         ctx = a_context(detector.level, source=self.SOURCE)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_dividing_before_multiplying_stands(self) -> None:
         assert self._verdict(a_finding(5, 5, "return a / b * c;")) == []
@@ -472,7 +513,7 @@ class TestReentrancyVerdict:
     def _verdict(self, finding: Finding) -> list[str]:
         detector = ReentrancyDetector()
         ctx = a_context(detector.level, source=self.SOURCE)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_write_after_a_transfer_stands(self) -> None:
         assert self._verdict(a_finding(6, 6, "payable(msg.sender).transfer(amount);")) == []
@@ -512,7 +553,7 @@ class TestSlippageVerdict:
     def _verdict(self, finding: Finding) -> list[str]:
         detector = SlippageDetector()
         ctx = a_context(detector.level, source=self.SOURCE)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_a_zero_minimum_in_a_multi_argument_call_stands(self) -> None:
         assert self._verdict(a_finding(3, 3, "router.swapExactTokensForTokens(")) == []
@@ -554,7 +595,9 @@ class TestSlippageVerdict:
         ctx = a_context(detector.level, source=self.WHOLE_FUNCTION)
         checks = [
             check.check
-            for check in detector.verdict(ctx, a_finding(2, 6, "    function merge("), [])
+            for check in detector.verdict(
+                ctx, a_finding(2, 6, "    function merge("), detector.evidence(ctx)
+            )
         ]
         assert checks == ["no_one_call_is_an_unbounded_exchange"]
 
@@ -567,7 +610,10 @@ class TestSlippageVerdict:
         )
         detector = SlippageDetector()
         ctx = a_context(detector.level, source=source)
-        assert detector.verdict(ctx, a_finding(2, 6, "    function merge("), []) == []
+        assert (
+            detector.verdict(ctx, a_finding(2, 6, "    function merge("), detector.evidence(ctx))
+            == []
+        )
 
 
 class TestAValueReadIsNotAValueUsedAsRandom:
@@ -593,7 +639,7 @@ class TestAValueReadIsNotAValueUsedAsRandom:
         detector = InsecureRandomnessDetector()
         ctx = a_context(detector.level, source=source)
         finding = a_finding(lo, hi, cited)
-        return [check.check for check in detector.verdict(ctx, finding, [])]
+        return [check.check for check in detector.verdict(ctx, finding, detector.evidence(ctx))]
 
     def test_hashing_the_value_stands(self) -> None:
         body = (
@@ -680,7 +726,10 @@ class TestAClassAboutOneSiteIsCheckedAtOneSite:
         detector = AccessControlDetector()
         ctx = a_context(detector.level, source=self.TWO_FUNCTIONS)
         checks = [
-            check.check for check in detector.verdict(ctx, a_finding(4, 10, "contract V {"), [])
+            check.check
+            for check in detector.verdict(
+                ctx, a_finding(4, 10, "contract V {"), detector.evidence(ctx)
+            )
         ]
         assert checks
         assert "host_writes_no_state" in checks or "host_not_externally_reachable" in checks
@@ -696,7 +745,10 @@ class TestAClassAboutOneSiteIsCheckedAtOneSite:
 """
         detector = AccessControlDetector()
         ctx = a_context(detector.level, source=source)
-        assert detector.verdict(ctx, a_finding(4, 6, "    function setTotal("), []) == []
+        assert (
+            detector.verdict(ctx, a_finding(4, 6, "    function setTotal("), detector.evidence(ctx))
+            == []
+        )
 
     def test_a_write_after_an_unrelated_call_is_not_reentrancy(self) -> None:
         # The low-level call is below the write; the call above it is internal.
@@ -716,6 +768,8 @@ class TestAClassAboutOneSiteIsCheckedAtOneSite:
         ctx = a_context(detector.level, source=source)
         checks = [
             check.check
-            for check in detector.verdict(ctx, a_finding(4, 9, "    function withdraw("), [])
+            for check in detector.verdict(
+                ctx, a_finding(4, 9, "    function withdraw("), detector.evidence(ctx)
+            )
         ]
         assert checks == ["no_state_written_after_the_call"]
