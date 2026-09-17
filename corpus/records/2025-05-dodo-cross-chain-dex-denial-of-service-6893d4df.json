@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-05-dodo-cross-chain-dex-denial-of-service-6893d4df",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "omni-chain-contracts/contracts/GatewaySend.sol",
+  "sha256": "f64c173518ec6a22ead1068f94a0dd26290eb58f10ffaaa078f0267194a255cd",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex",
+  "commit": "d4834a468f7dad56b007b4450397289d4f767757"
+ },
+ "locator": {
+  "file": "omni-chain-contracts/contracts/GatewaySend.sol",
+  "contract": "GatewaySend",
+  "function": "_handleERC20Deposit",
+  "start_line": 177,
+  "end_line": 193
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/910.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

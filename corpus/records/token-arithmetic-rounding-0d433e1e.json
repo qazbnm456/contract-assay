@@ -1,0 +1,32 @@
+{
+ "record_id": "token-arithmetic-rounding-0d433e1e",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/staking/SymmStaking.sol",
+  "sha256": "a200f0748c37441e901dbeb2c96336102e42bb33ab02c59a4c21f0e4f8cd06c9",
+  "kind": "commit",
+  "repo_url": "https://github.com/SYMM-IO/token",
+  "commit": "1d014156b1d9f0ab3259026127b9220eb2da3292"
+ },
+ "locator": {
+  "file": "contracts/staking/SymmStaking.sol",
+  "contract": "SymmStaking",
+  "function": "_addRewardsForToken",
+  "start_line": 366,
+  "end_line": 379
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking-judging/blob/main/511.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

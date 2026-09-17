@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-03-symm-io-stacking-denial-of-service-6fc74a55",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "token/contracts/vesting/Vesting.sol",
+  "sha256": "946281f228a6ebbf0f23687d32247e9cedc0ccd9d540a1af3a4cc04a214105bf",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking",
+  "commit": "d7cf7fc96af1c25b53a7b500a98b411cd018c0d3"
+ },
+ "locator": {
+  "file": "token/contracts/vesting/Vesting.sol",
+  "contract": "Vesting",
+  "function": "__vesting_init",
+  "start_line": 76,
+  "end_line": 91
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 76,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking-judging/blob/main/378.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-03-symm-io-stacking-flashloan-manipulation-5a178166",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "token/contracts/vesting/SymmVesting.sol",
+  "sha256": "74e656955ec8dfc01eb498b0a62bfe67a65564bef73e628a3eb6d7da865535b7",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking",
+  "commit": "d7cf7fc96af1c25b53a7b500a98b411cd018c0d3"
+ },
+ "locator": {
+  "file": "token/contracts/vesting/SymmVesting.sol",
+  "contract": "SymmVesting",
+  "function": "getLiquidityQuote",
+  "start_line": 247,
+  "end_line": 256
+ },
+ "classes": [
+  "flashloan_manipulation"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking-judging/blob/main/314.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

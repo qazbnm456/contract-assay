@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-05-lend-audit-contest-denial-of-service-b8778846",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Lend-V2/src/LayerZero/CoreRouter.sol",
+  "sha256": "90408b932503e3b9df09a191d22ce4d7d761177a1a3729f5e378b7c0b51bfa45",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-lend-audit-contest",
+  "commit": "713372a1ccd8090ead836ca6b1acf92e97de4679"
+ },
+ "locator": {
+  "file": "Lend-V2/src/LayerZero/CoreRouter.sol",
+  "contract": "CoreRouter",
+  "function": "repayBorrowInternal",
+  "start_line": 493,
+  "end_line": 496
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-lend-audit-contest-judging/blob/main/357.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

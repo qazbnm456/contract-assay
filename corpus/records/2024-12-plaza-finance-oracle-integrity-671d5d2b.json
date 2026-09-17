@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-12-plaza-finance-oracle-integrity-671d5d2b",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/BondOracleAdapter.sol",
+  "sha256": "7b0233b6c0606b9ea69d6ddf3a3c866994a1f8ba458d37d87247a512c8bae823",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "ab5bbd7d54042e4444b711a32def5b639fbd63b4"
+ },
+ "locator": {
+  "file": "plaza-evm/src/BondOracleAdapter.sol",
+  "contract": "BondOracleAdapter",
+  "function": "getPool",
+  "start_line": 122,
+  "end_line": 125
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/773.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "tokenized-strategy-periphery-denial-of-service-296ab2de",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/Auctions/Auction.sol",
+  "sha256": "e38a0cfef39bd493e64c9caf8066b855980a71c7643854efafb72518b55b1625",
+  "kind": "commit",
+  "repo_url": "https://github.com/yearn/tokenized-strategy-periphery",
+  "commit": "8442563a8d2b7a71057c76bdcead9b346927c301"
+ },
+ "locator": {
+  "file": "src/Auctions/Auction.sol",
+  "contract": "Auction",
+  "function": "settle",
+  "start_line": 606,
+  "end_line": 611
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 608,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/093.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

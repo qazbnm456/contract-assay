@@ -1,0 +1,32 @@
+{
+ "record_id": "protocol-contracts-denial-of-service-2a5770ad",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/evm/GatewayEVM.sol",
+  "sha256": "3988a6e59bb58c5eeff332b289ff318be389fe181e279a6d85c39f941f8583d5",
+  "kind": "commit",
+  "repo_url": "https://github.com/zeta-chain/protocol-contracts",
+  "commit": "2e61e029e89792c1b10ed15d2aa19818a77dd4d8"
+ },
+ "locator": {
+  "file": "contracts/evm/GatewayEVM.sol",
+  "contract": "GatewayEVM",
+  "function": "executeRevert",
+  "start_line": 111,
+  "end_line": 128
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/900.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

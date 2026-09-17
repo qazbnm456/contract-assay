@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-04-aegis-op-grant-oracle-integrity-50bfe228",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "aegis-contracts/contracts/AegisOracle.sol",
+  "sha256": "756fdf186a2228eb45fd01390836827250c2b50fa15cf872dd4ea174e1cb6e96",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant",
+  "commit": "4aceb235db96b2299bb95ebf16e83a24f987bf3e"
+ },
+ "locator": {
+  "file": "aegis-contracts/contracts/AegisOracle.sol",
+  "contract": "AegisOracle",
+  "function": "updateYUSDPrice",
+  "start_line": 56,
+  "end_line": 60
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/blob/main/249.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

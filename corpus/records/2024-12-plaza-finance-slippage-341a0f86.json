@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-12-plaza-finance-slippage-341a0f86",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/BalancerRouter.sol",
+  "sha256": "a36afda72a6cba2e1e3e7fa899731c772113f750d88dc3046e4d1d70a4793241",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/BalancerRouter.sol",
+  "contract": "BalancerRouter",
+  "function": "joinBalancerAndPredeposit",
+  "start_line": 23,
+  "end_line": 40
+ },
+ "classes": [
+  "slippage"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/775.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "aegis-contracts-slippage-a2e4aa23",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/AegisMinting.sol",
+  "sha256": "2adf20c87dd15b50b683ed237a38fd96add9cd61b779e2e3fba868f589de9431",
+  "kind": "commit",
+  "repo_url": "https://github.com/Aegis-im/aegis-contracts",
+  "commit": "eaaf21ec7f3a9bf30a2aadd7118499b7bcf43681"
+ },
+ "locator": {
+  "file": "contracts/AegisMinting.sol",
+  "contract": "AegisMinting",
+  "function": "mint",
+  "start_line": 239,
+  "end_line": 270
+ },
+ "classes": [
+  "slippage"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 255,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/blob/main/324.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "token-arithmetic-rounding-3aca4979",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/vesting/Vesting.sol",
+  "sha256": "946281f228a6ebbf0f23687d32247e9cedc0ccd9d540a1af3a4cc04a214105bf",
+  "kind": "commit",
+  "repo_url": "https://github.com/SYMM-IO/token",
+  "commit": "1d014156b1d9f0ab3259026127b9220eb2da3292"
+ },
+ "locator": {
+  "file": "contracts/vesting/Vesting.sol",
+  "contract": "Vesting",
+  "function": "claimLockedTokenByPercentage",
+  "start_line": 167,
+  "end_line": 169
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 168,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-03-symm-io-stacking-judging/blob/main/083.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

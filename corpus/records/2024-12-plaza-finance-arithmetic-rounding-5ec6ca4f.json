@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-12-plaza-finance-arithmetic-rounding-5ec6ca4f",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/BondOracleAdapter.sol",
+  "sha256": "7b0233b6c0606b9ea69d6ddf3a3c866994a1f8ba458d37d87247a512c8bae823",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/BondOracleAdapter.sol",
+  "contract": "BondOracleAdapter",
+  "function": "latestRoundData",
+  "start_line": 109,
+  "end_line": 111
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/934.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

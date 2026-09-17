@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-12-plaza-finance-access-control-b6b3a324",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/Auction.sol",
+  "sha256": "daa0505f9aa1e427c951897a8c035f6b65fcb844fac7ffdf2f7efdc9bb5cacd3",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/Auction.sol",
+  "contract": "Auction",
+  "function": "initialize",
+  "start_line": 93,
+  "end_line": 117
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/655.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

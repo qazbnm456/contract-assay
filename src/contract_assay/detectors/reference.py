@@ -208,6 +208,37 @@ class UncheckedExternalCallDetector(_SyntacticDetector):
         # recognise. A discarded `IERC20.transfer` return is a real defect the
         # library cannot see, and a verdict that only admitted what the library
         # already found would make the model unable to score for it.
+        #
+        # It was not restricted to *external calls* either, which is different
+        # and was wrong. Over 42 units the class produced 532 predictions, and
+        # 481 of the bare-statement calls behind them were `require(...)` -- a
+        # language statement that reverts on failure, which is to say it is the
+        # check. The rest of the receiverless ones are internal calls:
+        # `_mint`, `__Ownable_init`, `_disableInitializers`. A call with no
+        # receiver does not leave the contract, so there is no external result
+        # to have ignored.
+        #
+        # A receiver that names a state collection is the second shape: `push`
+        # on a storage array is a storage operation with a receiver, and the
+        # declared type says so -- the same question `identity_lookups` and the
+        # denial-of-service predicate ask.
+        collections = {
+            name
+            for name, declared in parsed.state_variable_types.items()
+            if declared.endswith("[]") or declared.replace(" ", "").startswith("mapping(")
+        }
+        calls = [
+            call for call in calls if call.receiver is not None and call.receiver not in collections
+        ]
+        if not calls:
+            return [
+                _reject(
+                    "no_external_call_at_locator",
+                    "every call at the stated location is internal, a language statement "
+                    "such as `require`, or an operation on a storage collection, so no "
+                    "result left the contract to be ignored",
+                )
+            ]
         unchecked = [
             call
             for call in calls

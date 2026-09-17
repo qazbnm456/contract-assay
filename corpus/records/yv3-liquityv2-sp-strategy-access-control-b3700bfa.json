@@ -1,0 +1,32 @@
+{
+ "record_id": "yv3-liquityv2-sp-strategy-access-control-b3700bfa",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/StakerFactory.sol",
+  "sha256": "74beabadd046a764a8c7a0cd5fba06aefd11ea39b63d423b6dd499d44661bf87",
+  "kind": "commit",
+  "repo_url": "https://github.com/johnnyonline/yv3-liquityv2-sp-strategy",
+  "commit": "99bdf0a9ade3af6f68e7d6b008b3c5a379e94f16"
+ },
+ "locator": {
+  "file": "src/StakerFactory.sol",
+  "contract": "StakerFactory",
+  "function": "newStrategy",
+  "start_line": 32,
+  "end_line": 48
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/056.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

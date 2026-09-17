@@ -1,0 +1,32 @@
+{
+ "record_id": "yv3-liquityv2-sp-strategy-oracle-integrity-91566d31",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/Strategy.sol",
+  "sha256": "537431b7f8eb23dc503dcdadc3cc14efc883fa03170392ff1d2115079f285723",
+  "kind": "commit",
+  "repo_url": "https://github.com/johnnyonline/yv3-liquityv2-sp-strategy",
+  "commit": "99bdf0a9ade3af6f68e7d6b008b3c5a379e94f16"
+ },
+ "locator": {
+  "file": "src/Strategy.sol",
+  "contract": "LiquityV2SPStrategy",
+  "function": "_tend",
+  "start_line": 225,
+  "end_line": 246
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/058.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

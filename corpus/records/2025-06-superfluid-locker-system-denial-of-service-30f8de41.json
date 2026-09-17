@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-06-superfluid-locker-system-denial-of-service-30f8de41",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "fluid/packages/contracts/src/vesting/SupVesting.sol",
+  "sha256": "48e2dfae7866c58e4d6d89e0fd2f428e57e90882cfde7edf1f7b9dcfe062e3c9",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system",
+  "commit": "d8beaeed47f766659a1600a87372a7905109aa3c"
+ },
+ "locator": {
+  "file": "fluid/packages/contracts/src/vesting/SupVesting.sol",
+  "contract": "SupVesting",
+  "function": "emergencyWithdraw",
+  "start_line": 120,
+  "end_line": 135
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system-judging/blob/main/166.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

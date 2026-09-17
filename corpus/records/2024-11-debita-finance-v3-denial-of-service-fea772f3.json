@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-11-debita-finance-v3-denial-of-service-fea772f3",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/buyOrders/buyOrder.sol",
+  "sha256": "5ca2bf7fa051d5ed10a2e3d9e7ff800b09b5344ab8e3c227ce668a288823c587",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/buyOrders/buyOrder.sol",
+  "contract": "BuyOrder",
+  "function": "sellNFT",
+  "start_line": 99,
+  "end_line": 103
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/822.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

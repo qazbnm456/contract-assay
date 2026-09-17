@@ -1,0 +1,32 @@
+{
+ "record_id": "oku-custom-order-types-oracle-integrity-16bcdce2",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/oracle/External/PythOracle.sol",
+  "sha256": "8149e9bd910a2a86b0951af2feb5db86c07ed3fb97bd2975af4126210d9c7a0d",
+  "kind": "commit",
+  "repo_url": "https://github.com/gfx-labs/oku-custom-order-types",
+  "commit": "b84e5725f4d1e0a1ee9048baf44e68d2e53ec971"
+ },
+ "locator": {
+  "file": "contracts/oracle/External/PythOracle.sol",
+  "contract": "PythOracle",
+  "function": "currentValue",
+  "start_line": 26,
+  "end_line": 33
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-11-oku-judging/blob/main/550.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

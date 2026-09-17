@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-05-dodo-cross-chain-dex-access-control-f95aa5f7",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "omni-chain-contracts/contracts/GatewayCrossChain.sol",
+  "sha256": "4ea30fa515b57d0615d0f74a5e715df401613c40e9f0d238b09e2ec1c0cbfa80",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex",
+  "commit": "d4834a468f7dad56b007b4450397289d4f767757"
+ },
+ "locator": {
+  "file": "omni-chain-contracts/contracts/GatewayCrossChain.sol",
+  "contract": "GatewayCrossChain",
+  "function": "claimRefund",
+  "start_line": 571,
+  "end_line": 589
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/698.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

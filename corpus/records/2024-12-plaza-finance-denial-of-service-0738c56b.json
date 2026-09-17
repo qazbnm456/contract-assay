@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-12-plaza-finance-denial-of-service-0738c56b",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/PreDeposit.sol",
+  "sha256": "bb6a9f548d38f46c5fbc4f44a8e03c8b3ad627129cddeb12d0aafaca7b2b7c75",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/PreDeposit.sol",
+  "contract": "PreDeposit",
+  "function": "createPool",
+  "start_line": 149,
+  "end_line": 158
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/577.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

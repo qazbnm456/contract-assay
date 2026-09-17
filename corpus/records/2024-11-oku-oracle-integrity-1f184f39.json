@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-11-oku-oracle-integrity-1f184f39",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "oku-custom-order-types/contracts/oracle/External/PythOracle.sol",
+  "sha256": "8149e9bd910a2a86b0951af2feb5db86c07ed3fb97bd2975af4126210d9c7a0d",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-oku",
+  "commit": "e844037b3fcd8288efe10a2f1cf43e62bad7b4e1"
+ },
+ "locator": {
+  "file": "oku-custom-order-types/contracts/oracle/External/PythOracle.sol",
+  "contract": "PythOracle",
+  "function": "updatePrice",
+  "start_line": 35,
+  "end_line": 49
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-11-oku-judging/blob/main/759.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

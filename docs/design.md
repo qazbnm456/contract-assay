@@ -2488,6 +2488,62 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### Five times the corpus, and what it said
+
+The corpus went from 32 records to 166 by harvesting a second platform through
+the adapter that was already there. Sherlock publishes one file per *submission*
+under a judging repository, which is why the yield differs from Code4rena's by
+an order of magnitude: 7,154 submissions over 22 contests produced 262 drafts
+and 134 records, with **no verification rejections** and 68 drafts folded as
+duplicates of a defect already recorded — the ordinary case when many people
+submit the same finding.
+
+Immunefi, run the same way over 275 reports from ten projects, produced *one*
+record, and the reasons are worth stating because they are properties of the
+platform rather than of the pipeline: 79 of the 275 files are smart-contract
+reports at all, 20 of those carry a severity in scope, and most of those cite a
+deployed **address** rather than a repository, which needs verified source this
+run could not fetch.
+
+What the enlarged corpus did to the numbers is the point of having it.
+
+- `unchecked_external_call` had never been exercised: no record mapped to it and
+  no title classified into it. Over 72 units it produced **532** predictions,
+  and 481 of the bare-statement calls behind them were `require(...)` — a
+  language statement that reverts on failure, which is to say it *is* the check.
+  The rest of the receiverless ones were internal calls. A call with no receiver
+  does not leave the contract, and a receiver naming a storage collection is a
+  storage operation; both are now refused, taking the class to 225 with its hit
+  intact. What remains is the blindness this detector has always declared: at
+  this tier a call returning a flag and a call returning nothing are the same
+  shape.
+- Recall, per class, against detectors written for the old corpus:
+  `unchecked_external_call` 1.00 on two records (below the stated minimum, so
+  reported as unusable), `access_control` 0.31, `arithmetic_rounding` 0.14,
+  `denial_of_service` 0.014 over seventy records — the last being one mechanism
+  of a family, measured against a corpus that now holds the others.
+- **Every pool reopened.** No class has a licensed F1 any more: new records
+  bring new predictions, and precision waits on all of them. That is the cost of
+  pooled judgement in the direction nobody mentions — the residue per submission
+  shrinks as the pool grows, and the pool is invalidated by the *corpus* growing.
+  It is the exercise's debt rather than a submission's defect, and the queue
+  states it: 366 predictions, 330 of them in the one class whose pool cannot be
+  hand-judged at this size.
+- Unexplained misses went from zero to 126, and driving that back to zero by
+  listing 126 record ids in `demonstrated_by` would be the wrong answer. The
+  shapes are declared; what each entry names is a *sample* of the records the
+  shape hides. The number reads as "misses no declared limit names", which is
+  what it says, and it grows with the corpus until a limit is either closed or
+  re-sampled.
+
+One probe defect, recorded because it is one the design document already warns
+about. The Immunefi date reader was written to accept full month names and the
+platform writes `Aug 20th 2024`, so it reported **zero** dated reports out of
+275 — the same shape as the date parser that "accepted two orderings and a table
+of full month names, and the one competition it had been tested against happened
+to fall in May". A tolerance that no sample exercises is not tolerance, and it
+does not become one by being written a second time.
+
 #### What is left in the queue, and why it is not a backlog
 
 Six entries, and none of them is work waiting to be done.

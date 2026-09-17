@@ -1,0 +1,32 @@
+{
+ "record_id": "2025-04-aegis-op-grant-denial-of-service-a5710fc3",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "aegis-contracts/contracts/AegisRewards.sol",
+  "sha256": "9dbff59cde67d6de8576fe3543a9058e974d15ec851e3d06620f523ec9c9ce92",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant",
+  "commit": "4aceb235db96b2299bb95ebf16e83a24f987bf3e"
+ },
+ "locator": {
+  "file": "aegis-contracts/contracts/AegisRewards.sol",
+  "contract": "AegisRewards",
+  "function": "claimRewards",
+  "start_line": 98,
+  "end_line": 106
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/blob/main/160.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

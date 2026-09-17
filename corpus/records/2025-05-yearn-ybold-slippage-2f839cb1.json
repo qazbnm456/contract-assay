@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-yearn-ybold-slippage-2f839cb1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "yv3-liquityv2-sp-strategy/src/Staker.sol",
+  "sha256": "8edf3bb754ac6553eaae4715ff975c2257d45e155ea1e683e346b0f2759e4879",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold",
+  "commit": "88a3b89c05fd6e59ec130c79659195cd05d872af"
+ },
+ "locator": {
+  "file": "yv3-liquityv2-sp-strategy/src/Staker.sol",
+  "contract": "LV2SPStakerStrategy",
+  "function": "_harvestAndReport",
+  "start_line": 48,
+  "end_line": 53
+ },
+ "classes": [
+  "slippage"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 48,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/005.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

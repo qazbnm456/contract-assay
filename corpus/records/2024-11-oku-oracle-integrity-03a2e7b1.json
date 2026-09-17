@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-oku-oracle-integrity-03a2e7b1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "oku-custom-order-types/contracts/automatedTrigger/AutomationMaster.sol",
+  "sha256": "71f2301c24d0ba8106d3378127ef20af2eef808671324e0d79d4ed6a7ac4588b",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-oku",
+  "commit": "ee3f781a73d65e33fb452c9a44eb1337c5cfdbd6"
+ },
+ "locator": {
+  "file": "oku-custom-order-types/contracts/automatedTrigger/AutomationMaster.sol",
+  "contract": "AutomationMaster",
+  "function": "_getExchangeRate",
+  "start_line": 77,
+  "end_line": 87
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 77,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-11-oku-judging/blob/main/815.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

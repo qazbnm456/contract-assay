@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-11-debita-finance-v3-oracle-integrity-895d404b",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/oracles/DebitaChainlink.sol",
+  "sha256": "11fcfc674cee7459f1062f02852e6f399b7eb3ccd4958dde01eb0702c1deaf6a",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "376fec45be95bd4bbc929fd37b485076b03ab8b0"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/oracles/DebitaChainlink.sol",
+  "contract": "DebitaChainlink",
+  "function": "getThePrice",
+  "start_line": 30,
+  "end_line": 47
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/094.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

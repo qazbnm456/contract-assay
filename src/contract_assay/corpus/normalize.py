@@ -446,6 +446,12 @@ def _plural(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
+_MAX_RECORD_ID = 64
+"""What `CorpusRecord.record_id` accepts. Stated here because `_record_id` must
+build within it; reading the limit off a validation failure is reading it too
+late."""
+
+
 def _record_id(draft: DraftRecord) -> str:
     """A stable, readable, unique id for the record a draft becomes.
 
@@ -458,7 +464,17 @@ def _record_id(draft: DraftRecord) -> str:
     digest = hashlib.sha256(
         "\0".join((draft.repo_url, draft.commit, draft.path, draft.candidate_id)).encode()
     ).hexdigest()[:8]
-    return f"{repo.strip('-') or 'repo'}-{draft.classes[0].value.replace('_', '-')}-{digest}"
+    cls = draft.classes[0].value.replace("_", "-")
+    # The id has a length the record model enforces, and this function has to
+    # honour it rather than discover it: a repository named
+    # `2025-06-superfluid-locker-system` plus `unchecked-external-call` plus the
+    # digest came to 65 characters, and the record refused at construction --
+    # which stopped the whole batch rather than costing one record. The class
+    # and the digest carry the meaning, so the repository is what gets trimmed,
+    # and the digest keeps the result unique whatever the trim removes.
+    room = _MAX_RECORD_ID - len(cls) - len(digest) - 2
+    repo = (repo.strip("-") or "repo")[:room].strip("-") or "repo"
+    return f"{repo}-{cls}-{digest}"
 
 
 def _labels_from(draft: DraftRecord, *, function: bool = True) -> tuple[LocatorLabel, ...]:
