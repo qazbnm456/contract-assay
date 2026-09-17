@@ -1,6 +1,6 @@
 [project]
 name = "contract-assay"
-version = "0.1.0.dev0"
+version = "0.1.0.dev1"
 description = "Benchmark infrastructure for LLM smart contract auditing: verified findings, deterministic evidence, attributable scoring."
 readme = "README.md"
 requires-python = ">=3.11"
