@@ -16,6 +16,7 @@ from contract_assay.corpus.records import (
     CorpusSplit,
     LocatorLabel,
     LocatorProvenance,
+    NegativeKind,
     Population,
     Provenance,
     SourcePin,
@@ -98,6 +99,28 @@ def a_record(
         asserted_labels=[LocatorLabel.CONTRACT, LocatorLabel.FUNCTION],
         classes=[cls],
         provenance=Provenance(platform="p", report_url="https://x/1"),
+    )
+
+
+def a_negative(
+    *, cls: VulnerabilityClass = CLS, record_id: str = "vault-clean-for-reentrancy"
+) -> CorpusRecord:
+    """A record asserting the pinned file holds no instance of `cls`.
+
+    The only thing that licenses a precision figure: a positive record asserts
+    an instance exists at one location and says nothing about the rest of its
+    file, so an unmatched prediction there is unjudged rather than wrong.
+    """
+    return CorpusRecord(
+        record_id=record_id,
+        population=Population.AUDIT_REVIEW,
+        split=CorpusSplit.PUBLIC,
+        pin=CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path=PATH),
+        classes=[],
+        negative_for=[cls],
+        negative_kind=NegativeKind.CONFIRMED_CLEAN,
+        notes="Read every function in the file against the class definition.",
+        provenance=Provenance(platform="p", report_url="https://x/2"),
     )
 
 
@@ -239,8 +262,9 @@ class TestErrorsStayOutOfTheMatrix:
 
     def test_an_unverifiable_claim_costs_precision(self) -> None:
         # Output that costs nothing to produce must not be free to produce.
-        clean = only(score([a_run([(5, 6)])], [a_record()], resolver()))
-        sprayed = only(score([a_run([(5, 6)], unverifiable=3)], [a_record()], resolver()))
+        judged = [a_record(), a_negative()]
+        clean = only(score([a_run([(5, 6)])], judged, resolver()))
+        sprayed = only(score([a_run([(5, 6)], unverifiable=3)], judged, resolver()))
         assert clean.precision() == 1.0
         assert sprayed.precision() == 0.25
 
@@ -255,6 +279,7 @@ class TestPrecisionCountsEveryPrediction:
         records = [
             a_record(record_id="vault-reentrancy-1", start=4, end=7),
             a_record(record_id="vault-reentrancy-2", start=9, end=12),
+            a_negative(),
         ]
         got = only(score([a_run([(5, 6), (15, 16)])], records, resolver()))
         assert got.predictions == 2
@@ -265,17 +290,23 @@ class TestPrecisionCountsEveryPrediction:
     def test_an_extra_prediction_is_a_false_positive_at_every_floor(self) -> None:
         # With one record, a second prediction cannot be assigned however close
         # it is, so it counts against precision at the weakest floor too.
-        got = only(score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()))
+        got = only(score([a_run([(5, 6), (15, 16)])], [a_record(), a_negative()], resolver()))
         assert got.predictions == 2
         assert got.precision(MatchStrength.FILE) == 0.5
 
     def test_spraying_claims_lowers_precision(self) -> None:
-        got = only(score([a_run([(5, 6), (15, 16), (2, 2), (16, 16)])], [a_record()], resolver()))
+        got = only(
+            score(
+                [a_run([(5, 6), (15, 16), (2, 2), (16, 16)])],
+                [a_record(), a_negative()],
+                resolver(),
+            )
+        )
         assert got.predictions == 4
         assert got.precision() == 0.25
 
     def test_precision_is_none_when_nothing_was_claimed(self) -> None:
-        got = only(score([a_run([])], [a_record()], resolver()))
+        got = only(score([a_run([])], [a_record(), a_negative()], resolver()))
         assert got.precision() is None
         assert got.recall() == 0.0
 
@@ -365,7 +396,7 @@ class TestOneFindingSatisfiesOneRecord:
 
     def _score(self, records: int):  # type: ignore[no-untyped-def]
         truths = [a_record(record_id=f"dup-record-{i}") for i in range(records)]
-        return score([a_run([(4, 7)])], truths, resolver()).by_class[CLS]
+        return score([a_run([(4, 7)])], [*truths, a_negative()], resolver()).by_class[CLS]
 
     def test_one_finding_cannot_satisfy_two_records(self) -> None:
         assert sum(self._score(2).by_strength.values()) == 1
@@ -403,7 +434,7 @@ class TestAClassTheCorpusDoesNotCover:
     def _report(self):  # type: ignore[no-untyped-def]
         return score(
             [a_run([(4, 7)]), a_run([(4, 7), (9, 12), (14, 16)], cls=self.OTHER)],
-            [a_record()],
+            [a_record(), a_negative()],
             resolver(),
         )
 
@@ -677,3 +708,61 @@ class TestTheTwoKindsOfLimitStayApart:
                 demonstrated_by="vault-reentrancy-1",
                 unpatched_because="y",
             )
+
+
+class TestWhatTheCorpusHasStandingToJudge:
+    """A positive record does not establish completeness.
+
+    It asserts an instance exists at a location and says nothing about whether
+    others exist elsewhere in the same file. So an unmatched prediction there is
+    unjudged, not wrong -- the same standing argument that keeps an uncovered
+    class's findings out of the matrix, which had not been applied here because
+    this class happened to have records.
+
+    Reporting a figure anyway understates precision by an amount that varies
+    with how thoroughly each unit was annotated, and understates it most for the
+    most productive predicates.
+    """
+
+    def test_a_positive_only_corpus_licenses_no_precision(self) -> None:
+        got = only(score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()))
+        assert got.predictions == 2
+        assert got.precision(MatchStrength.FILE) is None
+
+    def test_the_unjudged_predictions_are_counted(self) -> None:
+        got = only(score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()))
+        assert got.unjudged_predictions == 2
+        assert got.judged_predictions == 0
+
+    def test_a_negative_record_licenses_it(self) -> None:
+        got = only(score([a_run([(5, 6), (15, 16)])], [a_record(), a_negative()], resolver()))
+        assert got.judged_predictions == 2
+        assert got.unjudged_predictions == 0
+        assert got.precision(MatchStrength.FILE) == 0.5
+
+    def test_a_negative_for_another_class_licenses_nothing(self) -> None:
+        other = a_negative(
+            cls=VulnerabilityClass.INSECURE_RANDOMNESS, record_id="vault-clean-for-randomness"
+        )
+        got = only(score([a_run([(5, 6), (15, 16)])], [a_record(), other], resolver()))
+        assert got.precision(MatchStrength.FILE) is None
+        assert got.completeness_records == 0
+
+    def test_no_negative_is_distinguishable_from_an_uncovered_unit(self) -> None:
+        # Two states that would otherwise share the single appearance of n/a.
+        absent = only(score([a_run([(5, 6)])], [a_record()], resolver()))
+        assert absent.completeness_records == 0 and absent.judged_units == 0
+        elsewhere = only(
+            score(
+                [a_run([(5, 6)], file="src/Other.sol")],
+                [a_record(), a_negative()],
+                resolver(),
+            )
+        )
+        assert elsewhere.completeness_records == 1 and elsewhere.judged_units == 0
+
+    def test_the_statement_says_the_corpus_cannot_judge_them(self) -> None:
+        statement = score([a_run([(5, 6), (15, 16)])], [a_record()], resolver()).statement()
+        assert "2 predictions fell in a unit no negative record covers" in statement
+        assert "no standing to call them right or wrong" in statement
+        assert "No negative record establishes completeness for reentrancy" in statement

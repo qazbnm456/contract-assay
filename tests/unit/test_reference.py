@@ -24,6 +24,8 @@ from contract_assay.detectors.reference import (
     DenialOfServiceDetector,
     InsecureRandomnessDetector,
     OracleIntegrityDetector,
+    ReentrancyDetector,
+    SlippageDetector,
     UncheckedExternalCallDetector,
 )
 from contract_assay.models import (
@@ -444,3 +446,88 @@ class TestArithmeticRoundingVerdict:
 
     def test_a_location_with_no_arithmetic_is_refuted(self) -> None:
         assert self._verdict(a_finding(2, 2, "uint256 last;")) == ["no_arithmetic_at_locator"]
+
+
+class TestReentrancyVerdict:
+    """Single-function scope, declared rather than implied."""
+
+    SOURCE = """contract R {
+    uint256 total;
+    mapping(address => uint256) balances;
+
+    function withdrawUnsafe(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+        balances[msg.sender] -= amount;
+    }
+    function withdrawSafe(uint256 amount) external {
+        balances[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+    function readOnly(address to) external {
+        IERC20(to).balanceOf(to);
+    }
+}
+"""
+
+    def _verdict(self, finding: Finding) -> list[str]:
+        detector = ReentrancyDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_a_write_after_a_transfer_stands(self) -> None:
+        assert self._verdict(a_finding(6, 6, "payable(msg.sender).transfer(amount);")) == []
+
+    def test_writing_before_the_call_is_refuted(self) -> None:
+        assert self._verdict(a_finding(11, 11, "payable(msg.sender).transfer(amount);")) == [
+            "no_state_written_after_the_call"
+        ]
+
+    def test_a_location_with_no_call_is_refuted(self) -> None:
+        assert self._verdict(a_finding(2, 2, "uint256 total;")) == ["no_call_at_locator"]
+
+    def test_an_ordinary_member_call_is_refuted(self) -> None:
+        # Not a language-level hand-off of control, so re-entry through it is
+        # not what this tier can see.
+        assert self._verdict(a_finding(14, 14, "IERC20(to).balanceOf(to);")) == [
+            "call_is_not_a_language_level_transfer"
+        ]
+
+
+class TestSlippageVerdict:
+    """Where the unscoped predicate gets scoped, countably."""
+
+    SOURCE = """contract S {
+    function swapUnbounded(uint256 amount, address[] calldata path) external {
+        router.swapExactTokensForTokens(amount, 0, path, address(this), block.timestamp);
+    }
+    function approveZero(address token) external {
+        IERC20(token).approve(address(router), 0);
+    }
+    function reset() external {
+        counter.set(0);
+    }
+}
+"""
+
+    def _verdict(self, finding: Finding) -> list[str]:
+        detector = SlippageDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [check.check for check in detector.verdict(ctx, finding, [])]
+
+    def test_a_zero_minimum_in_a_multi_argument_call_stands(self) -> None:
+        assert self._verdict(a_finding(3, 3, "router.swapExactTokensForTokens(")) == []
+
+    def test_a_two_argument_call_passing_zero_also_stands(self) -> None:
+        # Deliberately admitted: the verdict layer scopes by argument count, not
+        # by the callee's name, because a name cannot survive an aliased import.
+        # An approval of zero is a false positive this detector pays for (§7.2)
+        # rather than one it suppresses by guessing at the callee.
+        assert self._verdict(a_finding(6, 6, "IERC20(token).approve(")) == []
+
+    def test_a_single_argument_call_is_refuted(self) -> None:
+        assert "call_takes_too_few_arguments_to_be_an_exchange" in self._verdict(
+            a_finding(9, 9, "counter.set(0);")
+        )
+
+    def test_a_location_with_no_call_is_refuted(self) -> None:
+        assert self._verdict(a_finding(1, 1, "contract S {")) == ["no_call_at_locator"]

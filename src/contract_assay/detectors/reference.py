@@ -733,3 +733,123 @@ class ArithmeticRoundingDetector(_SyntacticDetector):
                 )
             ]
         return []
+
+
+class ReentrancyDetector(_SyntacticDetector):
+    """State written after a language-level external call, in one function.
+
+    Built because a working predicate for this class existed with nothing
+    wiring it up -- finished work that ran nowhere, invisible in a score report
+    because a class with an unwired predicate shows zero predictions exactly as
+    a class with no predicate does. A test now fails at commit time if that
+    happens again.
+
+    The single-function scope is the whole of what this sees, and it is declared
+    rather than implied: the cross-function shape, where the call is in one
+    function and the write in another reached from it, is a call graph over the
+    unit and is §4.2's one remaining row for the semantic tier.
+    """
+
+    detector_id = "reference-reentrancy"
+    class_id = VulnerabilityClass.REENTRANCY
+    api_version = "1.1"
+    predicate_ids = frozenset({"state_write_after_raw_external_call"})
+    instruction = (
+        "Find places where contract state is written after control has already left "
+        "the contract, so a callee can re-enter and observe or act on the stale state. "
+        "Report the call site. A call whose caller writes nothing afterwards, or which "
+        "is guarded against re-entry, is not an instance."
+    )
+
+    def class_checks(
+        self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
+    ) -> Sequence[FailedCheck]:
+        calls = [
+            call
+            for call in parsed.calls
+            if self._spans(finding, call.site.start_line, call.site.end_line)
+        ]
+        if not calls:
+            return [_reject("no_call_at_locator", "the stated location contains no call")]
+        if not any(call.is_low_level or call.is_value_transfer for call in calls):
+            return [
+                _reject(
+                    "call_is_not_a_language_level_transfer",
+                    "no call here hands control to an arbitrary address by the language's "
+                    "own means, so re-entry through it is not what this tier can see",
+                )
+            ]
+
+        after = [
+            write
+            for write in parsed.writes
+            if write.writes_state
+            and any(write.site.start_line > call.site.end_line for call in calls)
+        ]
+        if not after:
+            return [
+                _reject(
+                    "no_state_written_after_the_call",
+                    "state is not written after control leaves, so there is nothing for a "
+                    "re-entrant caller to find stale",
+                )
+            ]
+        return []
+
+
+class SlippageDetector(_SyntacticDetector):
+    """A zero minimum passed where a caller should have bounded its loss.
+
+    Built for the same reason as the reentrancy detector: the predicate existed
+    and nothing ran it.
+
+    The predicate is deliberately unscoped -- every literal zero passed to
+    anything -- because recognising a swap through an aliased import and a
+    renamed variable needs a selector, and a selector needs ABI canonicalisation
+    this tier does not have (§2.3). Scoping therefore happens here, where a rule
+    that rejects is recorded and countable rather than hidden inside a predicate
+    that declined to look.
+    """
+
+    detector_id = "reference-slippage"
+    class_id = VulnerabilityClass.SLIPPAGE
+    api_version = "1.1"
+    predicate_ids = frozenset({"call_argument_is_zero_literal"})
+    instruction = (
+        "Find calls that exchange value where the caller accepts any amount in return, "
+        "having passed no lower bound. Report the call site. A call whose minimum is "
+        "computed from a quote, or which exchanges nothing, is not an instance."
+    )
+
+    def class_checks(
+        self, ctx: AnalysisContext, finding: Finding, parsed: Syntax
+    ) -> Sequence[FailedCheck]:
+        calls = [
+            call
+            for call in parsed.calls
+            if self._spans(finding, call.site.start_line, call.site.end_line)
+        ]
+        if not calls:
+            return [_reject("no_call_at_locator", "the stated location contains no call")]
+
+        failures: list[FailedCheck] = []
+        if not any(argument.is_zero_literal for call in calls for argument in call.arguments):
+            failures.append(
+                _reject(
+                    "no_zero_literal_argument",
+                    "no argument here is the literal zero, so no bound was written as an "
+                    "unbounded one",
+                )
+            )
+        # An exchange takes more than one argument. A single-argument call
+        # passing zero is a great many innocent things, and admitting it would
+        # make the class mean "passes zero to anything".
+        if not any(len(call.arguments) >= 2 for call in calls):
+            failures.append(
+                _reject(
+                    "call_takes_too_few_arguments_to_be_an_exchange",
+                    "a call with fewer than two arguments has no separate amount and bound, "
+                    "so a zero among them is not an unbounded exchange",
+                )
+            )
+        return failures

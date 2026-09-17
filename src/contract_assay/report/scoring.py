@@ -136,6 +136,34 @@ class ClassScore:
     invalid_runs: int = 0
     skipped_runs: int = 0
     measured_runs: int = 0
+    completeness_records: int = 0
+    """Negative records for this class, each asserting a file holds no instance.
+
+    The only thing in the corpus that licenses a precision figure. Counted apart
+    from `judged_units` so that "no negative record exists" is distinguishable
+    from "negatives exist and nothing ran against their units" -- two states
+    that would otherwise share the single appearance of a `n/a`.
+    """
+
+    judged_units: int = 0
+    """Units a completeness record covers and something ran against."""
+
+    judged_predictions: int = 0
+    """Predictions made in those units. The denominator of precision."""
+
+    judged_by_strength: Mapping[MatchStrength, int] = field(default_factory=dict)
+    """Matches in judged units, by strength. The numerator of precision."""
+
+    @property
+    def unjudged_predictions(self) -> int:
+        """Predictions the corpus has no standing to call right or wrong.
+
+        Counted and disclosed, never folded into precision. At present this is
+        almost all of them, because the corpus holds no negative records -- which
+        is a fact about the corpus and is stated as one.
+        """
+        return self.predictions - self.judged_predictions
+
     qualified_negatives: int = 0
     """Clean runs resting on a site the deterministic layer could not decide.
 
@@ -172,15 +200,38 @@ class ClassScore:
         return self.predictions - self.matched + self.unverifiable_claims
 
     def precision(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> float | None:
-        """Precision at a strength floor, or None when nothing was claimed.
+        """Precision at a strength floor, over the units the corpus can judge.
 
-        The denominator is every prediction plus every unverifiable claim, not
-        the hits plus the unmatched. A prediction matched at a weaker strength
-        than the floor is a miss at that floor, and leaving it out of the total
-        would raise the figure by discarding the evidence against it.
+        **A positive record does not establish completeness.** It asserts that
+        an instance of its class exists at its location, and says nothing about
+        whether other instances exist elsewhere in the same file. So an
+        unmatched prediction in such a unit is not a false positive -- it is a
+        prediction the corpus has no standing to judge, which is the same
+        standing argument that keeps the findings of an uncovered class out of
+        the matrix entirely (§7.2).
+
+        A **negative** record does establish it: `negative_for` asserts that no
+        instance of that class exists anywhere in the pinned file. Precision is
+        therefore defined over the (unit, class) pairs a negative covers, and
+        computed over predictions in those units only -- matches included, since
+        counting a match from an unjudged unit against a denominator that
+        excludes its siblings would inflate the figure in the other direction.
+
+        Returns None when no unit is judged, which is not the same as "nothing
+        was claimed" and is disclosed as its own thing. Reporting a figure
+        anyway would understate precision by an amount that varies with how
+        thoroughly each unit happens to be annotated -- worst for the most
+        productive predicates, which is the worst available direction.
+
+        The denominator within a judged unit is every prediction plus every
+        unverifiable claim, not the hits plus the unmatched: a prediction
+        matched below the floor is a miss at that floor, and dropping it would
+        raise the figure by discarding the evidence against it.
         """
-        hits = sum(c for s, c in self.by_strength.items() if s.rank >= at_least.rank)
-        claimed = self.predictions + self.unverifiable_claims
+        if not self.judged_units:
+            return None
+        hits = sum(c for s, c in self.judged_by_strength.items() if s.rank >= at_least.rank)
+        claimed = self.judged_predictions + self.unverifiable_claims
         return hits / claimed if claimed else None
 
     def recall(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> float | None:
@@ -381,6 +432,28 @@ class ScoreReport:
                 "reports its own limits by preferring to."
             )
 
+        unjudged = sum(s.unjudged_predictions for s in self.by_class.values())
+        if unjudged:
+            without_negatives = sorted(
+                cls.value
+                for cls, score in self.by_class.items()
+                if score.unjudged_predictions and not score.completeness_records
+            )
+            because = (
+                " No negative record establishes completeness for "
+                + ", ".join(without_negatives)
+                + ", so nothing there licenses a precision figure at all."
+                if without_negatives
+                else ""
+            )
+            parts.append(
+                f"{_plural(unjudged, 'prediction')} fell in a unit no negative record "
+                "covers, so the corpus has no standing to call "
+                f"{'it' if unjudged == 1 else 'them'} right or wrong: a positive record "
+                "asserts an instance at a location, not the absence of others in the "
+                f"same file. Counted here and in no precision figure.{because}"
+            )
+
         qualified = sum(s.qualified_negatives for s in self.by_class.values())
         if qualified:
             parts.append(
@@ -503,7 +576,16 @@ def score(
     approximated from names -- which is a weaker report, and an honest one.
     """
     runs = list(runs)
+    records = list(records)
     truths = [r for r in records if r.is_positive and r.locator is not None]
+
+    # Which files a negative record says hold no instance of a class. The only
+    # thing that licenses a precision figure: a positive record asserts an
+    # instance exists at one location and nothing about the rest of its file.
+    complete_for: dict[VulnerabilityClass, set[str]] = {}
+    for record in records:
+        for cls in record.negative_for:
+            complete_for.setdefault(cls, set()).add(record.pin.path)
 
     by_class: dict[VulnerabilityClass, ClassScore] = {}
     all_matches: list[Match] = []
@@ -569,6 +651,10 @@ def score(
             for finding in run.findings
             if finding.status is CitationStatus.VERIFIED
         ]
+        judged_files = complete_for.get(cls, set())
+        judged = [
+            index for index, prediction in enumerate(predictions) if prediction.file in judged_files
+        ]
         # A claim that failed its citation measured nothing about the source, and
         # costs precision so that emitting many is not free (§7.2).
         uncheckable = sum(
@@ -600,6 +686,9 @@ def score(
                 used_records.add(ri)
 
         strengths: Counter[MatchStrength] = Counter(m.strength for m in assigned.values())
+        judged_strengths: Counter[MatchStrength] = Counter(
+            match.strength for index, match in assigned.items() if index in set(judged)
+        )
         all_matches.extend(assigned.values())
 
         by_class[cls] = ClassScore(
@@ -618,6 +707,12 @@ def score(
             skipped_runs=sum(1 for r in class_runs if r.outcome is Outcome.SKIPPED),
             measured_runs=sum(1 for r in class_runs if r.outcome.is_measurement),
             qualified_negatives=sum(1 for r in class_runs if not r.negative_is_established),
+            completeness_records=sum(1 for r in records if cls in r.negative_for),
+            judged_units=len(
+                {prediction.file for prediction in predictions if prediction.file in judged_files}
+            ),
+            judged_predictions=len(judged),
+            judged_by_strength=dict(judged_strengths),
             exact_unavailable=sum(
                 1
                 for r in class_records

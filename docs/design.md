@@ -567,6 +567,22 @@ a parser: **a capability column written from reasoning is a claim about whoever
 reasoned.** It had been steering the build for weeks, and half a day of fixtures
 moved five rows.
 
+The table was wrong three ways, and the third is the structural one:
+
+1. **Wrong values**, in five of six unaudited rows.
+2. **Wrong three-valuedness** — "the tier closes it" and "nothing closes it"
+   merged under one "no", so a tier built for the second would produce nothing.
+3. **Wrong granularity.** One row per class asks "what does this class need" as
+   though the class had one answer. `denial_of_service`'s five records contain
+   four mechanisms.
+
+The third is why the first two were easy to make. A table with one row per class
+cannot express a class whose answer is plural, so whoever fills it in is forced
+to pick the most salient mechanism and write it as though it were the only one —
+and then the row reads as complete. The rows above are split where the audit
+found a split, and the register (§7.4) is where the rest of a class's mechanisms
+live, because each entry there carries the record that demonstrates it.
+
 The `access_control` row says "partly" and **caller-taint turned out not to
 need the semantic tier at all**, which is worth recording because the
 prediction that it did was written into this document and into a register entry
@@ -1642,7 +1658,48 @@ Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.
 
-### 7.3 A score and a declared limit are different kinds of claim
+### 7.3 What the corpus has standing to judge
+
+A positive record asserts that an instance of its class exists at its location.
+It asserts **nothing** about whether other instances exist elsewhere in the same
+file. So an unmatched prediction in such a unit is not a false positive — it is
+a prediction the corpus has no standing to judge.
+
+This is the same standing argument that keeps an uncovered class's findings out
+of the matrix (§7.2), and it had not been applied here for a plain reason:
+those classes had no records at all, and these have some. **Having records for a
+class is not the corpus being complete for that class in those units**, and the
+scorer was treating the first as the second.
+
+A **negative** record does establish completeness: `negative_for` asserts that
+no instance of that class exists anywhere in the pinned file. So the line is
+computable rather than a matter of judgement:
+
+> Precision is defined over the (unit, class) pairs a negative record covers.
+> Everywhere else an unmatched prediction is **unjudged**, and enters no
+> precision figure.
+
+Matches in unjudged units are excluded too. Counting a hit against a denominator
+that excludes its siblings would inflate the figure in the other direction,
+which is the mirror of the error being corrected.
+
+Without this, every precision number is understated by an amount that varies
+with how thoroughly each unit happens to be annotated — and understated *most*
+for the most productive predicates, which is the worst available direction. The
+figures this had already produced were 25%, 4% and 50%, none of which the corpus
+could license.
+
+Two states are counted apart so they do not share the single appearance of a
+`n/a`: no negative record exists for the class at all, and negatives exist but
+nothing ran against the units they cover. The first is a gap in the corpus and
+the second is a gap in the run, and they call for different work.
+
+At present the corpus holds no negative records, so **precision is unavailable
+everywhere** and every prediction is unjudged. That is a fact about the corpus
+rather than about the detectors, and stating it is the only honest form
+available.
+
+### 7.4 A score and a declared limit are different kinds of claim
 
 A score is an estimate from a sample and it moves with the sample: add a hundred
 records of a class and its recall becomes some other number. A **declared

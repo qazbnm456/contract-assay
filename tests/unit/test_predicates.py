@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pytest
 
+from contract_assay.detectors import reference
+from contract_assay.detectors.base import Detector
 from contract_assay.evidence.predicates import (
     coverage_by_class,
     predicates,
@@ -884,3 +886,58 @@ class TestDividingBeforeMultiplying:
 
     def test_multiplication_alone_does_not(self) -> None:
         assert not self._fires("a * b")
+
+
+class TestEveryPredicateIsWiredUp:
+    """A predicate nothing references is finished work that runs nowhere.
+
+    It is invisible in a score report, because a class with an unwired predicate
+    shows zero predictions exactly as a class with no predicate does -- two
+    states sharing one appearance again. A report would surface it after a run;
+    this is knowable without running anything, so it fails at commit time
+    instead.
+
+    The allowlist turns "deliberately not wired yet" from an invisible state
+    into a named decision. And the detectors are *discovered* rather than
+    listed: a hand-written list weakens itself the first time somebody adds a
+    detector and does not add it here, which is the same silent decay the test
+    exists to catch.
+    """
+
+    UNWIRED_ON_PURPOSE: frozenset[str] = frozenset()
+    """Predicates with no detector, each here because somebody decided so."""
+
+    @staticmethod
+    def _detectors() -> list[type[Detector]]:
+        found = [
+            member
+            for member in vars(reference).values()
+            if isinstance(member, type)
+            and issubclass(member, Detector)
+            and getattr(member, "detector_id", None) is not None
+        ]
+        assert found, "no detectors discovered, so this test would pass vacuously"
+        return found
+
+    def test_every_predicate_is_referenced_by_a_detector(self) -> None:
+        wired = {
+            predicate_id
+            for detector in self._detectors()
+            for predicate_id in detector.predicate_ids  # type: ignore[attr-defined]
+        }
+        orphans = {spec.predicate_id for spec in predicates()} - wired
+        assert orphans <= self.UNWIRED_ON_PURPOSE, (
+            f"predicates no detector references: {sorted(orphans - self.UNWIRED_ON_PURPOSE)}. "
+            "Wire them to a detector, or add them to UNWIRED_ON_PURPOSE with a reason."
+        )
+
+    def test_every_detector_references_predicates_that_exist(self) -> None:
+        # The other direction, which fails just as silently: a detector naming a
+        # predicate id that no longer exists reports no evidence and looks like
+        # a detector that found nothing.
+        known = {spec.predicate_id for spec in predicates()}
+        for detector in self._detectors():
+            missing = detector.predicate_ids - known  # type: ignore[attr-defined]
+            assert not missing, (
+                f"{detector.__name__} names predicates that do not exist: {sorted(missing)}"
+            )
