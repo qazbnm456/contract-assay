@@ -2488,6 +2488,26 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### Nine that were one false fact
+
+The nine reentrancy predictions were opened expecting another split and found
+something worse: `_distributeFunds` is a `.call` followed by one `emit` and
+nothing else, and it was reported as a reentrancy. The write it was matched
+against is in *another function further down the file*. `parsed.writes` is the
+whole unit, and the verdict asked only that a state write sit at a greater line
+number than the call -- so the class had become "there is a low-level call here
+and something writes state later in the file".
+
+Scoping the search to the transfer was this morning's fix for the other half of
+the same condition, and it left this half in place. Sixth instance of the shape,
+first in code written while fixing the fifth, and the predicate has had
+`_inside(host, ...)` the whole time. Nine predictions to zero.
+
+That leaves the adjudication queue at 6 over the whole corpus, from 110. Of the
+adjudications avoided, the tally: two slippage, eleven access control, nine
+reentrancy -- against one denial of service that was genuinely needed. **Every
+one of those was a verdict claiming something its own evidence layer did not.**
+
 #### The eleven that were left
 
 Access control's remaining eleven predictions were going to be adjudicated by
@@ -2598,6 +2618,12 @@ of the eight have recall at or near zero and say why, which is the state §7.5
 exists to make reportable rather than the state it exists to reward. The one
 thing it does buy is that a reader can tell a detector's blindness from its
 silence, for every record in the corpus.
+
+It did not stay at zero by itself. The next two narrowings each opened a miss --
+a record whose only match had been at *file* strength, and one whose guard is
+present and insufficient -- and the count is the thing that said so. A
+narrowing that buys precision by hiding a miss is the failure declaring exists
+to prevent, and the declaration has to be written in the same change.
 
 ### 7.7 The boundary a submission surface is built on
 

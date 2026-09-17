@@ -388,7 +388,10 @@ class AccessControlDetector(_SyntacticDetector):
                 "writing storage: the function mints, transfers or delegates, so "
                 "whether it changes state depends on what the callee does"
             ),
-            demonstrated_by=("rewardshypervisor-access-control-13849006",),
+            demonstrated_by=(
+                "2024-08-phi-access-control-29dcde94",
+                "rewardshypervisor-access-control-13849006",
+            ),
             isolated=False,
             unpatched_because=(
                 "knowing that a call changes state means knowing what the callee does, "
@@ -408,6 +411,32 @@ class AccessControlDetector(_SyntacticDetector):
                 "address-pinned callee's verified source. NOT the semantic tier, which "
                 "cannot read code the analysed unit does not contain, and which is why "
                 "this is stated rather than derived from the kind"
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a guard that is present and insufficient. The function reads "
+                "`msg.sender` and compares it, so the verdict declines under "
+                "`host_reads_the_sender`: a reference is not a guard, and this tier "
+                "cannot tell a sufficient guard from an insufficient one"
+            ),
+            demonstrated_by=("alchemix-v2-dao-access-control-d4846e54",),
+            isolated=True,
+            unpatched_because=(
+                "this is the price of the narrowing that made the class scoreable. "
+                "Declining every function that reads the sender is what keeps 47 "
+                "permissionless-by-design functions out of the pool -- "
+                "`balances[msg.sender] += msg.value` writes state and reads the sender "
+                "while guarding nothing -- and the same rule costs every record whose "
+                "guard is present and wrong. Buying precision by hiding that miss is "
+                "what declaring it prevents."
+            ),
+            closed_when=(
+                "predicates for a guard's *sufficiency* rather than its presence, one "
+                "shape at a time. `authorisation_reads_its_answer_from_caller_supplied_"
+                "address` is the first and closed one such shape; this record is a "
+                "second it does not cover"
             ),
         ),
     )
@@ -1076,16 +1105,28 @@ class ReentrancyDetector(_SyntacticDetector):
                 )
             ]
 
-        # After a *transfer*, not after any call. Quantified over `calls` this
-        # accepted a span holding an internal call with a write below it and a
-        # low-level call somewhere else entirely -- two conditions met by two
-        # sites, which is the same defect the slippage verdict had. The class is
-        # a claim about one call and the state written after it.
+        # After a *transfer*, and inside the function that made it. Both halves
+        # were missing and the second is the worse one: `parsed.writes` is the
+        # whole unit, so "a write after the call" was satisfied by any state
+        # write further down the *file*. `_distributeFunds` -- a `.call` followed
+        # by one `emit` and nothing else -- was reported as a reentrancy because
+        # another function below it writes state.
+        #
+        # Scoping to `transfers` was today's fix for the first half, and it left
+        # the second in place, which is the sixth instance of this shape and the
+        # first in code written while fixing the fifth. The predicate has had
+        # `_inside(host, ...)` all along.
         after = [
             write
             for write in parsed.writes
             if write.writes_state
-            and any(write.site.start_line > call.site.end_line for call in transfers)
+            and any(
+                write.site.start_line > call.site.end_line
+                and host.site.start_line <= write.site.start_line <= host.site.end_line
+                for call in transfers
+                for host in parsed.functions
+                if host.site.start_line <= call.site.start_line <= host.site.end_line
+            )
         ]
         if not after:
             return [

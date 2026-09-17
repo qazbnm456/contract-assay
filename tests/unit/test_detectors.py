@@ -957,11 +957,19 @@ class TestTheDeclaredLimitsAreCheckable:
         assert "semantic tier" in closed[0].closed_when
         assert "was not needed" in closed[0].closed_by  # type: ignore[operator]
 
-    def test_one_entry_remains_open_and_says_what_would_close_it(self) -> None:
+    def test_every_open_entry_says_what_would_close_it(self) -> None:
+        # It was one entry, and asserting the count made the test about the
+        # register's size rather than its contents. A second opened when the
+        # verdict started declining every function that reads `msg.sender`:
+        # that narrowing is what keeps permissionless-by-design functions out of
+        # the pool, and its price is every record whose guard is present and
+        # wrong. What is worth pinning is that each entry says what closes it,
+        # and that the indeterminacy names a reason other than the tier.
         open_limits = [b for b in AccessControlDetector().declared_limits if not b.closed_by]
-        assert len(open_limits) == 1
-        assert open_limits[0].kind is LimitKind.INDETERMINACY
-        assert "NOT the semantic tier" in open_limits[0].closed_when
+        assert open_limits
+        assert all(entry.closed_when.strip() for entry in open_limits)
+        [indeterminacy] = [b for b in open_limits if b.kind is LimitKind.INDETERMINACY]
+        assert "NOT the semantic tier" in indeterminacy.closed_when
 
     DETECTORS_WITH_LIMITS: ClassVar[list[type]] = [
         AccessControlDetector,
