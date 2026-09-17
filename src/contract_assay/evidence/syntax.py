@@ -543,6 +543,99 @@ class Syntax:
         return tuple(found)
 
     @cached_property
+    def length_aliases(self) -> Mapping[int, Mapping[str, str]]:
+        """Local names assigned a collection's length, keyed by declaring line.
+
+        `uint256 n = items.length;` and then a loop bounded by `n`. Following
+        that is one assignment inside one body -- the same depth-one tracking
+        that caller-taint turned out to need, and which was assumed to require a
+        compiled backend both times.
+
+        An alias assigned more than once in a body is **omitted**: the second
+        assignment may come from anywhere, and a name whose value depends on
+        control flow is exactly what def-use is for. Refusing beats guessing,
+        which is the discipline the declaration index already applies to an
+        overloaded name.
+        """
+        assignments: dict[str, list[tuple[int, str]]] = {}
+        for statement in self._nodes("variable_declaration_statement", "expression_statement"):
+            targets: list[str] = []
+            source: Node | None = None
+            for declaration in self._descendants(statement, "variable_declaration"):
+                targets += [self.text(i) for i in declaration.children if i.type == "identifier"]
+            if targets:
+                source = next((c for c in statement.children if c.type == "expression"), None)
+            else:
+                # A plain re-assignment, `n = other.length;`, which carries no
+                # `variable_declaration`. Collected because *not* collecting it
+                # made a twice-assigned alias look singly assigned, and the
+                # tracking would then follow the declaration while ignoring the
+                # assignment that actually reached the loop.
+                for assignment in self._descendants(statement, "assignment_expression"):
+                    left = next((c for c in assignment.children if c.is_named), None)
+                    if left is None:
+                        continue
+                    names = [self.text(i) for i in self._descendants(left, "identifier")]
+                    if len(names) == 1:
+                        targets += names
+                        source = assignment
+            if not targets or source is None:
+                continue
+            members = self._descendants(source, "member_expression")
+            lengths = [m for m in members if self.text(m).endswith(".length")]
+            if len(lengths) != 1 or len(members) != 1:
+                continue
+            collection = self.text(lengths[0]).removesuffix(".length").strip()
+            if not collection.isidentifier():
+                continue
+            for target in targets:
+                assignments.setdefault(target, []).append(
+                    (statement.start_point[0] + 1, collection)
+                )
+
+        by_function: dict[int, dict[str, str]] = {}
+        for function in self.functions:
+            scoped = {}
+            for name, sites in assignments.items():
+                inside = [
+                    collection
+                    for line, collection in sites
+                    if function.site.start_line <= line <= function.site.end_line
+                ]
+                # Assigned once in this body, and nowhere else in the file under
+                # the same name -- either would make the value control-flow
+                # dependent, which this depth cannot follow.
+                if len(inside) == 1 and len(sites) == 1:
+                    scoped[name] = inside[0]
+            by_function[function.site.start_line] = scoped
+        return by_function
+
+    def callers_of(self, name: str) -> tuple[str, ...]:
+        """Functions in this unit that call `name` with no receiver.
+
+        Name lookup, which is what resolving a call within one file amounts to
+        when the name is declared once and carries no overload. Compilation
+        earns its place on an inheritance chain, a library, or an overload set;
+        `declarations_of` is how a caller checks that none of those apply before
+        trusting this.
+        """
+        found = {
+            self.host_at(call.site.start_line).function
+            for call in self.calls
+            if call.callee == name and call.receiver is None
+        }
+        return tuple(sorted(f for f in found if f))
+
+    def declarations_of(self, name: str) -> int:
+        """How many function-like declarations in this unit carry `name`.
+
+        More than one is an overload or an override, and a syntactic answer must
+        refuse rather than pick -- the same rule the declaration index applies
+        when a report names an overloaded function.
+        """
+        return sum(1 for f in self.functions if f.declaration.names[0] == name)
+
+    @cached_property
     def destructurings(self) -> tuple[Destructuring, ...]:
         """Every multi-return unpacked into named bindings, with the call behind it.
 

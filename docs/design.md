@@ -551,16 +551,50 @@ not reachable at any tier over one unit. That is a much smaller justification
 than "six of nine classes need the compiled backend", which is what the
 unaudited column said and what the build order had been following.
 
-**The one row is worth more than one row, and that was measured afterwards.**
-Running the newly-collapsed predicates against the corpus found that the *same*
-missing capability — a call graph over the unit — also blocks
-`denial_of_service`, in two of its five records: one where the append that grows
-the iterated collection sits in an internal function, and one where the loop
-itself is in an internal callee of the recorded entry point. So the tier's
-justification is a single mechanism serving at least two classes with five
-records behind it, not a single row with one. The audit removed the tier from
-contention on a false basis and the measurement put it back on a true one, which
-is the difference between "it is probably not soon" and a price worth naming.
+**That last row was then checked too, and it collapsed as well.** Running the
+newly-collapsed predicates found that the same capability appeared to block
+`denial_of_service` in two of its five records, and the claim "these need a call
+graph from the semantic tier" was written from reading the records rather than
+from a fixture — which is this table's own error, one layer down.
+
+A call graph's job is resolving which function a call names. **Within one file,
+with no inheritance and no overload, that is name lookup**, and name lookup is
+syntactic. What needs compilation is resolution through an inheritance chain,
+through a library, or between overloads. Measured on the two records: every name
+in each chain is declared exactly once in its file, the internal appender is
+called unqualified from two `external` functions, and the loop bound
+`n = collection.length` is a single assignment in one body. Both were built
+syntactically, and the first record went from a miss to an exact match.
+
+The soundness condition is checkable and is enforced: a name declared more than
+once is an overload or an override, and the predicate refuses rather than
+picking — the rule the declaration index already applies to an overloaded name.
+An alias assigned twice is refused for the same reason, since which assignment
+reached the loop is control-flow dependent.
+
+**And the tier's reach was measured, which had never been done.** Compilability
+was parked at the start and stayed parked, and it cannot be measured with a
+compiler that is not installed. Import resolution is not circular: a parse and a
+set membership test, and it bounds the reach from above, because a record whose
+imports do not resolve within the available bytes will not compile however well
+the toolchain is managed.
+
+Across the corpus, **two records in twelve** have every direct import resolvable
+in their pinned bytes. The rest reference git submodules and package
+dependencies — `lib/forge-std/`, `openzeppelin-contracts/`,
+`@chainlink/contracts-ccip/` — which live outside the pinned tree at versions
+the pin does not state. One of the two that resolve is the address-pinned
+record, whose verified-source manifest is self-contained by construction.
+
+Which surfaces a third structural thing: **`SourcePin` pins one file and not a
+dependency set**, so compilability is not merely unmeasured, it is unpinnable as
+the schema stands. Raising the tier's reach is therefore a pinning problem
+before it is a compilation problem, and no amount of toolchain management
+touches it.
+
+So the semantic tier stays unbuilt **on measurement rather than on cost**, which
+is the more durable answer: nothing in the corpus currently needs it that has
+been checked, and it could serve two records if it existed.
 
 The general form, and it is §1.3's rule pointed at this document rather than at
 a parser: **a capability column written from reasoning is a claim about whoever

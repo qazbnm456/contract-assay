@@ -941,3 +941,113 @@ class TestEveryPredicateIsWiredUp:
             assert not missing, (
                 f"{detector.__name__} names predicates that do not exist: {sorted(missing)}"
             )
+
+
+class TestOneHopAndOneAlias:
+    """The two things a register entry said needed the semantic tier.
+
+    Measured before building: a call graph's job is resolving which function a
+    call names, and within one file with no overload that is name lookup, which
+    is syntactic. A local assigned a collection's length once in a body is the
+    same depth-one tracking caller-taint turned out to need. Both were filed as
+    tier work by reasoning from the records, which is §4.2's error one layer
+    down.
+    """
+
+    ID = "loop_bounded_by_externally_growable_storage_array"
+
+    HOP = """contract H {
+    address[] voters;
+
+    function payAll() external {
+        for (uint256 i = 0; i < voters.length; i++) { payable(voters[i]).transfer(1); }
+    }
+    function _add(address who) internal { voters.push(who); }
+    function join() external { _add(msg.sender); }
+}
+"""
+
+    ALIAS = """contract A {
+    address[] voters;
+
+    function payAll() external {
+        uint256 n = voters.length;
+        for (uint256 i = 0; i < n; i++) { payable(voters[i]).transfer(1); }
+    }
+    function join() external { voters.push(msg.sender); }
+}
+"""
+
+    def _hits(self, source: str) -> list[dict[str, object]]:
+        return [{**e.detail, **e.diagnostic} for e in evidence(source) if e.predicate == self.ID]
+
+    def test_an_internal_appender_an_outsider_reaches_fires(self) -> None:
+        [hit] = self._hits(self.HOP)
+        assert hit["arrays"] == "voters"
+        assert hit["appenders"] == "_add via join"
+
+    def test_an_internal_appender_nobody_reaches_does_not(self) -> None:
+        source = self.HOP.replace("    function join() external { _add(msg.sender); }\n", "")
+        assert self._hits(source) == []
+
+    def test_an_overloaded_appender_is_refused_rather_than_picked(self) -> None:
+        # More than one declaration is an overload or an override, where name
+        # lookup stops being sound. Refusing is the rule the declaration index
+        # already applies to an overloaded name in a report.
+        source = self.HOP.replace(
+            "    function join() external { _add(msg.sender); }\n",
+            "    function _add(address who, uint256 n) internal { voters.push(who); }\n"
+            "    function join() external { _add(msg.sender); }\n",
+        )
+        assert self._hits(source) == []
+
+    def test_a_bound_through_a_local_alias_fires(self) -> None:
+        [hit] = self._hits(self.ALIAS)
+        assert hit["bound_through_a_local"] is True
+        assert hit["arrays"] == "voters"
+
+    def test_an_alias_assigned_twice_is_refused(self) -> None:
+        # A name whose value depends on control flow is what def-use is for, and
+        # guessing which assignment reached the loop would be the approximation
+        # this project refuses everywhere else.
+        source = self.ALIAS.replace(
+            "        uint256 n = voters.length;\n",
+            "        uint256 n = voters.length;\n        n = admins.length;\n",
+        ).replace("    address[] voters;", "    address[] voters;\n    address[] admins;")
+        assert self._hits(source) == []
+
+    def test_a_direct_bound_still_fires(self) -> None:
+        # The path that already worked, kept under test so the extension cannot
+        # quietly replace it.
+        [hit] = self._hits(self.HOP)
+        assert hit["bound_through_a_local"] is False
+
+
+class TestNameLookupWithinAUnit:
+    """What resolving a call amounts to when nothing overloads the name."""
+
+    SOURCE = """contract N {
+    function _helper() internal {}
+    function caller() external { _helper(); }
+    function other() internal { _helper(); }
+    function _twice(uint256 a) internal {}
+    function _twice(uint256 a, uint256 b) internal {}
+}
+"""
+
+    def test_callers_are_found_by_name(self) -> None:
+        syntax = Syntax.of(self.SOURCE)
+        assert syntax is not None
+        assert syntax.callers_of("_helper") == ("caller", "other")
+
+    def test_a_qualified_call_is_not_a_caller_in_this_unit(self) -> None:
+        syntax = Syntax.of("contract N {\n    function f() external { other._helper(); }\n}\n")
+        assert syntax is not None
+        assert syntax.callers_of("_helper") == ()
+
+    def test_an_overload_set_is_countable(self) -> None:
+        # The condition that decides whether name lookup is sound.
+        syntax = Syntax.of(self.SOURCE)
+        assert syntax is not None
+        assert syntax.declarations_of("_helper") == 1
+        assert syntax.declarations_of("_twice") == 2

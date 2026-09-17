@@ -517,6 +517,18 @@ class DenialOfServiceDetector(_SyntacticDetector):
                 "row for the semantic tier, and now has five records behind it rather "
                 "than the reentrancy row alone"
             ),
+            # The prediction above is left as written and the outcome recorded
+            # beside it: the pair is the record of the error. It said a call
+            # graph from the semantic tier. A call graph's job is resolving
+            # which function a call names, and within one file with no overload
+            # that is name lookup -- so the reachability was syntactic all
+            # along. Sixth premise to collapse on the same check, and the
+            # second register entry to do so.
+            closed_by=(
+                "name lookup within the unit, guarded by the name resolving to exactly "
+                "one declaration; no tier was needed. The demonstrating record now "
+                "matches at exact strength."
+            ),
         ),
         DeclaredLimit(
             kind=LimitKind.BLINDNESS,
@@ -527,11 +539,20 @@ class DenialOfServiceDetector(_SyntacticDetector):
             demonstrated_by="alchemix-v2-dao-denial-of-service-6b54ee07",
             isolated=False,
             unpatched_because=(
-                "following the assignment is def-use inside a function. Matching the "
-                "local's name against collection names would be name-based inference of "
-                "the kind §2.3 forbids."
+                "the capability this entry named is now built and works -- a local "
+                "assigned a collection's length once in a body is followed, and an "
+                "alias assigned twice is refused rather than guessed. The record still "
+                "misses, and for a different reason than this entry gave: the defect's "
+                "loop is in an internal callee of the recorded function, so the "
+                "predicted location is a different function from the recorded one. That "
+                "is a locator question rather than a detection one, and it is restated "
+                "here rather than closed because the miss is real and its cause moved."
             ),
-            closed_when="def-use within a function body",
+            closed_when=(
+                "a rule for which location to report when the iteration is in a callee "
+                "of the recorded entry point -- the loop, the entry point, or both. Not "
+                "a tier matter: the detection already works."
+            ),
         ),
         DeclaredLimit(
             kind=LimitKind.BLINDNESS,

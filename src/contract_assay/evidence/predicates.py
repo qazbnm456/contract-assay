@@ -663,13 +663,55 @@ def _loop_bounded_by_externally_growable_storage_array(
         appender = next(
             (f for f in syntax.functions if f.declaration.names[0] == host.function), None
         )
-        if appender is not None and appender.is_externally_reachable:
+        if appender is None:
+            continue
+        if appender.is_externally_reachable:
             growable[call.receiver] = host.function
+            continue
+        # One hop through an internal appender, which the first version of this
+        # predicate could not see and which was filed as needing a call graph
+        # from the semantic tier. Measured: within one file, resolving a call is
+        # name lookup, and it is sound exactly when the name is declared once --
+        # more than one is an overload or an override, where a syntactic answer
+        # must refuse rather than pick.
+        if syntax.declarations_of(host.function) != 1:
+            continue
+        reachable = [
+            caller
+            for caller in syntax.callers_of(host.function)
+            if syntax.declarations_of(caller) == 1
+            and next(
+                (
+                    f.is_externally_reachable
+                    for f in syntax.functions
+                    if f.declaration.names[0] == caller
+                ),
+                False,
+            )
+        ]
+        if reachable:
+            growable[call.receiver] = f"{host.function} via {reachable[0]}"
 
     found: list[EvidenceRef] = []
     for loop in syntax.loops:
-        bounded_by = sorted(frozenset(loop.bound_identifiers) & frozenset(growable))
-        if not bounded_by or "length" not in loop.bound_identifiers:
+        host = syntax.host_at(loop.site.start_line)
+        enclosing = next(
+            (f for f in syntax.functions if f.declaration.names[0] == host.function), None
+        )
+        aliases = syntax.length_aliases.get(enclosing.site.start_line, {}) if enclosing else {}
+        # A bound may name the collection directly, or a local assigned its
+        # length once in the same body. The second was filed as needing def-use
+        # from a tier; it is one assignment inside one body.
+        named = set(loop.bound_identifiers) | {
+            aliases[name] for name in loop.bound_identifiers if name in aliases
+        }
+        via_alias = bool(
+            {aliases[name] for name in loop.bound_identifiers if name in aliases} & set(growable)
+        )
+        bounded_by = sorted(named & frozenset(growable))
+        if not bounded_by:
+            continue
+        if "length" not in loop.bound_identifiers and not via_alias:
             continue
         found.append(
             EvidenceRef(
@@ -679,6 +721,7 @@ def _loop_bounded_by_externally_growable_storage_array(
                 detail={
                     "bounded_array_count": len(bounded_by),
                     "array_is_dynamic": True,
+                    "bound_through_a_local": via_alias,
                 },
                 diagnostic={
                     "arrays": ",".join(bounded_by),
