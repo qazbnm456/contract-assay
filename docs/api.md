@@ -376,6 +376,28 @@ where one is waiting on adjudication is no ranking at all.
 states what the exercise values. Without it the per-class figures are still
 reported and the aggregate is refused, with that as its stated reason.
 
+`--predictions-per-unit` is the same kind of parameter and is also not supplied
+by default. It scores at most that many verified findings per source unit per
+class, in the order the runs returned them, and reports the rest as
+`capped_predictions`. It exists because **precision waits on adjudication and
+adjudication is somebody's afternoon**: a submission that proposed every
+declaration in every file would buy itself an unbounded amount of that, and the
+resulting queue is one nobody works through. A cap states how much adjudication
+the exercise will fund.
+
+Two things about where it is enforced. It is enforced **here**, at scoring,
+because this is the only layer that sees a whole submission's runs at once — a
+cap applied per run cannot see that two detectors for one class already used the
+quota between them, and a cap applied by whatever *ran* the submission is a cap
+inside the process running the code it limits. And the order is the submission's
+own: a harness that puts its best finding first is making exactly the choice the
+cap asks it to make, so re-ranking for it would take the choice away and then
+charge it for the result.
+
+`rank` declines to rank rows scored under different caps, for the same reason it
+declines rows under different baseline models: their precisions are over
+different pools.
+
 ### What the documents guarantee
 
 Both documents carry `schema_version`, `engine_version` and a `corpus` digest

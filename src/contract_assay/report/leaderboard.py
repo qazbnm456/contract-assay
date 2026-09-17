@@ -293,6 +293,10 @@ def leaderboard(
     exercise owes -- unadjudicated predictions, or a class the corpus does not
     cover -- rather than anything the submission did.
 
+    Submissions scored under different per-unit prediction caps are not ranked
+    against each other either, for the same reason: their precisions are over
+    different pools.
+
     Ties keep a stable order by submission id so that two runs of the same
     inputs produce the same table.
     """
@@ -323,6 +327,27 @@ def leaderboard(
                 over=wanted,
                 at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
             )
+
+    caps = {score.report.predictions_per_unit for score in scores}
+    if len(caps) > 1:
+        # The same argument as the baseline check, on a different parameter. A
+        # precision computed over three predictions per unit and one computed
+        # over every prediction a submission cared to make are different
+        # measurements, and a table that put them in one column would be
+        # comparing how much adjudication each was allowed to consume.
+        stated = ", ".join(
+            "uncapped" if cap is None else str(cap) for cap in sorted(caps, key=lambda c: c or 0)
+        )
+        reason = (
+            f"these submissions were scored under different per-unit prediction caps ({stated}), "
+            "so their precisions are over different pools"
+        )
+        return Leaderboard(
+            unrankable=tuple(sorted(scores, key=lambda s: s.submission_id)),
+            incomparable={score.submission_id: reason for score in scores},
+            over=wanted,
+            at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
+        )
 
     rankable: list[tuple[float, SubmissionScore]] = []
     unrankable: list[SubmissionScore] = []

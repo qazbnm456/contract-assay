@@ -155,6 +155,7 @@ def _class_document(
         "false_negatives": score.false_negatives,
         "false_positives": score.false_positives,
         "unverifiable_claims": score.unverifiable_claims,
+        "capped_predictions": score.capped_predictions,
         "hits_by_strength": {
             strength.value: count for strength, count in sorted(score.by_strength.items())
         },
@@ -225,6 +226,12 @@ def score_document(
         "engine_version": __version__,
         "submission_id": submission.submission_id,
         "strength_floor": submission.at_least.value,
+        # Beside the weights and the floor, because it is the same kind of
+        # thing: a parameter of the exercise, without which the figures below
+        # have no stated basis. A precision over three predictions per unit and
+        # one over every prediction a submission cared to make are different
+        # measurements.
+        "predictions_per_unit": report.predictions_per_unit,
         "weights": {level.value: weight for level, weight in sorted(submission.weights.items())},
         "corpus": corpus_fingerprint(records),
         "models": _models(report),
@@ -309,6 +316,12 @@ def leaderboard_document(
         "schema_version": SCHEMA_VERSION,
         "engine_version": __version__,
         "strength_floor": board.at_least.value,
+        # One value, because `leaderboard` declines to rank rows that disagree
+        # about it. Stated here so a board can be re-derived without opening a
+        # row's report.
+        "predictions_per_unit": next(
+            (row.score.report.predictions_per_unit for row in board.ranked), None
+        ),
         "over_classes": [cls.value for cls in board.over],
         "corpus": corpus_fingerprint(records),
         "baseline": baseline,

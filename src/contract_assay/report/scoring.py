@@ -176,6 +176,19 @@ class ClassScore:
     """Claims that failed their citation check. They measured nothing and still cost
     precision, so that emitting many is not free (§7.2)."""
 
+    capped_predictions: int = 0
+    """Verified findings this class produced that a per-unit cap did not score.
+
+    Zero unless `score` was given `predictions_per_unit`. Published rather than
+    absorbed, for the same reason the runner publishes its discarded count: a cap
+    that silently ate a submission's best finding would be a trap, and a
+    participant should be able to see that the cap bit.
+
+    These enter no confusion matrix and no adjudication queue, which is the whole
+    purpose -- every prediction has to be adjudicated before precision exists for
+    its class, so an unbounded pool is a queue nobody can work through.
+    """
+
     false_negatives: int = 0
     invalid_runs: int = 0
     skipped_runs: int = 0
@@ -361,6 +374,17 @@ class ScoreReport:
     deterministic_runs: int = 0
     """Runs whose findings came from code rather than a model, as they declared."""
 
+    predictions_per_unit: int | None = None
+    """The per-unit-per-class cap these figures were computed under, if any.
+
+    Carried on the report because a precision computed over three predictions
+    per unit and one computed over every prediction a submission cared to make
+    are not the same measurement, and nothing else in the document would say
+    which happened. `None` is the benchmark's default: a cap states how much
+    adjudication an exercise is willing to fund, which is a property of the
+    exercise and not of the instrument.
+    """
+
     unjudged: tuple[Unjudged, ...] = ()
     """Predictions no negative record judges, per class. See `Unjudged`."""
 
@@ -493,6 +517,18 @@ class ScoreReport:
             parts.append(
                 f"{_plural(unavailable_fn, 'comparison')} could not resolve a signature, so "
                 "function-strength matching was unavailable there."
+            )
+
+        if self.predictions_per_unit is not None:
+            dropped = sum(s.capped_predictions for s in self.by_class.values())
+            said = (
+                f"At most {_plural(self.predictions_per_unit, 'prediction')} per source unit "
+                "per class was scored"
+            )
+            parts.append(
+                f"{said}; {_plural(dropped, 'further prediction')} went unscored."
+                if dropped
+                else f"{said}, and no submission reached that limit."
             )
 
         unscoreable = sum(self.unscoreable_claims.values())
@@ -748,13 +784,39 @@ def score(
     runs: Iterable[DetectorRun],
     records: Iterable[CorpusRecord],
     resolve: SourceResolver | None = None,
+    *,
+    predictions_per_unit: int | None = None,
 ) -> ScoreReport:
     """Score runs against ground truth, per class and stratified.
 
     `resolve` supplies source so that function signatures can be compared. Left
     out, function-strength matching is reported as unavailable rather than
     approximated from names -- which is a weaker report, and an honest one.
+
+    `predictions_per_unit` scores at most that many verified findings per source
+    unit per class, in the order the runs and their findings arrived. It exists
+    because **every prediction has to be adjudicated before precision exists for
+    its class**, so an uncapped pool is a queue nobody can work through -- and a
+    submission that proposed every declaration in every file would buy itself an
+    unbounded amount of somebody else's labour.
+
+    Enforced here rather than by whatever ran the submission, because this is the
+    only layer that sees a whole submission's runs at once. A cap applied by the
+    runner is a cap applied inside the process running the code it limits, which
+    is a convention; a cap applied per run cannot see that two detectors for one
+    class already used the quota between them.
+
+    The order is the submission's own and is not reordered: a harness that puts
+    its best finding first is making exactly the choice the cap asks it to make,
+    and re-ranking for it would take the choice away and then charge it for the
+    result. `None` -- the default -- caps nothing, because a cap states how much
+    adjudication an exercise will fund and the benchmark is not the exercise.
     """
+    if predictions_per_unit is not None and predictions_per_unit < 1:
+        raise ValueError(
+            "predictions_per_unit must be at least 1: a cap of zero scores nothing "
+            "and would report every submission as having found nothing"
+        )
     runs = list(runs)
     records = list(records)
     truths = [r for r in records if r.is_positive and r.locator is not None]
@@ -869,12 +931,26 @@ def score(
         class_records = [r for r in truths if cls in r.classes]
         class_runs = [run for run in runs if run.class_id is cls]
 
-        claimed = [
-            (run.source_id, run.detector_id, finding.finding.locator)
-            for run in class_runs
-            for finding in run.findings
-            if finding.status is CitationStatus.VERIFIED
-        ]
+        # Capped per unit, in the order the runs and their findings arrived. The
+        # count is per `source_id` and spans every run in the class, because two
+        # detectors for one class can use the quota between them -- a cap applied
+        # per run could not see that, and a class quantified over a set gets
+        # satisfied by different members.
+        claimed: list[tuple[str, str, Locator]] = []
+        capped = 0
+        per_unit: Counter[str] = Counter()
+        for run in class_runs:
+            for finding in run.findings:
+                if finding.status is not CitationStatus.VERIFIED:
+                    continue
+                if (
+                    predictions_per_unit is not None
+                    and per_unit[run.source_id] >= predictions_per_unit
+                ):
+                    capped += 1
+                    continue
+                per_unit[run.source_id] += 1
+                claimed.append((run.source_id, run.detector_id, finding.finding.locator))
         predictions = [locator for _, _, locator in claimed]
         judged_files = complete_for.get(cls, set())
         adjudications = adjudicated_for.get(cls, [])
@@ -953,6 +1029,7 @@ def score(
             predictions=len(predictions),
             by_strength=dict(strengths),
             unverifiable_claims=uncheckable,
+            capped_predictions=capped,
             false_negatives=len(class_records) - len(used_records),
             missed_record_ids=tuple(
                 record.record_id
@@ -1003,6 +1080,7 @@ def score(
             )
         ),
         deterministic_runs=deterministic_runs,
+        predictions_per_unit=predictions_per_unit,
         unjudged=tuple(all_unjudged),
         unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},
         unscoreable_runs=dict(sorted(unscoreable_runs.items())),

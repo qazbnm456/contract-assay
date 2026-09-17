@@ -346,3 +346,48 @@ class TestTheClassSetIsStated:
         board = leaderboard([under("other", "bob")], baseline="agreed")
         assert "1 could not be ranked and is listed" in board.statement()
         assert "1 of those was not compared" in board.statement()
+
+
+def capped_at(cap: int | None, submission_id: str = "alice"):  # type: ignore[no-untyped-def]
+    """A submission scored under a per-unit prediction cap, or none."""
+    report = ScoreReport(
+        by_class={CLS: a_class_score()},
+        models=(ModelUse(model_id="agreed-model", role=ModelRole.MAIN, calls=1, tokens=10),),
+        predictions_per_unit=cap,
+    )
+    return score_submission(submission_id, report, weights=WEIGHTS, at_least=MatchStrength.EXACT)
+
+
+class TestTheSamePoolOrNoComparison:
+    """The same argument as the baseline, on a different parameter.
+
+    A precision computed over three predictions per unit and one computed over
+    every prediction a submission cared to make are different measurements. A
+    table that put them in one column would be comparing how much adjudication
+    each submission was allowed to consume.
+    """
+
+    def test_rows_under_one_cap_are_ranked(self) -> None:
+        board = leaderboard([capped_at(3, "alice"), capped_at(3, "bob")], baseline="agreed-model")
+        assert len(board.ranked) == 2
+        assert board.incomparable == {}
+
+    def test_rows_under_different_caps_are_not_ranked_against_each_other(self) -> None:
+        board = leaderboard([capped_at(3, "alice"), capped_at(1, "bob")], baseline="agreed-model")
+        assert board.ranked == ()
+        assert {"alice", "bob"} == set(board.incomparable)
+        assert "different per-unit prediction caps" in board.incomparable["alice"]
+
+    def test_an_uncapped_row_beside_a_capped_one_is_named_as_uncapped(self) -> None:
+        # "uncapped" rather than a blank, because the reader has to be able to
+        # tell which of the two it was.
+        board = leaderboard(
+            [capped_at(3, "alice"), capped_at(None, "bob")], baseline="agreed-model"
+        )
+        assert "uncapped" in board.incomparable["bob"]
+
+    def test_uncapped_rows_agree_with_each_other(self) -> None:
+        board = leaderboard(
+            [capped_at(None, "alice"), capped_at(None, "bob")], baseline="agreed-model"
+        )
+        assert len(board.ranked) == 2

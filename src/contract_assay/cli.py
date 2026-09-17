@@ -263,6 +263,16 @@ def score_command(
         Path | None,
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
     ] = None,
+    predictions_per_unit: Annotated[
+        int | None,
+        typer.Option(
+            "--predictions-per-unit",
+            min=1,
+            help="Score at most this many verified findings per source unit per class, in "
+            "the order returned. Left out, nothing is capped -- a cap states how much "
+            "adjudication an exercise will fund, which is the exercise's to state.",
+        ),
+    ] = None,
     out: Annotated[
         Path | None, typer.Option("--out", help="Write the document here instead of stdout.")
     ] = None,
@@ -276,7 +286,7 @@ def score_command(
     """
     resolve = _local_resolver(source_root) if source_root is not None else None
     held = _records_from(records)
-    report = score(_runs_from(runs), held, resolve)
+    report = score(_runs_from(runs), held, resolve, predictions_per_unit=predictions_per_unit)
     submission = score_submission(submission_id, report, weights=_weights_from(weights))
     document = json.dumps(score_document(submission, held), indent=1, ensure_ascii=False)
     if out is None:
@@ -306,6 +316,16 @@ def rank_command(
     weights: Annotated[
         Path | None,
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
+    ] = None,
+    predictions_per_unit: Annotated[
+        int | None,
+        typer.Option(
+            "--predictions-per-unit",
+            min=1,
+            help="Score at most this many verified findings per source unit per class, in "
+            "the order returned. Left out, nothing is capped -- a cap states how much "
+            "adjudication an exercise will fund, which is the exercise's to state.",
+        ),
     ] = None,
     baseline: Annotated[
         str | None,
@@ -350,7 +370,7 @@ def rank_command(
         if not path.is_file():
             typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED)
             raise typer.Exit(1)
-        report = score(_runs_from(path), held, resolve)
+        report = score(_runs_from(path), held, resolve, predictions_per_unit=predictions_per_unit)
         submission = score_submission(submission_id, report, weights=weighting)
         scores.append(submission)
         documents[submission_id] = score_document(submission, held)

@@ -134,6 +134,7 @@ def a_run(
     outcome: Outcome | None = None,
     unverifiable: int = 0,
     file: str = PATH,
+    source_id: str = "s",
 ) -> DetectorRun:
     # `vulnerable` requires a verified finding and `clean` forbids one, so the
     # outcome follows from the spans unless a test is specifically about an
@@ -170,7 +171,7 @@ def a_run(
     return DetectorRun(
         detector_id="d",
         class_id=cls,
-        source_id="s",
+        source_id=source_id,
         outcome=outcome,
         evidence_tier=None if outcome is Outcome.SKIPPED else EvidenceTier.SYNTACTIC,
         findings=[] if outcome is Outcome.SKIPPED else findings,
@@ -1079,3 +1080,83 @@ class TestAFigureIsAboutItsCorpusComposition:
         ).statement()
         assert "1 records scored come from 1 platform and 1 repositories" in statement
         assert "sherlock at 100%" in statement
+
+
+class TestThePoolIsBounded:
+    """The per-unit prediction cap.
+
+    It exists because every prediction has to be adjudicated before precision
+    exists for its class, so an uncapped pool is a queue nobody can work
+    through -- a submission that proposed every declaration in every file would
+    buy itself an unbounded amount of somebody else's labour.
+
+    Enforced here rather than by whatever ran the submission, because this is
+    the only layer that sees a whole submission's runs at once.
+    """
+
+    def test_the_first_n_are_scored_in_the_order_returned(self) -> None:
+        # Not re-ranked. A harness that puts its best finding first is making
+        # exactly the choice the cap asks it to make.
+        runs = [a_run([(5, 6), (20, 21), (30, 31), (40, 41)])]
+        got = only(score(runs, [a_record()], resolver(), predictions_per_unit=2))
+        assert got.predictions == 2
+        assert got.capped_predictions == 2
+        # The first span is the one that matches the record, and it survived.
+        assert got.by_strength == {MatchStrength.EXACT: 1}
+
+    def test_each_unit_gets_its_own_quota(self) -> None:
+        runs = [
+            a_run([(5, 6), (20, 21)], source_id="unit-one"),
+            a_run([(5, 6), (20, 21)], source_id="unit-two"),
+        ]
+        got = only(score(runs, [a_record()], resolver(), predictions_per_unit=1))
+        assert (got.predictions, got.capped_predictions) == (2, 2)
+
+    def test_two_detectors_in_one_class_share_the_quota(self) -> None:
+        # The case a cap applied per run cannot see: a condition quantified over
+        # a set gets satisfied by different members, and the set here is the
+        # class's runs for one unit.
+        runs = [a_run([(5, 6), (20, 21)]), a_run([(30, 31), (40, 41)])]
+        got = only(score(runs, [a_record()], resolver(), predictions_per_unit=3))
+        assert (got.predictions, got.capped_predictions) == (3, 1)
+
+    def test_a_capped_prediction_joins_no_adjudication_queue(self) -> None:
+        # The whole purpose. An entry in the queue is work somebody has to do.
+        runs = [a_run([(5, 6), (20, 21), (30, 31)])]
+        uncapped = score(runs, [a_record()], resolver())
+        capped = score(runs, [a_record()], resolver(), predictions_per_unit=1)
+        assert len(uncapped.unjudged) == 2
+        assert len(capped.unjudged) == 0
+
+    def test_nothing_is_capped_by_default(self) -> None:
+        # A cap states how much adjudication an exercise will fund, which is the
+        # exercise's to state and not the instrument's.
+        got = only(score([a_run([(5, 6), (20, 21), (30, 31)])], [a_record()], resolver()))
+        assert (got.predictions, got.capped_predictions) == (3, 0)
+
+    def test_a_cap_of_zero_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="at least 1"):
+            score([a_run([(5, 6)])], [a_record()], resolver(), predictions_per_unit=0)
+
+    def test_unverifiable_claims_are_not_capped(self) -> None:
+        # They enter no queue and already cost precision, so a cap would only
+        # hide how many were emitted.
+        runs = [a_run([(5, 6)], unverifiable=4)]
+        got = only(score(runs, [a_record()], resolver(), predictions_per_unit=1))
+        assert got.unverifiable_claims == 4
+        assert got.capped_predictions == 0
+
+    def test_the_statement_says_the_cap_and_what_it_cost(self) -> None:
+        # A precision over three predictions per unit and one over every
+        # prediction a submission cared to make are different measurements.
+        report = score(
+            [a_run([(5, 6), (20, 21), (30, 31)])], [a_record()], resolver(), predictions_per_unit=1
+        )
+        statement = report.statement()
+        assert "At most 1 prediction per source unit per class was scored" in statement
+        assert "2 further predictions went unscored" in statement
+        assert report.predictions_per_unit == 1
+
+    def test_a_cap_nobody_reached_still_says_so(self) -> None:
+        report = score([a_run([(5, 6)])], [a_record()], resolver(), predictions_per_unit=3)
+        assert "no submission reached that limit" in report.statement()
