@@ -823,6 +823,53 @@ class ArithmeticRoundingDetector(_SyntacticDetector):
     detector_id = "reference-arithmetic-rounding"
     class_id = VulnerabilityClass.ARITHMETIC_ROUNDING
     api_version = "1.1"
+
+    declared_limits = (
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "a subtraction that can underflow, `assetData.totalBidAmout -= amount` -- "
+                "an arithmetic defect with no division in it, so the order this detector "
+                "is about is not present at all"
+            ),
+            demonstrated_by="2024-07-benddao-arithmetic-rounding-0f04d2af",
+            isolated=True,
+            unpatched_because=(
+                "§4.2 split this class three ways and this detector implements one of "
+                "them. Whether a subtraction can underflow is a question about the "
+                "values, not about the expression: `a -= b` is the same shape whether "
+                "`b <= a` is guaranteed elsewhere or not, and a predicate over the shape "
+                "alone would fire on every checked subtraction in the corpus."
+            ),
+            closed_when=(
+                "a predicate for the other two ways the class was split -- an unchecked "
+                "subtraction whose operand is not bounded by a guard in the same "
+                "function, which is depth-one and needs no tier"
+            ),
+        ),
+        DeclaredLimit(
+            kind=LimitKind.BLINDNESS,
+            shape=(
+                "the same loss one assignment apart: `daysOld = (block.timestamp - t) / 60 "
+                "/ 60 / 24;` and then `daysOld * perfomanceFactor * ...`, where the "
+                "division and the multiplication are in two statements joined by a local"
+            ),
+            demonstrated_by="2024-07-traitforge-arithmetic-rounding-1800009d",
+            isolated=True,
+            unpatched_because=(
+                "the predicate is about one expression -- an outer multiplication whose "
+                "operand already divided -- and here neither expression has both halves. "
+                "Nothing about the shape is missing; the two halves are simply not in the "
+                "same tree."
+            ),
+            closed_when=(
+                "a local's definition is followed to its assignment, which the access "
+                "control predicates already do at depth one. NOT a tier matter, and worth "
+                "saying so: the third time a claim about *why* something was invisible "
+                "named the semantic tier, depth-one def-use turned out to be enough"
+            ),
+        ),
+    )
     predicate_ids = frozenset({"division_evaluated_before_multiplication"})
     instruction = (
         "Find expressions that divide before multiplying, discarding precision that "
@@ -846,15 +893,34 @@ class ArithmeticRoundingDetector(_SyntacticDetector):
                     "the stated location contains no arithmetic expression",
                 )
             ]
-        if not any(
-            expression.operator == "*" and "/" in expression.operand_operators
+        divides_first = [
+            expression
             for expression in spanned
-        ):
+            if expression.operator == "*" and "/" in expression.operand_operators
+        ]
+        if not divides_first:
             return [
                 _reject(
                     "nothing_divides_before_multiplying",
                     "no expression here multiplies a value that was already divided, so the "
                     "order this class is about is not present",
+                )
+            ]
+        # The predicate excludes `(a / b) * b` -- rounding down to a multiple of
+        # `b`, where the truncation is the point -- and the verdict did not, so
+        # it accepted exactly the idiom the evidence layer had been narrowed to
+        # reject. `(block.timestamp / DURATION) * DURATION` and
+        # `((block.timestamp + MAXTIME) / WEEK) * WEEK` are epoch boundaries, not
+        # lost precision. Same split as the oracle verdict, in a second class:
+        # the property is the evidence layer's and the decision is here, so the
+        # decision has to ask for the property.
+        if not any(expression.divides_then_scales for expression in divides_first):
+            return [
+                _reject(
+                    "the_multiplier_is_the_divisor",
+                    "every expression here multiplies a divided value by the divisor "
+                    "itself, which rounds down to a multiple of it deliberately rather "
+                    "than discarding precision the other order would have kept",
                 )
             ]
         return []

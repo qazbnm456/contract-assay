@@ -2377,6 +2377,49 @@ discovered during it.
 
 #### A verdict must be strict about the property its evidence names
 
+Arithmetic rounding was the second instance, found by looking for it. Its
+predicate excludes `(a / b) * b` — rounding down to a multiple of `b`, where the
+truncation is the point — after that idiom accounted for 22 of 26 reported
+sites. The verdict never asked, so it went on accepting exactly what the
+evidence layer had been narrowed to reject:
+`(block.timestamp / DURATION) * DURATION` and
+`((block.timestamp + MAXTIME) / WEEK) * WEEK`, epoch boundaries both. Asking for
+the property took the class from 23 predictions to 6 with its one hit intact.
+
+Its three missed records then came apart into three different things, and only
+one of them was the detector's fault.
+
+- **A span covering two functions names neither.** One record's locator said
+  `FluxToken.claimFlux` at lines 212-227; the excerpt had matched a region
+  beginning on `claimFlux`'s closing brace and running into the next function's
+  body, and the enclosing declaration was read off the span's *first* line. The
+  report's own title names `getClaimableFlux`, and the defect is there. Nothing
+  caught it: the span is inside the file, and the report asserted no function
+  name, so `verify` had nothing to cross-check. `normalize` now refuses a span
+  overlapping more than one declaration, for the same reason it refuses a
+  finding that names two places — either reading is defensible and the record
+  cannot say which. The record was corrected by hand to the function the report
+  names.
+- **Which turned a miss into a duplicate.** Corrected, it had the same class,
+  file and declaration as another record from a *second* report of the same
+  finding — the ordinary case in a competition, and the case §6.7 exists for.
+  Folding the two took the class's recall from 0.25 to 0.33 on the same
+  predictions: a duplicate does not inflate recall, it halves what one location
+  can show.
+- **Two genuine blindnesses, now declared.** One record is an underflow,
+  `totalBidAmout -= amount`, an arithmetic defect with no division in it at all
+  — §4.2 split this class three ways and this detector implements one. The other
+  is the same loss one assignment apart: `daysOld = (block.timestamp - t) / 60 /
+  60 / 24` and then `daysOld * perfomanceFactor * …`, where neither expression
+  holds both halves. That one's `closed_when` says depth-one def-use on a local,
+  and says explicitly that it is not a tier matter — the third time a claim
+  about why something was invisible reached for the semantic tier when depth-one
+  was enough.
+
+With both declared, arithmetic rounding's unexplained misses go to zero.
+
+
+
 Oracle integrity reported 15 predictions, 0 hits and 2 missed records, and the
 zero was a claim about the instrument. Opening all fifteen: an
 `EnumerableMap.tryGet` whose discarded slot is a success flag, an internal

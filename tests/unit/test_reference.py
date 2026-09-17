@@ -773,3 +773,39 @@ class TestAClassAboutOneSiteIsCheckedAtOneSite:
             )
         ]
         assert checks == ["no_state_written_after_the_call"]
+
+
+class TestTheRoundingIdiomStaysExcluded:
+    """`(a / b) * b` rounds down to a multiple of `b`, deliberately.
+
+    The predicate was narrowed to exclude it after it accounted for 22 of 26
+    reported sites, and the verdict was not -- so the verdict went on accepting
+    exactly what the evidence layer had been narrowed to reject. Second class
+    where the property lived in the layer that does not decide.
+    """
+
+    SOURCE = """contract E {
+    uint256 last;
+
+    function epoch() external view returns (uint256) {
+        return (block.timestamp / DURATION) * DURATION;
+    }
+    function scaled(uint256 a, uint256 b, uint256 c) external pure returns (uint256) {
+        return (a / b) * c;
+    }
+}
+"""
+
+    def _verdict(self, lo: int, hi: int, cited: str) -> list[str]:
+        detector = ArithmeticRoundingDetector()
+        ctx = a_context(detector.level, source=self.SOURCE)
+        return [
+            check.check
+            for check in detector.verdict(ctx, a_finding(lo, hi, cited), detector.evidence(ctx))
+        ]
+
+    def test_scaling_by_the_divisor_is_refuted(self) -> None:
+        assert self._verdict(4, 6, "    function epoch()") == ["the_multiplier_is_the_divisor"]
+
+    def test_a_different_multiplier_still_stands(self) -> None:
+        assert self._verdict(7, 9, "    function scaled(") == []

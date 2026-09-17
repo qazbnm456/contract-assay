@@ -270,6 +270,23 @@ class NormalizeCause(StrEnum):
     NO_DECLARATION_AT_ANCHOR = "no_declaration_at_anchor"
     """The line the report pointed at is not inside any function-like declaration."""
 
+    SPAN_STRADDLES_DECLARATIONS = "span_straddles_declarations"
+    """The located span overlaps more than one declaration, so it names no function.
+
+    Found in a published record rather than in a test. An excerpt matched a
+    region beginning on a function's closing brace and running into the next
+    function's body; the enclosing declaration was read off the span's *first*
+    line, so the record named `claimFlux` while the defect -- and the report's
+    own title -- said `getClaimableFlux`. Every check passed: the span was
+    inside the file, the name was not asserted by the report so there was
+    nothing to cross-check, and the function it named really does exist.
+
+    A span covering two functions has not located one, in the same way a finding
+    naming two places has not said which (`location_contradicts_name`). Refused
+    rather than resolved by preference, because either function is a defensible
+    reading of a quote that covers both.
+    """
+
     LOCATION_CONTRADICTS_NAME = "location_contradicts_name"
     """The finding named a function that is not declared where its location points.
 
@@ -459,6 +476,22 @@ def _labels_from(draft: DraftRecord, *, function: bool = True) -> tuple[LocatorL
     return tuple(labels)
 
 
+def _straddles_declarations(source: str, span: tuple[int, int]) -> bool:
+    """Whether more than one function-like declaration overlaps the span."""
+    parsed = Syntax.of(source)
+    if parsed is None:
+        return False
+    start, end = span
+    overlapping = [
+        declaration
+        for declaration in parsed.index.declarations
+        if not declaration.kind.is_type
+        and declaration.start_line <= end
+        and start <= declaration.end_line
+    ]
+    return len(overlapping) > 1
+
+
 def _declared_within(source: str, name: str, span: tuple[int, int]) -> bool:
     """Whether a function of that name is declared inside the located lines.
 
@@ -502,6 +535,8 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
         # scored at function granularity -- so it would be lost for the sake of a
         # name the index can read off the span it was already given.
         enclosing = parsed_contract_of(source, draft.start_line)
+        if _straddles_declarations(source, (draft.start_line, draft.end_line)):
+            return NormalizeCause.SPAN_STRADDLES_DECLARATIONS
         if draft.function and not _declared_within(
             source, draft.function, (draft.start_line, draft.end_line)
         ):
@@ -523,6 +558,8 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     if isinstance(quoted, tuple):
         start, end = quoted
         enclosing = parsed_contract_of(source, start)
+        if _straddles_declarations(source, (start, end)):
+            return NormalizeCause.SPAN_STRADDLES_DECLARATIONS
         # The prose name overrode the enclosing declaration here, which is how
         # a finding that quoted a caller and named a callee became a record
         # pinning the callee's name to the caller's lines.

@@ -925,3 +925,54 @@ contract Vault {
         ).records
         assert record.locator.function == "claim"
         assert (record.locator.start_line, record.locator.end_line) == (2, 6)
+
+
+class TestASpanCoveringTwoFunctionsNamesNeither:
+    """Found in a published record, not in a test.
+
+    An excerpt matched a region beginning on `claimFlux`'s closing brace and
+    running into the next function's body. The enclosing declaration was read
+    off the span's *first* line, so the record named `claimFlux` while the
+    report's own title named `getClaimableFlux`. Every check passed: the span
+    was inside the file, and the report asserted no function name for `verify`
+    to cross-check, so there was nothing to contradict.
+    """
+
+    TWO = """\
+contract V {
+    function first(uint256 a) external {
+        total = a;
+    }
+
+    function second(uint256 b) external {
+        total = b;
+    }
+}
+"""
+
+    def test_a_quote_straddling_a_boundary_is_refused(self) -> None:
+        report = run(
+            a_draft(
+                contract=None,
+                function=None,
+                quoted_source=(
+                    "    }\n\n    function second(uint256 b) external {\n        total = b;"
+                ),
+            ),
+            source=self.TWO,
+        )
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.SPAN_STRADDLES_DECLARATIONS: 1}
+
+    def test_a_quote_inside_one_function_is_kept(self) -> None:
+        [record] = run(
+            a_draft(
+                contract=None,
+                function=None,
+                quoted_source=(
+                    "    function second(uint256 b) external {\n        total = b;\n    }"
+                ),
+            ),
+            source=self.TWO,
+        ).records
+        assert record.locator.function == "second"
