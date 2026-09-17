@@ -1050,7 +1050,35 @@ judge, and a post-fix negative licenses nothing there.
 
 Which leaves the two human-asserted kinds as the only ones that license
 precision, `confirmed_clean` most cheaply, because a human asserts completeness
-directly and records how they confirmed it. That is the opposite of where the
+directly and records how they confirmed it.
+
+**But a confirmation resting on a structural absence licenses precision
+nowhere, and that is §1.3 rather than bad luck.** The tempting way to make
+hand-confirmation cheap is to rest it on a premise anyone can re-check: this
+file reads no property a block producer chooses, therefore it holds no instance
+of the class that misuses one. The premise is sound and the record is honest.
+
+It is also useless for precision, necessarily. Measured over the corpus's nine
+units, the two files confirmable on that premise are **exactly** the two where
+the predicate fires nothing — which is tautological, because the absence that
+licenses the confirmation is the absence the predicate looks for. Precision in
+those units is zero over zero.
+
+> When the thing that validates and the thing being validated draw on the same
+> source of truth, the validation cannot exceed that source.
+
+The confirmation and the detection are reading the same structural feature, so
+the confirmation cannot reach a unit the detection has an opinion about. A
+negative record that licenses precision therefore has to be asserted where the
+detector *does* fire, on a judgement the detector's own inputs do not settle:
+for this class, that every one of the sites it flagged is a legitimate use of a
+producer-chosen value rather than a use of it as if unpredictable. That is
+genuine review, not a re-checkable premise, and its cost is the number of
+flagged sites rather than the number of files.
+
+Which also says what such a negative is worth. A file with dozens of flagged
+sites and no instance of the class is the record that turns an unadjudicated
+pile into a precision figure, and it is the only kind of negative that can. That is the opposite of where the
 cheapness argument pointed. The argument was right about verification cost —
 verifying a post-fix negative needs no human judgement at all — and wrong to
 treat cheap-to-verify as sufficient-for-purpose, which are different properties.
