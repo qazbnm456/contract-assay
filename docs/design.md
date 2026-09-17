@@ -2018,6 +2018,53 @@ unsound" tells them which way the number moves on a corpus containing more of
 that shape. A score alone cannot say that, and it is what a reader most needs to
 know.
 
+### 7.5 Ranking, and refusing to rank
+
+A leaderboard is where every rule in this section either holds or stops
+mattering, because the single number is what gets quoted. So the arithmetic is
+arranged so the number cannot exist unless the things it rests on do.
+
+**Three refusals**, each of which a simpler implementation makes silently:
+
+- **No F1 without both sides.** Precision is unavailable until a class's pool is
+  fully judged (§7.3), and a harmonic mean with one side missing is not a weaker
+  F1 — it is a different quantity. Substituting zero for an unavailable
+  precision would rank a submission nobody has adjudicated *below* one that has
+  been, which inverts the incentive the whole adjudication discipline depends
+  on.
+- **No aggregate over a partial class set.** A mean over whichever classes
+  happened to have figures ranks a submission on its corpus's readiness, and two
+  submissions measured over different sets are not comparable however close the
+  numbers look. So the aggregate exists only when every class in the requested
+  set has an F1, and the class set is named beside the table.
+- **No built-in weights.** Difficulty weighting is supplied by whoever runs the
+  exercise. A weight per level is a coefficient, and a coefficient written into
+  the harness makes the ranking a property of this code rather than of the
+  exercise it serves.
+
+Completion rate **multiplies** the aggregate (§7.1) rather than folding into the
+matrix: a submission that crashes on a third of the corpus must not rank beside
+one that does not, and an error must never be counted as a judgement.
+
+**An unrankable submission is not placed last.** It is listed apart with the
+reason, because ordering it below a ranked one asserts a comparison nobody
+measured — and the usual cause is work the *exercise* owes, unadjudicated
+predictions or a class the corpus does not cover, rather than anything the
+submission did. The reason is given per class, because an unjudged pool is
+adjudication owed and a class with no records is corpus owed, and those are
+different work items.
+
+**What this costs the exercise, stated because it is a scheduling fact.**
+Precision needs the pool judged, and the pool is what submissions claimed, so a
+round cannot be ranked until its pool has been adjudicated. Two things soften
+that. Adjudications already made against a reference run cover whatever a
+submission predicts in the same places, and the obvious predicates are the ones
+everybody implements first, so the residue per submission shrinks as the pool
+grows — which is the standard incremental-pooling benefit. And a submission's
+own statement says exactly which classes are waiting on how many
+adjudications, so the outstanding work is visible before the round rather than
+discovered during it.
+
 ## 8. Layout and status
 
 Status is stated per component because a design document that describes planned
