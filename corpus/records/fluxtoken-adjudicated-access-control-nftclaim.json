@@ -1,0 +1,31 @@
+{
+  "record_id": "fluxtoken-adjudicated-access-control-nftclaim",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/FluxToken.sol",
+    "kind": "commit",
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f"
+  },
+  "locator": {
+    "file": "src/FluxToken.sol",
+    "contract": "FluxToken",
+    "function": "nftClaim",
+    "start_line": 134,
+    "end_line": 164
+  },
+  "classes": [],
+  "negative_for": [
+    "access_control"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "negative_kind": "adjudicated",
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/alchemix-finance/alchemix-v2-dao/blob/f1007439ad3a32e412468c4c42f62f676822dc1f/src/FluxToken.sol#L134-L164"
+  },
+  "notes": "Examined both guards of the form `require(IAlchemechNFT(_nft).ownerOf(_tokenId) == msg.sender)`. The address the guard reads its answer from is the caller-supplied `_nft`, which is what the predicate reports -- but each guard sits inside `if (_nft == alchemechNFT)` or `if (_nft == patronNFT)`, comparisons against state variables, and the `else` branch reverts. So at the point of the guard, `_nft` can only be one of two addresses the contract itself holds, and the caller cannot substitute a contract it controls. The guard is sound. Not an instance of access_control at this location. This says nothing about the rest of the file."
+}

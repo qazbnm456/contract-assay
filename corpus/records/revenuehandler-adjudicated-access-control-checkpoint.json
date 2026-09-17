@@ -1,0 +1,31 @@
+{
+  "record_id": "revenuehandler-adjudicated-access-control-checkpoint",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/RevenueHandler.sol",
+    "kind": "commit",
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f"
+  },
+  "locator": {
+    "file": "src/RevenueHandler.sol",
+    "contract": "RevenueHandler",
+    "function": "checkpoint",
+    "start_line": 228,
+    "end_line": 269
+  },
+  "classes": [],
+  "negative_for": [
+    "access_control"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "negative_kind": "adjudicated",
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/alchemix-finance/alchemix-v2-dao/blob/f1007439ad3a32e412468c4c42f62f676822dc1f/src/RevenueHandler.sol#L228-L269"
+  },
+  "notes": "Examined `function checkpoint() public`, which writes state, carries no modifier and never mentions msg.sender -- which is what the predicate reports. It is permissionless by design and there is nothing for a caller to direct: the function takes no parameters, every destination it pays (`treasury`, each token's configured adapter) is read from state, and the body is gated by `if (block.timestamp >= currentEpoch + WEEK)` so it advances at most once per epoch. The only thing a caller chooses is when to trigger work the contract would do anyway, bounded by that epoch check. Not an instance of access_control at this location. This says nothing about the rest of the file."
+}
