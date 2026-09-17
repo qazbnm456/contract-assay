@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-yearn-ybold-denial-of-service-4a31664d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "yv3-liquityv2-sp-strategy/src/periphery/Accountant.sol",
+  "sha256": "b08d2b09daeedac74dac3d55cd01c91c978630539ac38326e04505e5ae0a00a0",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold",
+  "commit": "88a3b89c05fd6e59ec130c79659195cd05d872af"
+ },
+ "locator": {
+  "file": "yv3-liquityv2-sp-strategy/src/periphery/Accountant.sol",
+  "contract": "Accountant",
+  "function": "setMaxLoss",
+  "start_line": 353,
+  "end_line": 363
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/040.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

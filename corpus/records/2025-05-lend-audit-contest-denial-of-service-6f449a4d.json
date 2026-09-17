@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-lend-audit-contest-denial-of-service-6f449a4d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Lend-V2/src/LayerZero/LendStorage.sol",
+  "sha256": "06c3f19cc081c5d79b4e698fb92721d969e3426c6c7293cabcf9cf8a4bfea792",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-lend-audit-contest",
+  "commit": "713372a1ccd8090ead836ca6b1acf92e97de4679"
+ },
+ "locator": {
+  "file": "Lend-V2/src/LayerZero/LendStorage.sol",
+  "contract": "LendStorage",
+  "function": "addCrossChainCollateral",
+  "start_line": 215,
+  "end_line": 220
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-lend-audit-contest-judging/blob/main/185.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

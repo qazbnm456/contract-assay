@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-08-flayer-reentrancy-bbeeb866",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "moongate/src/libs/ERC1155Bridgable.sol",
+  "sha256": "79c66b630e22b1db5d6cd5787f86361cf2e7b0ac546e3ce23fb7879e1a2368d3",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-08-flayer",
+  "commit": "0ec252cf9ef0f3470191dcf8318f6835f5ef688c"
+ },
+ "locator": {
+  "file": "moongate/src/libs/ERC1155Bridgable.sol",
+  "contract": "ERC1155Bridgable",
+  "function": "setTokenURIAndMintFromRiftAbove",
+  "start_line": 92,
+  "end_line": 102
+ },
+ "classes": [
+  "reentrancy"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-08-flayer-judging/blob/main/005.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

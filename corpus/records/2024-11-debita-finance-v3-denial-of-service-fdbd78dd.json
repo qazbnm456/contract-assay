@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-debita-finance-v3-denial-of-service-fdbd78dd",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/auctions/Auction.sol",
+  "sha256": "cc1fc5c03976a353382d0a154229fedf00cf189d6f9041d5822fac59abeee5b1",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/auctions/Auction.sol",
+  "contract": "DutchAuction_veNFT",
+  "function": "buyNFT",
+  "start_line": 124,
+  "end_line": 140
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/508.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

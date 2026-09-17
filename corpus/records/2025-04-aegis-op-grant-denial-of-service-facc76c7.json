@@ -1,0 +1,34 @@
+{
+ "record_id": "2025-04-aegis-op-grant-denial-of-service-facc76c7",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "aegis-contracts/contracts/AegisMinting.sol",
+  "sha256": "2adf20c87dd15b50b683ed237a38fd96add9cd61b779e2e3fba868f589de9431",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant",
+  "commit": "4aceb235db96b2299bb95ebf16e83a24f987bf3e"
+ },
+ "locator": {
+  "file": "aegis-contracts/contracts/AegisMinting.sol",
+  "contract": "AegisMinting",
+  "function": "approveRedeemRequest",
+  "start_line": 315,
+  "end_line": 358
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 340,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/blob/main/159.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

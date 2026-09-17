@@ -41,8 +41,8 @@ either case: it rests on no assumption anybody can write down.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 
 from contract_assay.corpus.adapters.classify import classify_title
 from contract_assay.corpus.adapters.markdown import (
@@ -141,9 +141,26 @@ class SherlockAdapter:
         self,
         enumerator: SherlockEnumerator | None = None,
         resolve_commit: CommitResolver | None = None,
+        cited_commits: Mapping[str, str] | None = None,
     ) -> None:
         self.enumerator = enumerator or SherlockEnumerator()
         self.resolve_commit = resolve_commit
+        # Repository -> the commit the *contest's own submissions* cite most
+        # often for it. A submission here is one document and cites a location
+        # or two, so the dominant-citation recovery that works over a
+        # consolidated report has nothing to count within one file -- but the
+        # judging repository is one contest, every submission cites the same
+        # reviewed code, and most of them pin it. The count belongs to the
+        # contest, so the harness computes it and passes it in, the same way a
+        # date resolver is passed in rather than performed here.
+        #
+        # 1,062 of 7,154 submissions over 22 contests were lost to a branch
+        # citation with no date to resolve it against, which is what this is
+        # for. It is a different assumption from the date recovery and says so
+        # on the pin: one rests on the branch having been at that commit when
+        # the line numbers were written, the other on the reviewed code being
+        # what was there on a date.
+        self.cited_commits = dict(cited_commits or {})
 
     def candidates(self, report: RawReport) -> Sequence[Candidate]:
         issue = self.enumerator.issue(report.body)
@@ -184,7 +201,7 @@ class SherlockAdapter:
         pinned = [c for c in cited if c.is_pinned]
         resolved_from: str | None = None
         if not pinned:
-            recovered = self._recover(cited, report.published)
+            recovered = self._from_the_contest(cited) or self._recover(cited, report.published)
             if recovered is None:
                 return Skip(
                     SkipCause.NO_COMMIT,
@@ -199,6 +216,32 @@ class SherlockAdapter:
             )
 
         return _draft(report, issue, candidate, pinned[0], quoted_source(scope), resolved_from)
+
+    def _from_the_contest(
+        self, cited: list[SourceCitation]
+    ) -> tuple[list[SourceCitation], str] | None:
+        """Re-pin branch citations against the commit the contest's submissions cite.
+
+        Tried before the date recovery because it rests on less: the commit is
+        one the contest's own documents state, where a date resolution asks a
+        host what the branch pointed at then. All citations must name one
+        repository, for the same reason the date recovery requires it -- a
+        branch reference into a dependency is a different repository whose state
+        this contest never stated.
+        """
+        if not self.cited_commits:
+            return None
+        repos = {c.repo_url for c in cited}
+        if len(repos) != 1:
+            return None
+        repository = next(iter(repos))
+        commit = self.cited_commits.get(repository)
+        if commit is None:
+            return None
+        return (
+            [replace(c, ref=commit) for c in cited],
+            "the commit this contest's own submissions cite most often for this repository",
+        )
 
     def _recover(
         self, cited: list[SourceCitation], published: str | None

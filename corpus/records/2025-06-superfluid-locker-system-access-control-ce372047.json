@@ -1,0 +1,34 @@
+{
+ "record_id": "2025-06-superfluid-locker-system-access-control-ce372047",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "fluid/packages/contracts/src/token/BridgedSuperToken.sol",
+  "sha256": "e1e39d087c2e83e6d9fbe5fcc3df42d11ad5aefe3df17e5ac5a9f10206aa6f64",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system",
+  "commit": "d8beaeed47f766659a1600a87372a7905109aa3c"
+ },
+ "locator": {
+  "file": "fluid/packages/contracts/src/token/BridgedSuperToken.sol",
+  "contract": "BridgedSuperTokenProxy",
+  "function": "mint",
+  "start_line": 96,
+  "end_line": 103
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 97,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system-judging/blob/main/045.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

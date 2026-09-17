@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-08-flayer-access-control-bce9282b",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "flayer/src/contracts/Locker.sol",
+  "sha256": "00889e431c691714fa6f224f94b2140bf1d3713f28bc8a6e54a67ff0c0ad4f28",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-08-flayer",
+  "commit": "0ec252cf9ef0f3470191dcf8318f6835f5ef688c"
+ },
+ "locator": {
+  "file": "flayer/src/contracts/Locker.sol",
+  "contract": "Locker",
+  "function": "redeem",
+  "start_line": 209,
+  "end_line": 230
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-08-flayer-judging/blob/main/359.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

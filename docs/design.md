@@ -2488,6 +2488,45 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### One recovery, two adapters, and 1,062 losses
+
+The dominant-citation recovery -- a report citing a repository at a commit
+dozens of times has *stated* that commit -- was written inside the Code4rena
+adapter, and Sherlock needed it for 1,062 of its 7,154 submissions. Re-deriving
+it in a second adapter would have been the fourth instance of a rule written
+twice and honoured once, so it moved to the shared module and both adapters ask
+one function.
+
+The platforms differ in one way that matters, and it decides who computes the
+count. A Code4rena report is a whole contest, so the dominant commit is a fact
+about *the document*. A Sherlock submission is one finding and cites a location
+or two, so the count belongs to the **contest** -- the judging repository, whose
+submissions all cite the same reviewed code and mostly pin it. That is the
+harness's to supply, injected like the date resolver rather than performed in
+the adapter, and it says so on the pin: "the commit this contest's own
+submissions cite most often" rests on less than "the repository head at the
+report's date", and the two are not the same claim.
+
+Drafts went 262 to 991 and `no_commit` 1,062 to 10. The corpus went 196 records
+to 442, and the class that had never had a single record -- insecure randomness
+-- has one: `generateOrderId` returning `keccak256(sender, block.timestamp)` as
+an order id.
+
+**And the fold was in the wrong place.** `normalize` folds within one batch, and
+the corpus on disk is the union of every batch ever run, so a defect whose
+second report arrived in a later harvest was simply held twice: 44 pairs, each
+halving the recall its location can show. `verify` now asks the same question of
+the whole corpus, with the same key and the same preference, and reports which
+record it would keep and which it would fold -- reported rather than deleted,
+because removing a record is the caller's decision.
+
+Asking it corpus-wide is what made the key's blind spot visible, and the first
+run of the check deleted a hand-curated record. A *negative* holds no class and
+states the class it is negative for, so two adjudications of one function for
+two different classes had the same key. The key now carries `negative_for` and
+the negative kind, which is the same lesson as every other one today: a check
+that cannot tell two things apart will merge them, and the merge is silent.
+
 #### Three adapters, and what each platform's ceiling is
 
 There are three platform adapters and all three were run. The differences are

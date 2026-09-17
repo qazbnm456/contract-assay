@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-12-plaza-finance-arithmetic-rounding-43d8f936",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/MockMerchant.sol",
+  "sha256": "4a044d2dfe93323194a4b0b53330088f8007ba03100e42f0c9069c56966328f8",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/MockMerchant.sol",
+  "contract": "MockMerchant",
+  "function": "getDaysToPayment",
+  "start_line": 46,
+  "end_line": 47
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/149.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

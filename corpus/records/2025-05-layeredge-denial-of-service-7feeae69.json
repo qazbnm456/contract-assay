@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-layeredge-denial-of-service-7feeae69",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "edgen-staking/src/WETH9.sol",
+  "sha256": "17dd9e8a7574558682393858e598c8411421c5f5ae8a4d4e9337cc2be13af018",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-layeredge",
+  "commit": "708c5b5345ed50cd0bde7b0a8a548c8936639683"
+ },
+ "locator": {
+  "file": "edgen-staking/src/WETH9.sol",
+  "contract": "WETH9",
+  "function": "withdraw",
+  "start_line": 26,
+  "end_line": 31
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-layeredge-judging/blob/main/155.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

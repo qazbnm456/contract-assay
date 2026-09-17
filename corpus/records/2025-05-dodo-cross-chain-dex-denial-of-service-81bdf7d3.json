@@ -1,0 +1,34 @@
+{
+ "record_id": "2025-05-dodo-cross-chain-dex-denial-of-service-81bdf7d3",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "omni-chain-contracts/contracts/GatewayTransferNative.sol",
+  "sha256": "9dfb7304764bb276a7c938ce75b1eef3d5d769df244a00f0cc78443f67c834b1",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex",
+  "commit": "d4834a468f7dad56b007b4450397289d4f767757"
+ },
+ "locator": {
+  "file": "omni-chain-contracts/contracts/GatewayTransferNative.sol",
+  "contract": "GatewayTransferNative",
+  "function": "claimRefund",
+  "start_line": 661,
+  "end_line": 680
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 665,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/583.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

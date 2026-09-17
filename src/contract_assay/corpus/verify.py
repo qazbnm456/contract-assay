@@ -60,6 +60,8 @@ from contract_assay.corpus.records import (
     CorpusSplit,
     LocatorProvenance,
     SourcePin,
+    defect_key,
+    fold_preference,
 )
 from contract_assay.evidence.solidity import SolidityUnavailable, index_source
 from contract_assay.models import VulnerabilityClass
@@ -269,6 +271,19 @@ class VerificationReport:
 
     admitted: tuple[CorpusRecord, ...] = ()
     rejected: tuple[VerificationResult, ...] = ()
+    duplicates: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    """Admitted records describing a defect another admitted record already does.
+
+    Keyed by the record this stage would keep, valued by the ones it would fold
+    into it (§6.7's `defect_key` and `fold_preference`, the same pair
+    `normalize` uses). Asked here because `normalize` folds within one *batch*
+    and the corpus on disk is the union of every batch ever run: a defect whose
+    second report arrived in a later harvest was held twice, forty-five times
+    over, and a duplicate halves the recall its location can show. Reported
+    rather than deleted -- removing a record is the caller's decision and this
+    stage does not own the files.
+    """
+
     by_failure: Mapping[CheckFailure, int] = field(default_factory=dict)
     """How many records each check turned away. A record may appear under several."""
 
@@ -325,6 +340,17 @@ class VerificationReport:
         # reader quoting a number should not have to have hit a rejection to
         # learn what the number is over.
         scope = " Every number computed over this corpus describes the admitted records only."
+        # A duplicate is not a rejection and belongs in the same sentence
+        # anyway: it halves the recall its location can show, and nothing else
+        # in a report would say so.
+        folded = sum(len(v) for v in self.duplicates.values())
+        if folded:
+            scope = (
+                f" {_plural(folded, 'admitted record')} describe a defect another admitted "
+                "record already describes, across "
+                f"{_plural(len(self.duplicates), 'location')}; each such pair halves the "
+                "recall that location can show (§6.7)." + scope
+            )
         if not self.rejected:
             return f"{admitted} admitted; no candidates were rejected.{derived}{scope}"
 
@@ -356,6 +382,22 @@ def _plural(count: int, noun: str) -> str:
 def _classes_of(record: CorpusRecord) -> tuple[VulnerabilityClass, ...]:
     """What a record is about, whichever polarity it has."""
     return tuple(record.classes or record.negative_for)
+
+
+def _duplicate_groups(admitted: list[CorpusRecord]) -> dict[str, tuple[str, ...]]:
+    """Which admitted records describe a defect another one already describes."""
+    groups: dict[tuple[str, ...], list[CorpusRecord]] = {}
+    for record in admitted:
+        if record.locator is None:
+            continue
+        groups.setdefault(defect_key(record), []).append(record)
+    folded: dict[str, tuple[str, ...]] = {}
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        ranked = sorted(members, key=fold_preference)
+        folded[ranked[0].record_id] = tuple(r.record_id for r in ranked[1:])
+    return folded
 
 
 def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> VerificationReport:
@@ -393,6 +435,7 @@ def verify_all(records: list[CorpusRecord], resolve: SourceResolver) -> Verifica
 
     return VerificationReport(
         admitted=tuple(admitted),
+        duplicates=_duplicate_groups(admitted),
         rejected=tuple(rejected),
         by_failure=dict(by_failure),
         rejected_by_class=dict(rejected_by_class),

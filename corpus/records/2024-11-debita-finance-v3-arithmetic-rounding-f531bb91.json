@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-11-debita-finance-v3-arithmetic-rounding-f531bb91",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/auctions/Auction.sol",
+  "sha256": "cc1fc5c03976a353382d0a154229fedf00cf189d6f9041d5822fac59abeee5b1",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/auctions/Auction.sol",
+  "contract": "DutchAuction_veNFT",
+  "function": "buyNFT",
+  "start_line": 109,
+  "end_line": 161
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 124,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/050.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

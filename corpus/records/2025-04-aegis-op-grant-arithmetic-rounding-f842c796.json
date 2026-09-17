@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-04-aegis-op-grant-arithmetic-rounding-f842c796",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "aegis-contracts/contracts/AegisRewards.sol",
+  "sha256": "9dbff59cde67d6de8576fe3543a9058e974d15ec851e3d06620f523ec9c9ce92",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant",
+  "commit": "4aceb235db96b2299bb95ebf16e83a24f987bf3e"
+ },
+ "locator": {
+  "file": "aegis-contracts/contracts/AegisRewards.sol",
+  "contract": "AegisRewards",
+  "function": "_stringToBytes32",
+  "start_line": 194,
+  "end_line": 196
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/blob/main/277.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

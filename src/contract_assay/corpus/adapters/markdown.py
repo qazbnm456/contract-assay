@@ -20,8 +20,10 @@ __all__ = [
     "SourceCitation",
     "address_target",
     "contest_snapshot",
+    "dominant_commit",
     "permalinks",
     "quoted_source",
+    "reviewed_repository",
     "section",
 ]
 
@@ -165,6 +167,79 @@ def quoted_source(text: str) -> str | None:
         if preimage is not None:
             candidates.append(preimage)
     return max(candidates, key=len) if candidates else None
+
+
+# ---------------------------------------------------------------------------
+# What a report says about the code it reviewed
+# ---------------------------------------------------------------------------
+#
+# Both of these were written inside one adapter and are needed by two. The
+# recovery they perform is not platform knowledge: a report that cites a
+# repository at a commit dozens of times has *stated* that commit, whatever
+# format the report is in, and a second adapter re-deriving that would be the
+# fourth instance of a rule written twice and honoured once.
+
+
+def reviewed_repository(report_body: str) -> str | None:
+    """The repository under review, from the whole report rather than one finding.
+
+    A finding quotes a dependency to show what the audited code was derived
+    from, or ought to have done. An excerpt matched in that dependency would
+    attribute the defect to a third party the report never claimed was
+    defective, and the first run of the quote route produced exactly that: a
+    record pinned to an upstream library for a finding about a port of it.
+
+    Decided across the report because within one finding the dependency can
+    easily be cited more often than the code under review -- which is how that
+    record got made. Across a report the reviewed repository dominates by one
+    to two orders of magnitude, so this is a count rather than a tie-break, and
+    a tie returns nothing rather than choosing.
+    """
+    counts: Counter[str] = Counter(
+        citation.repo_url for citation in permalinks(report_body) if citation.is_solidity
+    )
+    if not counts:
+        return None
+    ranked = counts.most_common()
+    if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
+        return None
+    return ranked[0][0]
+
+
+def dominant_commit(report_body: str, repository: str | None) -> str | None:
+    """The commit the report's own citations of the reviewed repository name.
+
+    A finding frequently cites a *branch* -- `blob/main/src/X.sol#L10-L20` --
+    which names whatever that branch points at now and cannot be pinned. The
+    report itself cites the same repository at a commit, in its scope and
+    throughout, and across six held reports one commit dominated every time
+    (11 to 44 citations against a runner-up of 2 to 5).
+
+    So this is recovery from something the report **states**, not an inference
+    about dates or a resolution of the branch as it stands today. What remains
+    an assumption is that the line numbers a finding wrote against the branch
+    were written while the branch was that commit, which is what
+    `commit_resolved_from` records so a report can stratify on it -- and what
+    `verify` then checks, by requiring the named declaration to be in the
+    resolved span. A recovery that lands on the wrong bytes is rejected rather
+    than admitted.
+
+    A tie returns nothing: choosing between two commits on a tie-break would
+    pin records to a snapshot nobody reviewed.
+    """
+    if repository is None:
+        return None
+    counts: Counter[str] = Counter(
+        citation.ref
+        for citation in permalinks(report_body)
+        if citation.is_solidity and citation.repo_url == repository and citation.is_pinned
+    )
+    if not counts:
+        return None
+    ranked = counts.most_common()
+    if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
+        return None
+    return ranked[0][0]
 
 
 def section(text: str, heading: str, *, level: int = 3) -> str | None:

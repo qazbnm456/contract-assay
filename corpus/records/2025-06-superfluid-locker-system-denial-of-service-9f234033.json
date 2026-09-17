@@ -1,0 +1,34 @@
+{
+ "record_id": "2025-06-superfluid-locker-system-denial-of-service-9f234033",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "fluid/packages/contracts/src/FluidLocker.sol",
+  "sha256": "4190f28e9ef4acf6484987a1774b5f261e8ba3481323effc3ff334470c3953ac",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system",
+  "commit": "d8beaeed47f766659a1600a87372a7905109aa3c"
+ },
+ "locator": {
+  "file": "fluid/packages/contracts/src/FluidLocker.sol",
+  "contract": "FluidLocker",
+  "function": "_decreasePosition",
+  "start_line": 702,
+  "end_line": 737
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 727,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-06-superfluid-locker-system-judging/blob/main/165.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-08-flayer-reentrancy-cbad8910",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "flayer/src/contracts/utils/AirdropRecipient.sol",
+  "sha256": "02d85a72ebf8c811820288a9754b73938164d0531645325d7b2b1a7ec5a6526d",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-08-flayer",
+  "commit": "0ec252cf9ef0f3470191dcf8318f6835f5ef688c"
+ },
+ "locator": {
+  "file": "flayer/src/contracts/utils/AirdropRecipient.sol",
+  "contract": "AirdropRecipient",
+  "function": "claimAirdrop",
+  "start_line": 116,
+  "end_line": 147
+ },
+ "classes": [
+  "reentrancy"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 116,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-08-flayer-judging/blob/main/023.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

@@ -42,6 +42,8 @@ __all__ = [
     "Provenance",
     "SourcePin",
     "VulnerabilityClass",
+    "defect_key",
+    "fold_preference",
 ]
 
 _SHA1 = re.compile(r"^[0-9a-f]{40}$")
@@ -821,3 +823,60 @@ class CorpusRecord(BaseModel):
                 "variant is derived from another record"
             )
         return self
+
+
+# ---------------------------------------------------------------------------
+# When two records are one defect
+# ---------------------------------------------------------------------------
+#
+# Here rather than in `normalize`, because the question is about records and
+# two stages ask it. `normalize` folds within one batch; the corpus on disk is
+# the *union* of every batch ever run, and nothing folded that -- so a defect
+# whose second report arrived in a later harvest was held twice. Forty-five
+# such pairs, and a duplicate understates recall by half at that location
+# (§6.7), which is the direction that is invisible.
+
+
+def defect_key(record: CorpusRecord) -> tuple[str, ...]:
+    """What makes two records the same defect.
+
+    The pinned bytes, the function, and the class. Two reports naming the same
+    function of the same commit for the same class are describing one defect in
+    all but pathological cases; two *different* defects in one function would be
+    merged, which is the error this trade accepts, and it is the smaller one --
+    an under-counted corpus understates recall where a duplicated one overstates
+    it, and only the second is invisible.
+    """
+    assert record.locator is not None
+    return (
+        record.pin.source_id,
+        record.locator.function or "",
+        ",".join(sorted(c.value for c in record.classes)),
+        # What a *negative* is about, which `classes` does not carry: an
+        # adjudication holds no class and states the class it is negative for.
+        # Without this, two adjudications of one function for two different
+        # classes had the same key, and the corpus-level fold deleted one of
+        # them -- a hand-curated record, removed as a duplicate of a record
+        # about something else.
+        ",".join(sorted(c.value for c in record.negative_for)),
+        record.negative_kind.value if record.negative_kind else "",
+    )
+
+
+def fold_preference(record: CorpusRecord) -> tuple[int, int, int, str]:
+    """Which of two records describing one defect to keep.
+
+    Confirmation first, then how many claims the report made, then the narrower
+    span, then the id so the choice is deterministic. Deliberately not a ranking
+    of provenances against each other: `stated` and `quoted` fail differently
+    and neither outranks the other (§6.6), so the tie is broken on what the
+    report asserted rather than on how the span was obtained.
+    """
+    assert record.locator is not None
+    width = record.locator.end_line - record.locator.start_line
+    return (
+        -int(record.is_cross_checked),
+        -record.report_assertion_count,
+        width,
+        record.record_id,
+    )

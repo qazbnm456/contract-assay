@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-11-debita-finance-v3-denial-of-service-d29a30b5",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/DebitaLendOfferFactory.sol",
+  "sha256": "fab54d81078e07a9a6fe1f3d00f58081d257680b14e2077888639d3fd5d4f826",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/DebitaLendOfferFactory.sol",
+  "contract": "DLOFactory",
+  "function": "getActiveOrders",
+  "start_line": 222,
+  "end_line": 243
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 222,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/416.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

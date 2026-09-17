@@ -50,6 +50,8 @@ from contract_assay.corpus.records import (
     LocatorLabel,
     LocatorProvenance,
     Population,
+    defect_key,
+    fold_preference,
 )
 from contract_assay.corpus.verify import SourceResolver
 from contract_assay.evidence.syntax import Syntax
@@ -667,43 +669,6 @@ def parsed_contract_of(source: str, line: int) -> tuple[str | None, str | None]:
     return host.contract, host.function
 
 
-def _defect_key(record: CorpusRecord) -> tuple[str, ...]:
-    """What makes two records the same defect.
-
-    The pinned bytes, the function, and the class. Two reports naming the same
-    function of the same commit for the same class are describing one defect in
-    all but pathological cases; two *different* defects in one function would be
-    merged, which is the error this trade accepts, and it is the smaller one --
-    an under-counted corpus understates recall where a duplicated one overstates
-    it, and only the second is invisible.
-    """
-    assert record.locator is not None
-    return (
-        record.pin.source_id,
-        record.locator.function or "",
-        ",".join(sorted(c.value for c in record.classes)),
-    )
-
-
-def _preference(record: CorpusRecord) -> tuple[int, int, int, str]:
-    """Which of two records describing one defect to keep.
-
-    Confirmation first, then how many claims the report made, then the narrower
-    span, then the id so the choice is deterministic. Deliberately not a ranking
-    of provenances against each other: `stated` and `quoted` fail differently
-    and neither outranks the other (§6.6), so the tie is broken on what the
-    report asserted rather than on how the span was obtained.
-    """
-    assert record.locator is not None
-    width = record.locator.end_line - record.locator.start_line
-    return (
-        -int(record.is_cross_checked),
-        -record.report_assertion_count,
-        width,
-        record.record_id,
-    )
-
-
 def normalize(
     drafts: Iterable[DraftRecord],
     resolve: SourceResolver,
@@ -790,13 +755,13 @@ def normalize(
     best: dict[tuple[str, ...], CorpusRecord] = {}
     duplicates = 0
     for record in records:
-        key = _defect_key(record)
+        key = defect_key(record)
         existing = best.get(key)
         if existing is None:
             best[key] = record
             continue
         duplicates += 1
-        if _preference(record) < _preference(existing):
+        if fold_preference(record) < fold_preference(existing):
             best[key] = record
 
     kept = sorted(best.values(), key=lambda r: r.record_id)

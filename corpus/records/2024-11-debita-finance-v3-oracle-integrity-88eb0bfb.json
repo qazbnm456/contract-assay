@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-debita-finance-v3-oracle-integrity-88eb0bfb",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/oracles/DebitaPyth.sol",
+  "sha256": "8816cb423129156e526be0d02fe91a9606d66d7120b5cb3142ce65b8950795fe",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/oracles/DebitaPyth.sol",
+  "contract": "DebitaPyth",
+  "function": "getThePrice",
+  "start_line": 25,
+  "end_line": 41
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/466.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

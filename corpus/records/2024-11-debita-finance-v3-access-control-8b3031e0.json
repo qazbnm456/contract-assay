@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-11-debita-finance-v3-access-control-8b3031e0",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/auctions/AuctionFactory.sol",
+  "sha256": "14151dbcc9fd134f5ab83202a2e77a3c3f3aee887c2b530aeddae365d7d178b8",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/auctions/AuctionFactory.sol",
+  "contract": "auctionFactoryDebita",
+  "function": "changeOwner",
+  "start_line": 218,
+  "end_line": 222
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 218,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/231.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

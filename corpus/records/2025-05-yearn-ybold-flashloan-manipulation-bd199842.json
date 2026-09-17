@@ -1,0 +1,34 @@
+{
+ "record_id": "2025-05-yearn-ybold-flashloan-manipulation-bd199842",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "yv3-liquityv2-sp-strategy/src/Strategy.sol",
+  "sha256": "537431b7f8eb23dc503dcdadc3cc14efc883fa03170392ff1d2115079f285723",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold",
+  "commit": "88a3b89c05fd6e59ec130c79659195cd05d872af"
+ },
+ "locator": {
+  "file": "yv3-liquityv2-sp-strategy/src/Strategy.sol",
+  "contract": "LiquityV2SPStrategy",
+  "function": "_tend",
+  "start_line": 225,
+  "end_line": 246
+ },
+ "classes": [
+  "flashloan_manipulation"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 237,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-yearn-ybold-judging/blob/main/110.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

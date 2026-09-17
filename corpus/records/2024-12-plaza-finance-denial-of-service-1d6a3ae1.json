@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-12-plaza-finance-denial-of-service-1d6a3ae1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/BalancerOracleAdapter.sol",
+  "sha256": "e260377b7745b455168c1bcb4afece64013401a6adff224dc90f944855e4d1b4",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/BalancerOracleAdapter.sol",
+  "contract": "BalancerOracleAdapter",
+  "function": "latestRoundData",
+  "start_line": 95,
+  "end_line": 119
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 112,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/953.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

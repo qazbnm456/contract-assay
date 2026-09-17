@@ -25,6 +25,7 @@ from contract_assay.corpus.records import (
     Provenance,
     SourcePin,
     VulnerabilityClass,
+    defect_key,
 )
 from contract_assay.corpus.verify import (
     CheckFailure,
@@ -1103,3 +1104,59 @@ class TestTheCommonSurfaceOfAPin:
         del payload["kind"]
         with pytest.raises(ValidationError):
             CorpusRecord.model_validate({**a_positive().model_dump(mode="json"), "pin": payload})
+
+
+class TestWhenTwoRecordsAreOneDefect:
+    """The fold key, and the distinction it once could not draw.
+
+    `normalize` folds within one batch. The corpus on disk is the union of every
+    batch ever run, so a defect whose second report arrived in a later harvest
+    was held twice -- 44 such pairs over one corpus, each halving the recall its
+    location can show (§6.7). `verify` now asks the same question of the whole
+    corpus, which is what made the key's blind spot visible: a *negative* holds
+    no class and states the class it is negative for, so two adjudications of
+    one function for two different classes had the same key and one was deleted
+    as a duplicate of a record about something else.
+    """
+
+    def _adjudication(self, record_id: str, cls: VulnerabilityClass) -> CorpusRecord:
+        return CorpusRecord(
+            record_id=record_id,
+            population=Population.AUDIT_REVIEW,
+            split=CorpusSplit.PUBLIC,
+            pin=a_pin(),
+            locator=a_locator(),
+            locator_provenance=LocatorProvenance.STATED,
+            classes=[],
+            negative_for=[cls],
+            negative_kind=NegativeKind.ADJUDICATED,
+            notes="Examined this location and found no instance of the class.",
+            provenance=a_provenance(platform="hand-adjudication"),
+        )
+
+    def test_two_positives_at_one_function_for_one_class_are_one_defect(self) -> None:
+        one = a_positive(record_id="vault-slippage-1")
+        other = a_positive(record_id="vault-slippage-2")
+        assert defect_key(one) == defect_key(other)
+
+    def test_two_adjudications_for_different_classes_are_not(self) -> None:
+        randomness = self._adjudication(
+            "vault-adjudicated-randomness", VulnerabilityClass.INSECURE_RANDOMNESS
+        )
+        access = self._adjudication("vault-adjudicated-access", VulnerabilityClass.ACCESS_CONTROL)
+        assert defect_key(randomness) != defect_key(access)
+
+    def test_verify_reports_a_duplicate_it_would_keep_and_fold(self) -> None:
+        one = a_positive(record_id="vault-slippage-1")
+        other = a_positive(record_id="vault-slippage-2")
+        report = verify_all([one, other], resolver())
+        assert len(report.admitted) == 2
+        assert report.duplicates == {"vault-slippage-1": ("vault-slippage-2",)}
+        assert "describe a defect another admitted record already describes" in (
+            report.sampling_statement()
+        )
+
+    def test_a_corpus_with_no_duplicates_says_nothing_about_them(self) -> None:
+        report = verify_all([a_positive()], resolver())
+        assert report.duplicates == {}
+        assert "already describes" not in report.sampling_statement()

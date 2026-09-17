@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-dodo-cross-chain-dex-slippage-63b6899d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "omni-chain-contracts/contracts/GatewaySend.sol",
+  "sha256": "f64c173518ec6a22ead1068f94a0dd26290eb58f10ffaaa078f0267194a255cd",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex",
+  "commit": "d4834a468f7dad56b007b4450397289d4f767757"
+ },
+ "locator": {
+  "file": "omni-chain-contracts/contracts/GatewaySend.sol",
+  "contract": "GatewaySend",
+  "function": "_doMixSwap",
+  "start_line": 202,
+  "end_line": 215
+ },
+ "classes": [
+  "slippage"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/101.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

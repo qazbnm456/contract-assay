@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-debita-finance-v3-oracle-integrity-c2351481",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/oracles/MixOracle/TarotOracle/TarotPriceOracle.sol",
+  "sha256": "a5bc9b4ae873e8e28f445285c3e84a506f2f33d8190cf52e1d12930a96fb15f4",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/oracles/MixOracle/TarotOracle/TarotPriceOracle.sol",
+  "contract": "TarotPriceOracle",
+  "function": "getBlockTimestamp",
+  "start_line": 127,
+  "end_line": 130
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/396.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-12-plaza-finance-unchecked-external-call-019ca96b",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/LifiRouter.sol",
+  "sha256": "e5f99c8cf377c0da4199c7823c42ab0148e10088df0432606d445f75178a899f",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/LifiRouter.sol",
+  "contract": "LifiRouter",
+  "function": "create",
+  "start_line": 11,
+  "end_line": 19
+ },
+ "classes": [
+  "unchecked_external_call"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/138.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

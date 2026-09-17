@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-dodo-cross-chain-dex-arithmetic-rounding-f5f0dcc1",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "omni-chain-contracts/contracts/libraries/UniswapV2Library.sol",
+  "sha256": "04b9b6510880c7c41f168e9c702d1ea682529a69507628c7d001d9078c660cb3",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex",
+  "commit": "d4834a468f7dad56b007b4450397289d4f767757"
+ },
+ "locator": {
+  "file": "omni-chain-contracts/contracts/libraries/UniswapV2Library.sol",
+  "contract": "UniswapV2Library",
+  "function": "quote",
+  "start_line": 49,
+  "end_line": 53
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-dodo-cross-chain-dex-judging/blob/main/813.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

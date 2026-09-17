@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-oku-denial-of-service-d5b10bad",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "oku-custom-order-types/contracts/libraries/ArrayMutation.sol",
+  "sha256": "33267ac77bfcfe1694ab135afe510fcd6bde586c15e58db9e322f967a743ef05",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-oku",
+  "commit": "ee3f781a73d65e33fb452c9a44eb1337c5cfdbd6"
+ },
+ "locator": {
+  "file": "oku-custom-order-types/contracts/libraries/ArrayMutation.sol",
+  "contract": "ArrayMutation",
+  "function": "removeFromArray",
+  "start_line": 19,
+  "end_line": 26
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-11-oku-judging/blob/main/473.md",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

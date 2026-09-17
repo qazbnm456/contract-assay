@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-12-plaza-finance-arithmetic-rounding-af336465",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/PreDeposit.sol",
+  "sha256": "bb6a9f548d38f46c5fbc4f44a8e03c8b3ad627129cddeb12d0aafaca7b2b7c75",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/PreDeposit.sol",
+  "contract": "PreDeposit",
+  "function": "claim",
+  "start_line": 172,
+  "end_line": 173
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/676.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

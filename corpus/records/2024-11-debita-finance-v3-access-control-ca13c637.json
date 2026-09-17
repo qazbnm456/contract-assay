@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-debita-finance-v3-access-control-ca13c637",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "Debita-V3-Contracts/contracts/DebitaLendOffer-Implementation.sol",
+  "sha256": "f9d5cf9643be40e65c93c7797c77d4c292913a22d265fe1e4a09f4e90dd74470",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-debita-finance-v3",
+  "commit": "1465ba6884c4cc44f7fc28e51f792db346ab1e33"
+ },
+ "locator": {
+  "file": "Debita-V3-Contracts/contracts/DebitaLendOffer-Implementation.sol",
+  "contract": "DLOImplementation",
+  "function": "cancelOffer",
+  "start_line": 144,
+  "end_line": 159
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-10-debita-judging/blob/main/464.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

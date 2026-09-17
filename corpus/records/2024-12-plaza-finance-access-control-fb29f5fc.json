@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-12-plaza-finance-access-control-fb29f5fc",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/BondToken.sol",
+  "sha256": "d2329ffc4a8b9585fb0574ac71fe274bade64b26a285b0bfc089b0cbf69f9be5",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/BondToken.sol",
+  "contract": "BondToken",
+  "function": "increaseIndexedAssetPeriod",
+  "start_line": 217,
+  "end_line": 229
+ },
+ "classes": [
+  "access_control"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 217,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/363.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

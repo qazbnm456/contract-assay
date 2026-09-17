@@ -1,0 +1,34 @@
+{
+ "record_id": "2024-12-plaza-finance-unchecked-external-call-79cf0355",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "plaza-evm/src/Auction.sol",
+  "sha256": "daa0505f9aa1e427c951897a8c035f6b65fcb844fac7ffdf2f7efdc9bb5cacd3",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-12-plaza-finance",
+  "commit": "14a962c52a8f4731bbe4655a2f6d0d85e144c7c2"
+ },
+ "locator": {
+  "file": "plaza-evm/src/Auction.sol",
+  "contract": "Auction",
+  "function": "claimBid",
+  "start_line": 356,
+  "end_line": 365
+ },
+ "classes": [
+  "unchecked_external_call"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "anchored",
+ "asserted_labels": [],
+ "anchor_line": 362,
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-12-plaza-finance-judging/blob/main/890.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

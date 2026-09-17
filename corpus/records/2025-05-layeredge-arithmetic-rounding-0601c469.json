@@ -1,0 +1,33 @@
+{
+ "record_id": "2025-05-layeredge-arithmetic-rounding-0601c469",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "edgen-staking/src/library/FenwickTree.sol",
+  "sha256": "74d9a40eea4800e56a56c8490cbee6b0c8327a18adf1d4de6a9e40a3e3125688",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2025-05-layeredge",
+  "commit": "708c5b5345ed50cd0bde7b0a8a548c8936639683"
+ },
+ "locator": {
+  "file": "edgen-staking/src/library/FenwickTree.sol",
+  "contract": "FenwickTree",
+  "function": "update",
+  "start_line": 10,
+  "end_line": 16
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2025-05-layeredge-judging/blob/main/248.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

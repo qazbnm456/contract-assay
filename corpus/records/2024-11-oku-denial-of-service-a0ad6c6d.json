@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-11-oku-denial-of-service-a0ad6c6d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "oku-custom-order-types/contracts/automatedTrigger/Bracket.sol",
+  "sha256": "a4070005f7a717e1db8967236faf5a63d47da26e4fe89836edfe32fb25efaf0c",
+  "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+  "kind": "commit",
+  "repo_url": "https://github.com/sherlock-audit/2024-11-oku",
+  "commit": "ee3f781a73d65e33fb452c9a44eb1337c5cfdbd6"
+ },
+ "locator": {
+  "file": "oku-custom-order-types/contracts/automatedTrigger/Bracket.sol",
+  "contract": "Bracket",
+  "function": "createOrder",
+  "start_line": 184,
+  "end_line": 213
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "sherlock",
+  "report_url": "https://github.com/sherlock-audit/2024-11-oku-judging/blob/main/872.md",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}
