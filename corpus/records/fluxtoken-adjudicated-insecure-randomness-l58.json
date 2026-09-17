@@ -1,0 +1,31 @@
+{
+  "record_id": "fluxtoken-adjudicated-insecure-randomness-l58",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/FluxToken.sol",
+    "kind": "commit",
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f"
+  },
+  "locator": {
+    "file": "src/FluxToken.sol",
+    "contract": "FluxToken",
+    "function": "constructor",
+    "start_line": 58,
+    "end_line": 58
+  },
+  "classes": [],
+  "negative_for": [
+    "insecure_randomness"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "negative_kind": "adjudicated",
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/alchemix-finance/alchemix-v2-dao/blob/f1007439ad3a32e412468c4c42f62f676822dc1f/src/FluxToken.sol#L58"
+  },
+  "notes": "Examined `deployDate = block.timestamp;`. The value is stored as the contract's deployment instant and is afterwards read only as one side of a deadline comparison (line 136). A block producer can shift it by seconds, which shifts the recorded deployment instant by seconds -- that is what a deployment instant is. Nothing derives a selection, an ordering or an identifier from it, so it is not used as though unpredictable. Not an instance of insecure_randomness at this location. This says nothing about the rest of the file."
+}

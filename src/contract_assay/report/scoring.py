@@ -681,7 +681,16 @@ def score(
             if entry not in bucket:
                 bucket.append(entry)
 
-    scoreable = {c for record in truths for c in record.classes}
+    # Any record speaking to a class puts it in the matrix, positive or negative.
+    # Taking only positives meant a class whose predictions had all been
+    # adjudicated still reported nothing -- its findings stayed "unscoreable"
+    # while the corpus was in fact able to judge every one of them. Recall is
+    # still unavailable without positives, which `recall()` already says by
+    # returning nothing; precision is not, and that asymmetry is the point of
+    # judging the pool at all.
+    scoreable = {c for record in truths for c in record.classes} | {
+        c for record in records for c in record.negative_for
+    }
     unscoreable_claims: Counter[VulnerabilityClass] = Counter()
     unscoreable_runs: Counter[VulnerabilityClass] = Counter()
     for run in runs:

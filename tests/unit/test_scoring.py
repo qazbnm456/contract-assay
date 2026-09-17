@@ -382,7 +382,14 @@ class TestTheStatementNamesWhatIsThin:
             provenance=Provenance(platform="p", report_url="https://x/1"),
         )
         report = score([a_run([(5, 6)])], [negative], resolver())
-        assert report.by_class == {}
+        # The class is in the matrix, because a negative speaking to it licenses
+        # a precision figure. What it must not do is contribute a *record* to be
+        # recalled -- so `records` stays zero and recall stays unavailable,
+        # which is the thing this test is about.
+        [got] = report.by_class.values()
+        assert got.records == 0
+        assert got.recall() is None
+        assert got.false_negatives == 0
 
 
 class TestOneFindingSatisfiesOneRecord:

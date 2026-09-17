@@ -1,0 +1,31 @@
+{
+  "record_id": "fluxtoken-adjudicated-insecure-randomness-l136",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/FluxToken.sol",
+    "kind": "commit",
+    "repo_url": "https://github.com/alchemix-finance/alchemix-v2-dao",
+    "commit": "f1007439ad3a32e412468c4c42f62f676822dc1f"
+  },
+  "locator": {
+    "file": "src/FluxToken.sol",
+    "contract": "FluxToken",
+    "function": "nftClaim",
+    "start_line": 136,
+    "end_line": 136
+  },
+  "classes": [],
+  "negative_for": [
+    "insecure_randomness"
+  ],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "negative_kind": "adjudicated",
+  "provenance": {
+    "platform": "hand-adjudication",
+    "report_url": "https://github.com/alchemix-finance/alchemix-v2-dao/blob/f1007439ad3a32e412468c4c42f62f676822dc1f/src/FluxToken.sol#L136"
+  },
+  "notes": "Examined `require(block.timestamp < deployDate + oneYear, ...)`. The value is compared against a fixed deadline one year after deployment. A producer can move it by seconds, which matters only within seconds of the boundary and grants no choice of outcome that was not already available by transacting seconds earlier or later. Nothing unpredictable is required of it. Not an instance of insecure_randomness at this location. This says nothing about the rest of the file."
+}
