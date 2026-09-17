@@ -2875,7 +2875,37 @@ each other: if they name different main models, none is ranked, because ranking
 whichever ones happen to agree would turn the exercise's silence into a decision
 it never made.
 
-## 8. Layout and status
+## 8. What this is, and what is not part of it
+
+This is a **benchmark**: a corpus of located, verified defects, an interface a
+submission implements, a scorer, and the refusals that keep its figures honest.
+It is meant to be depended on, contributed to, and run by people who did not
+write it.
+
+Several things it deliberately is *not*, because each would change what the
+project is rather than extend it:
+
+- **Not a competition platform.** A leaderboard is a benchmark's business:
+  submissions have to be comparable or the scoring rules mean nothing. Running a
+  round -- collecting submissions, triggering them, adjudicating the pool,
+  publishing results, holding a deadline -- is a *consumer's* business, and a
+  consumer's rules, infrastructure and interface belong in that consumer's own
+  project with this one as a dependency. "The exercise" throughout this document
+  is a **role**, the party running a round, not a particular event.
+- **Not a model harness.** `plan()` says what to ask; the model is called by
+  whoever runs the round (§7.7), which is what lets one agreed model be put
+  behind every submission.
+- **Not a service.** The boundary is documents and two commands (§7.7,
+  `docs/api.md` §8). A caller that wants an HTTP endpoint writes one around
+  them; what must not happen is a second implementation of a refusal.
+
+The distinction is worth holding because the pressure runs one way. Every
+consumer wants one more field, one more default, one more convenience -- and a
+default is where a refusal goes to die. The benchmark's answer to "what should
+we show when there is no F1?" is a sentence saying why there is none, and the
+consumer decides how to render it.
+
+## 9. Layout and status
 
 Status is stated per component because a design document that describes planned
 work in the present tense reports intentions as capabilities.
@@ -3004,7 +3034,7 @@ that a detector must alert on them *even when the model returns a benign
 verdict*. They guard the property that evidence is independent of the verdict,
 which is the one property no amount of prompt tuning can restore once lost.
 
-## 9. Non-goals
+## 10. Non-goals
 
 - **Severity on a located finding.** `Finding` carries no severity and will not
   gain one: a model asked how bad a defect is states a value judgement as an

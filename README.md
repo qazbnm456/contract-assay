@@ -7,14 +7,21 @@ detector actually finds — at which function, on which line, provably — rathe
 than whether it said something somewhere in a repository that happened to be
 labelled vulnerable.
 
-> **Status: early construction.** Built so far: the data contract, the corpus
-> pipeline (harvest accounting, normalize, verify), the syntactic analysis
-> backend and its shape queries, the public detector interface with its
-> submission loader and runner, the first batch of the predicate library, and
-> three of the nine detectors. Not yet built: adapters for any real audit
-> platform, the compiled analysis backend, the remaining six detectors, and
-> scoring. There is no corpus, so nothing here can measure a model yet.
+> **Status: usable, narrow, and honest about which.** Built: the data contract,
+> the corpus pipeline (harvest accounting, normalize, verify), adapters for
+> three audit platforms, a corpus of 442 verified records across nine classes,
+> the syntactic analysis backend and its shape queries, the public detector
+> interface with its loader and runner, the predicate library, eight reference
+> detectors, scoring with its stratifications and refusals, a leaderboard, and
+> the JSON documents a consumer is built on. Not built: the compiled analysis
+> backend, the classification-only track, and synthetic variants.
 > `docs/design.md` carries a per-component status table.
+>
+> What that buys and does not: every figure a score needs except precision is
+> produced today. Precision needs each prediction judged, and a prediction made
+> by an instrument its own author would adjudicate cannot license one -- so the
+> reference detectors' recall is measured (0.80 down to 0.00 by class) and their
+> precision waits on a judge who did not write them.
 
 ## Why this exists
 
@@ -106,12 +113,29 @@ The offline suite runs with no model, no network and no toolchain. It is the
 gate on every push, along with lint, formatting, strict type checking and a
 coverage floor.
 
-Two commands are available today:
+Four commands:
 
 ```bash
 contract-assay declarations src/Vault.sol          # what a file declares, and where
 contract-assay verify corpus/records/ --source-root .
+contract-assay score runs.jsonl --records corpus/records --submission-id team-a \
+    --source-root ./checkout --weights weights.json --out team-a.json
+contract-assay rank --submission team-a=team-a-runs.jsonl \
+    --records corpus/records --weights weights.json --baseline the-agreed-model
 ```
+
+## What this is, and what depends on it
+
+An independent benchmark, meant to be depended on and contributed to. It holds
+the corpus, the interface, the scorer and the refusals that keep its figures
+honest. It does **not** hold a competition: collecting submissions, holding a
+deadline, adjudicating a pool and publishing results are a consumer's
+business, and a consumer's rules and infrastructure belong in that consumer's
+own project with this one as a dependency. `docs/design.md` §8 states the
+boundary and why it is worth holding.
+
+[docs/contributing.md](docs/contributing.md) says what can be contributed --
+records, adapters, detectors, classes -- and what review asks of each.
 
 ## Licence
 
