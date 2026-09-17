@@ -1916,7 +1916,50 @@ Sampling is an explicit parameter of a benchmark run, and metrics are reported
 at the corpus's real class prevalence. Forcing a balanced sample produces
 numbers that describe no population and cannot be compared across classes.
 
-### 7.3 What the corpus has standing to judge
+### 7.3 A call edge is not the same function
+
+Two locator cases arose the same week and they ask one question. A record at an
+entry point whose defect is in an internal callee, and a pair of records
+describing one rounding defect at a caller and at its callee. In both, a defect
+spans a call edge while the corpus names one end and a submission names the
+other.
+
+One rule answers both:
+
+> **Nothing weaker than the same function counts as the same location, and
+> everything weaker is reported as its own named strength.**
+
+So `call_adjacent` joins the strength table between `file` and `function`: same
+file, different function, one call edge apart. Reported separately and **never
+folded into the function figure**, which is the whole reason it is a tier rather
+than a relaxation — `file` is already weaker than `function` and nobody reads a
+file match as function-granular. Recall at the `function` floor stays exactly as
+strict as §1.1 requires.
+
+Resolution is name lookup within the unit, which is what resolving a call
+amounts to when nothing overloads the name (§4.2), and each name must be
+declared exactly once or the tier is refused: an overload would make two
+unrelated functions look adjacent.
+
+**No corpus record exercises this tier yet, and neither motivating case is
+resolved by it.** Stated because the alternative is implying otherwise:
+
+- The entry-point case has no prediction to match. Its defect is a loop bounded
+  by a local alias of a *local* array's length, and the denial-of-service
+  predicate requires a dynamic array in **storage**, so nothing is claimed
+  there at all.
+- The caller/callee record pair is not a matching question. Matching is
+  one-to-one, so one finding satisfies one record and the second is a miss at
+  every tier, this one included. That pair is the duplicate-records question
+  (§6.7), which remains deferred to the scorer for the reason recorded there:
+  deciding it by a dedup key would bury a scoring policy in a normalisation
+  rule.
+
+So what this increment settles is the **rule**, with a tested surface for it,
+and what it does not settle is either instance. Both are recorded above rather
+than left to be rediscovered as gaps.
+
+### 7.4 What the corpus has standing to judge
 
 A positive record asserts that an instance of its class exists at its location.
 It asserts **nothing** about whether other instances exist elsewhere in the same
@@ -1957,7 +2000,7 @@ everywhere** and every prediction is unjudged. That is a fact about the corpus
 rather than about the detectors, and stating it is the only honest form
 available.
 
-### 7.4 A score and a declared limit are different kinds of claim
+### 7.5 A score and a declared limit are different kinds of claim
 
 A score is an estimate from a sample and it moves with the sample: add a hundred
 records of a class and its recall becomes some other number. A **declared
@@ -2072,7 +2115,7 @@ unsound" tells them which way the number moves on a corpus containing more of
 that shape. A score alone cannot say that, and it is what a reader most needs to
 know.
 
-### 7.5 Ranking, and refusing to rank
+### 7.6 Ranking, and refusing to rank
 
 A leaderboard is where every rule in this section either holds or stops
 mattering, because the single number is what gets quoted. So the arithmetic is

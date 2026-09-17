@@ -90,6 +90,25 @@ class MatchStrength(StrEnum):
     FUNCTION = "function"
     """Same file and same declared function, spans apart."""
 
+    CALL_ADJACENT = "call_adjacent"
+    """Same file, different function, one call edge apart.
+
+    The tier that exists because a defect can span a call edge while the corpus
+    names one end and a submission names the other. Two instances arose the same
+    week: a record at an entry point whose loop is in an internal callee, and a
+    pair of records describing one rounding defect at a caller and its callee.
+
+    Reported **separately and never folded into the function figure**, which is
+    the whole reason it is a tier rather than a relaxation. `file` is already
+    weaker than `function` and nobody reads a file match as function-granular;
+    this sits between them and is read the same way. Recall at the `function`
+    floor stays exactly as strict as §1.1 requires.
+
+    Established only when each function name is declared once in the unit, so an
+    overload cannot make two unrelated functions look adjacent -- the same
+    refusal the declaration index applies everywhere else.
+    """
+
     FILE = "file"
     """Same file only."""
 
@@ -98,7 +117,7 @@ class MatchStrength(StrEnum):
 
     @property
     def rank(self) -> int:
-        return ("none", "file", "function", "exact").index(self.value)
+        return ("none", "file", "call_adjacent", "function", "exact").index(self.value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -528,6 +547,37 @@ def _signature_at(parsed: Syntax | None, locator: Locator) -> str | None:
     return declaration.signature if declaration is not None else None
 
 
+def _call_adjacent(parsed: Syntax | None, prediction: Locator, truth: Locator) -> bool:
+    """Whether the two locators sit one call edge apart in the same unit.
+
+    One question settles both of this week's locator cases, and the answer is a
+    single rule: **nothing weaker than the same function counts as the same
+    location, and everything weaker is reported as its own named strength.** So
+    a prediction at the callee of a record's function is not a function match --
+    it is this, which has its own figure.
+
+    Resolution is name lookup within the unit, which is what resolving a call
+    amounts to when nothing overloads the name (§4.2). Each name must be
+    declared exactly once or this returns false: an overload would make two
+    unrelated functions look adjacent, and refusing is the rule the declaration
+    index applies to an overloaded name everywhere else.
+    """
+    if parsed is None:
+        return False
+    hosts = (
+        parsed.callable_at(prediction.start_line),
+        parsed.callable_at(truth.start_line),
+    )
+    if any(host is None for host in hosts):
+        return False
+    names = [host.names[0] for host in hosts if host is not None]
+    if len(names) != 2 or names[0] == names[1]:
+        return False
+    if any(parsed.declarations_of(name) != 1 for name in names):
+        return False
+    return names[0] in parsed.callers_of(names[1]) or names[1] in parsed.callers_of(names[0])
+
+
 def _strength(
     prediction: Locator,
     record: CorpusRecord,
@@ -553,6 +603,8 @@ def _strength(
         return Match(record.record_id, MatchStrength.FILE, exact_available, False)
 
     if predicted_signature != truth_signature:
+        if _call_adjacent(parsed, prediction, truth):
+            return Match(record.record_id, MatchStrength.CALL_ADJACENT, exact_available, True)
         return Match(record.record_id, MatchStrength.FILE, exact_available, True)
 
     if exact_available and _overlaps(prediction, record):
@@ -747,7 +799,12 @@ def score(
         assigned: dict[int, Match] = {}
         used_records: set[int] = set()
         used_predictions: set[int] = set()
-        for tier in (MatchStrength.EXACT, MatchStrength.FUNCTION, MatchStrength.FILE):
+        for tier in (
+            MatchStrength.EXACT,
+            MatchStrength.FUNCTION,
+            MatchStrength.CALL_ADJACENT,
+            MatchStrength.FILE,
+        ):
             edges = [
                 (pi, ri)
                 for pi, ri, m in candidates

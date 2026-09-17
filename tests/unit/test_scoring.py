@@ -956,3 +956,86 @@ class TestJudgingWhatWasPredicted:
         payload["locator_provenance"] = LocatorProvenance.STATED.value
         with pytest.raises(ValidationError, match="must record what was found"):
             CorpusRecord.model_validate(payload)
+
+
+class TestACallEdgeIsNotTheSameFunction:
+    """One rule settles the locator question, and this is its scoring surface.
+
+    **Nothing weaker than the same function counts as the same location, and
+    everything weaker is reported as its own named strength.** So a prediction
+    in a callee of a record's function is not a function match; it is
+    `call_adjacent`, which has its own figure and is never folded into the
+    function one.
+
+    No corpus record exercises this tier yet, which is stated rather than
+    implied: the two cases that motivated it are not resolved by it, and §4.2
+    records why.
+    """
+
+    ADJACENT = """\
+contract Vault {
+    uint256 total;
+
+    function entry(uint256 amount) external {
+        _work(amount);
+    }
+
+    function _work(uint256 amount) internal {
+        total += amount;
+    }
+
+    function unrelated(uint256 amount) external {
+        total -= amount;
+    }
+
+    function _twice(uint256 a) internal {}
+
+    function _twice(uint256 a, uint256 b) internal {}
+
+    function overloadCaller() external {
+        _twice(1);
+    }
+}
+"""
+
+    def _record(self, start: int, end: int, function: str) -> CorpusRecord:
+        return a_record(start=start, end=end, function=function)
+
+    def _strength_of(self, prediction: tuple[int, int], record: CorpusRecord) -> str:
+        report = score([a_run([prediction])], [record], resolver(self.ADJACENT))
+        [match] = report.matches
+        return match.strength.value
+
+    def test_a_callee_of_the_records_function_is_call_adjacent(self) -> None:
+        # The record is at the entry point and the prediction is in the callee.
+        assert self._strength_of((9, 10), self._record(4, 6, "entry")) == "call_adjacent"
+
+    def test_the_caller_direction_counts_too(self) -> None:
+        assert self._strength_of((4, 6), self._record(8, 10, "_work")) == "call_adjacent"
+
+    def test_an_unrelated_function_is_only_a_file_match(self) -> None:
+        assert self._strength_of((12, 14), self._record(4, 6, "entry")) == "file"
+
+    def test_the_same_function_is_still_stronger(self) -> None:
+        # The tier sits below `function`, so it must never capture what the
+        # stricter tiers would.
+        assert self._strength_of((5, 5), self._record(4, 6, "entry")) == "exact"
+
+    def test_an_overloaded_name_is_refused_rather_than_resolved(self) -> None:
+        # An overload would make two unrelated functions look adjacent, and
+        # refusing is the rule the declaration index applies everywhere else.
+        assert self._strength_of((20, 20), self._record(16, 16, "_twice")) == "file"
+
+    def test_it_ranks_between_file_and_function(self) -> None:
+        assert (
+            MatchStrength.FILE.rank < MatchStrength.CALL_ADJACENT.rank < MatchStrength.FUNCTION.rank
+        )
+
+    def test_recall_at_the_function_floor_ignores_it(self) -> None:
+        # Which is the whole reason it is a tier rather than a relaxation: the
+        # figure §1.1 requires stays exactly as strict.
+        got = only(
+            score([a_run([(9, 10)])], [self._record(4, 6, "entry")], resolver(self.ADJACENT))
+        )
+        assert got.recall(MatchStrength.FUNCTION) == 0.0
+        assert got.recall(MatchStrength.CALL_ADJACENT) == 1.0
