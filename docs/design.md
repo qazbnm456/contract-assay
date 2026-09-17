@@ -1505,6 +1505,45 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   when the named function is declared exactly once inside the named type, and
   skip otherwise. Every derived locator is marked as such (§6.6), because
   verification cannot cross-check it.
+
+  A second recoverable category: a finding citing the reviewed repository at a
+  *branch* rather than a commit. Line numbers against `blob/main` are not a
+  location, and nine such losses over one sample were filed as having none. But
+  the reports pin their own snapshot: across the sample every report's citations
+  of the repository under review named one commit far more often than any other
+  — 11, 21, 26, 31, 35 and 44 citations against runners-up of two to five — so
+  the commit is **stated by the report**, and the only assumption left is that
+  the branch was there when the finding's line numbers were written. Of 22
+  drafts over 17 reports, 12 pin their own commit, 6 take the dominant one, and
+  4 take the contest's snapshot because a line-numbered excerpt names no commit
+  at all.
+
+  Two lessons, both about where a check lives:
+
+  - **Centralising a check centralises its verdict, not its reasons.** The
+    repository restriction had to hold at the stated citation, the sole cited
+    file and the candidate set; it held in two, and a dependency citation became
+    a record pinned to an upstream library. Made single, it silently dropped
+    every out-of-scope citation, and three findings needing three different
+    fixes — read the report's scope, parse a path, cite anything at all — all
+    arrived as `no_location`. So the filter is one function and the *cause* is
+    read back off the unfiltered citations, which is the only place the
+    difference between them still exists.
+  - **A recovery can erase its own evidence.** Rewriting a moving ref to the
+    stated commit makes the citation indistinguishable from one the finding
+    pinned itself — and `is_pinned` was exactly what both callers asked, so
+    every draft came out labelled the wrong way round: findings that pinned
+    their own commit were published as resting on an inference, and the
+    recovered ones as stated outright. Nothing failed, no count moved, and the
+    wrong label was `pin.resolved_from`, which is what a report stratifies on to
+    say how much of the corpus rests on an assumption. It surfaced only by
+    reading each new record against its source before writing it.
+
+  What the sample yielded, end to end: 174 candidates, 22 drafts, 10 records
+  after normalization, 8 after verification, 5 of them new to the corpus. Verify
+  rejected two for naming a function not declared in the located span, which is
+  the check doing its job on a locator derived from prose. One admitted record
+  rests on the recovered commit, and says so.
 - **normalize** — resolve locations, deriving a span where the report named only
   a function, and pin commit SHAs and digests. Class mapping is *not* here: it
   belongs to the adapter, because the taxonomy being mapped from is the

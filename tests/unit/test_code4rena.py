@@ -24,6 +24,7 @@ pytestmark = pytest.mark.offline
 
 SHA = "f" * 40
 REPO = "https://github.com/code-423n4/2099-01-example"
+SCOPE_SHA = "a" * 40
 
 
 def a_report(body: str) -> RawReport:
@@ -494,3 +495,60 @@ class TestOnlyTheCodeUnderReview:
             SkipCause.CITES_ANOTHER_REPOSITORY,
             SkipCause.NO_LOCATION,
         )
+
+
+class TestWhichCommitTheRecordRestsOn:
+    """A recovered commit is an assumption, and only the recovered ones made it.
+
+    Rewriting a moving ref to the commit the report states erases the evidence
+    that the ref ever moved: the rewritten citation is pinned, and both callers
+    asked exactly that. So every draft came out labelled the wrong way round --
+    findings that pinned their own commit were published as resting on a
+    recovery, and the recovered ones as stated outright -- and the label is not
+    an internal detail but `pin.resolved_from`, which is what a report
+    stratifies on to say how much of the corpus rests on an inference.
+    """
+
+    OTHER = SCOPE_SHA
+    SCOPE = "\n".join(f"<{REPO}/blob/{SCOPE_SHA}/src/Scope{n}.sol#L{n}>" for n in range(1, 9))
+
+    def _draft(self, citation: str, *, scope: str | None = None) -> DraftRecord | Skip:
+        body = (
+            "# Overview\n\n" + (self.SCOPE if scope is None else scope) + "\n\n"
+            "# High Risk Findings (1)\n\n"
+            "## [[H-01] Reentrancy lets a caller drain the vault](https://x.invalid/issues/1)\n\n"
+            "### Lines of code\n\n"
+            f"{citation}\n\n"
+            "### Impact\nThe balance is written after the transfer.\n"
+        )
+        report = a_report(body)
+        adapter = Code4renaAdapter()
+        [candidate] = adapter.candidates(report)
+        return adapter.extract(report, candidate)
+
+    def test_a_finding_that_pins_its_own_commit_rests_on_nothing(self) -> None:
+        outcome = self._draft(f"<{REPO}/blob/{SHA}/src/Vault.sol#L20-L28>")
+        assert isinstance(outcome, DraftRecord)
+        assert outcome.commit == SHA
+        assert outcome.commit_resolved_from is None
+
+    def test_a_moving_ref_takes_the_commit_the_report_states_and_says_so(self) -> None:
+        outcome = self._draft(f"<{REPO}/blob/main/src/Vault.sol#L20-L28>")
+        assert isinstance(outcome, DraftRecord)
+        # The report's own citations of this repository name one commit, so the
+        # line numbers can be read against it -- on the assumption that the
+        # branch was there when they were written, which the finding never said.
+        assert outcome.commit == self.OTHER
+        assert outcome.commit_resolved_from is not None
+        assert "most often" in outcome.commit_resolved_from
+
+    def test_a_moving_ref_with_no_commit_to_recover_is_refused_for_that(self) -> None:
+        outcome = self._draft(f"<{REPO}/blob/main/src/Vault.sol#L20-L28>", scope="")
+        assert isinstance(outcome, Skip)
+        assert outcome.cause is SkipCause.NO_COMMIT
+
+    def test_a_finding_citing_nothing_is_refused_for_that_and_not_for_a_path(self) -> None:
+        outcome = self._draft("The withdrawal path is reentrant.")
+        assert isinstance(outcome, Skip)
+        assert outcome.cause is SkipCause.NO_LOCATION
+        assert "cites no source location" in outcome.detail

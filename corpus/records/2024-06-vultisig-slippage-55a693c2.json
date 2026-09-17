@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-06-vultisig-slippage-55a693c2",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/ILOPool.sol",
+  "sha256": "a07e9376d8ef243f2c817a2fdff1753bef4d362abd42644e37e4a9b51e333dc7",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-06-vultisig",
+  "commit": "58ebda57ccf6a74bdef2b88eb18a62ec4ad46112"
+ },
+ "locator": {
+  "file": "src/ILOPool.sol",
+  "contract": "ILOPool",
+  "function": "claim",
+  "start_line": 184,
+  "end_line": 261
+ },
+ "classes": [
+  "slippage"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-06-vultisig-findings/issues/103",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

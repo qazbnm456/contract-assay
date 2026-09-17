@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-08-basin-denial-of-service-1cb83cfa",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/functions/Stable2.sol",
+  "sha256": "fd404cf8e720fb891dd8be309aed51ec8af1e0e27014f9549bffaca9c401b2fb",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-08-basin",
+  "commit": "7e08ff591df0a2ade7d5618113dda2621cd899bc"
+ },
+ "locator": {
+  "file": "src/functions/Stable2.sol",
+  "contract": "Stable2",
+  "function": "calcLpTokenSupply",
+  "start_line": 75,
+  "end_line": 104
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-08-basin-findings/issues/5",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

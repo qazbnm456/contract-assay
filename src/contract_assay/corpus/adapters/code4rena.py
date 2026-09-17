@@ -41,7 +41,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from contract_assay.corpus.adapters.classify import classify_title
 from contract_assay.corpus.adapters.markdown import (
@@ -216,6 +216,8 @@ class Code4renaAdapter:
         candidate: Candidate,
         finding: EnumeratedFinding,
         audited: str | None = None,
+        commit: str | None = None,
+        recovered_from: str | None = None,
     ) -> DraftRecord | Skip:
         """Fall back to the file the finding cites plus the name its prose gives.
 
@@ -233,24 +235,31 @@ class Code4renaAdapter:
         # citation was a dependency through, producing a record pinned to an
         # upstream library. A check that has to be repeated is a check that
         # will be forgotten in one of its places.
-        cited = _solidity_files(finding.body, audited)
-        file = cited[0] if len({c.path for c in cited}) == 1 else None
+        cited = _solidity_files(finding.body, audited, commit)
+        chosen = cited[0] if len({r.citation.path for r in cited}) == 1 else None
         alternatives: tuple[str, ...] = ()
-        if file is None:
+        if chosen is None:
             # Several files cited, or none. A quoted excerpt still states which
             # one, if it occurs in exactly one of them -- and only the stage
             # holding the bytes can decide that, so the whole cited set is
             # handed over rather than a guess being made here. Six of eleven
             # losses over one sample were exactly this: a usable excerpt
             # discarded because the *file* was not unique.
-            if quoted is None or not cited:
+            if not cited:
+                return _why_nothing_reviewed(finding.body, audited)
+            if quoted is None:
                 return Skip(
                     SkipCause.NO_LOCATION,
-                    "no stated location, and the finding cites either no Solidity file or "
-                    "several with nothing quoted to choose between them",
+                    f"cites {len(cited)} files in the code under review and quotes nothing "
+                    "to choose between them",
                 )
-            file = cited[0]
-            alternatives = tuple(dict.fromkeys(c.path for c in cited[1:] if c.path != file.path))
+            chosen = cited[0]
+            alternatives = tuple(
+                dict.fromkeys(
+                    r.citation.path for r in cited[1:] if r.citation.path != chosen.citation.path
+                )
+            )
+        file = chosen.citation
         named = _named_function(finding.title, finding.body)
         if named is None and quoted is None:
             return Skip(
@@ -262,6 +271,7 @@ class Code4renaAdapter:
             candidate_id=finding.ident,
             repo_url=file.repo_url,
             commit=file.ref,
+            commit_resolved_from=recovered_from if chosen.recovered else None,
             path=file.path,
             alternative_paths=alternatives,
             contract=contract,
@@ -300,24 +310,32 @@ class Code4renaAdapter:
             return Skip(SkipCause.UNMAPPED_CLASS, f"title: {finding.title[:80]}")
 
         audited = _audited_repository(report.body)
-        citation = _cite(finding.body) or self._from_excerpt(report, finding)
+        commit = _audited_commit(report.body, audited)
+        # Recorded on every draft whose commit the report supplied rather than
+        # the finding: the finding cited a branch, and which commit that branch
+        # was when its line numbers were written is the assumption.
+        recovered_from = _FROM_DOMINANT_CITATION if commit is not None else None
+        # Two routes, two different assumptions, and for a while one label: the
+        # stated route attached `recovered_from` to every draft it produced,
+        # including findings that pinned their own commit in the citation used.
+        stated = _cite(finding.body, audited, commit)
+        if stated is not None:
+            citation: SourceCitation | None = stated.citation
+            resolved_from = recovered_from if stated.recovered else None
+        else:
+            citation = self._from_excerpt(report, finding)
+            # The excerpt states lines and a path but no commit, so a commit
+            # taken from the report rests on the excerpt having been written
+            # against the contest snapshot -- which the finding never said.
+            resolved_from = _FROM_CONTEST_SNAPSHOT if citation is not None else None
         if citation is not None and audited is not None and citation.repo_url != audited:
             return Skip(
                 SkipCause.CITES_ANOTHER_REPOSITORY,
                 f"cites {citation.repo_url.split('/')[-1]}/{citation.path}, which is not "
                 "the code under review",
             )
-        if citation is not None and not citation.is_pinned:
-            # A branch or tag names whatever it currently points at, so the
-            # location is not reproducible. Counted rather than resolved:
-            # resolving one today gives today's target, and whether that is the
-            # audited state is a separate question with its own uncertainty.
-            return Skip(
-                SkipCause.NO_COMMIT,
-                f"cites {citation.path} at {citation.ref!r}, which names a moving target",
-            )
         if citation is None:
-            return self._by_name(report, candidate, finding, audited)
+            return self._by_name(report, candidate, finding, audited, commit, recovered_from)
         if not citation.path.endswith(".sol"):
             return Skip(SkipCause.NO_FILE_PATH, f"cited {citation.path}, which is not Solidity")
 
@@ -331,6 +349,7 @@ class Code4renaAdapter:
             candidate_id=finding.ident,
             repo_url=citation.repo_url,
             commit=citation.ref,
+            commit_resolved_from=resolved_from,
             path=citation.path,
             start_line=citation.start_line if ranged else None,
             end_line=citation.end_line if ranged else None,
@@ -391,29 +410,146 @@ def _audited_repository(report_body: str) -> str | None:
     return ranked[0][0]
 
 
-def _solidity_files(body: str, repository: str | None) -> list[SourceCitation]:
-    """Pinned Solidity files a finding cites *in the audited repository*.
+def _audited_commit(report_body: str, repository: str | None) -> str | None:
+    """The commit the report's own citations of the reviewed repository name.
 
-    The candidate set a quoted excerpt is adjudicated against. Ordered by first
-    appearance so a rerun hands over the same set -- which of them ends up in
-    `path` is not load-bearing, since `normalize` requires the excerpt to occur
-    in exactly one of them however they are ordered.
+    A finding frequently cites a *branch* -- `blob/main/src/X.sol#L10-L20` --
+    which names whatever that branch points at now and cannot be pinned. The
+    report itself cites the same repository at a commit, in its scope and
+    throughout, and across six held reports one commit dominated every time
+    (11 to 44 citations against a runner-up of 2 to 5).
+
+    So this is recovery from something the report **states**, not an inference
+    about dates or a resolution of the branch as it stands today. What remains
+    an assumption is that the line numbers a finding wrote against the branch
+    were written while the branch was that commit, which is what
+    `commit_resolved_from` records so a report can stratify on it -- and what
+    `verify` then checks, by requiring the named declaration to be in the
+    resolved span. A recovery that lands on the wrong bytes is rejected rather
+    than admitted.
+
+    A tie returns nothing: choosing between two commits on a tie-break would
+    pin records to a snapshot nobody reviewed.
+    """
+    if repository is None:
+        return None
+    counts: Counter[str] = Counter(
+        citation.ref
+        for citation in permalinks(report_body)
+        if citation.is_solidity and citation.repo_url == repository and citation.is_pinned
+    )
+    if not counts:
+        return None
+    ranked = counts.most_common()
+    if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
+        return None
+    return ranked[0][0]
+
+
+_FROM_DOMINANT_CITATION = "the commit the report's own citations of this repository name most often"
+_FROM_CONTEST_SNAPSHOT = (
+    "the commit the report states for the contest, the finding's excerpt naming none"
+)
+
+
+@dataclass(frozen=True)
+class _Reviewed:
+    """A citation of the code under review, and whether its commit was recovered.
+
+    The flag exists because the recovery *erases its own evidence*: rewriting a
+    moving ref to a commit makes the citation indistinguishable from one the
+    finding pinned itself, and `is_pinned` -- which is what the two callers
+    asked -- then answers True for both. Every draft was consequently labelled
+    the wrong way round: findings that pinned their own commit were recorded as
+    resting on a recovery, and the recovered ones as stated outright. A cause
+    recorded wrongly points investigation away from the fix, and here the cause
+    was a *property of the record*, published in `pin.resolved_from`.
+    """
+
+    citation: SourceCitation
+    recovered: bool
+
+
+def _why_nothing_reviewed(body: str, repository: str | None) -> Skip:
+    """The accurate cause when no citation survives the reviewed-repository filter.
+
+    Restricting in one place cost the explanation: a finding citing a
+    dependency, one citing a Markdown file, and one citing nothing all arrived
+    here indistinguishable, and all three were reported as `no_location`. Each
+    calls for a different fix -- read the report's scope, parse a path, or
+    nothing at all -- and **a cause recorded wrongly points investigation away
+    from the fix**. So the causes are read back off the unfiltered citations,
+    which is where the difference between them still exists.
+    """
+    cited = permalinks(body)
+    if not cited:
+        return Skip(SkipCause.NO_LOCATION, "the finding cites no source location")
+    solidity = [c for c in cited if c.is_solidity]
+    if not solidity:
+        return Skip(SkipCause.NO_FILE_PATH, f"cited {cited[0].path}, which is not Solidity")
+    if repository is None:
+        return Skip(
+            SkipCause.NO_LOCATION,
+            "the report states no single repository under review, so a citation cannot be "
+            "told from a citation of a dependency",
+        )
+    if all(c.repo_url != repository for c in solidity):
+        return Skip(
+            SkipCause.CITES_ANOTHER_REPOSITORY,
+            f"cites {solidity[0].repo_url.split('/')[-1]}/{solidity[0].path}, which is not "
+            "the code under review",
+        )
+    return Skip(
+        SkipCause.NO_COMMIT,
+        f"cites {solidity[0].path} at {solidity[0].ref!r}, which names a moving target, "
+        "and the report pins no single commit for that repository",
+    )
+
+
+def _reviewed(body: str, repository: str | None, commit: str | None) -> list[_Reviewed]:
+    """Solidity citations in the reviewed repository, every one of them pinned.
+
+    The single place both the repository restriction and the commit recovery
+    apply. Each had to hold wherever a citation enters, and each was written
+    twice and forgotten once -- a dependency slipped through as "the one file it
+    cites", and a recovery added to the stated-citation path never fired because
+    the other path filtered moving refs out before reaching it. **A check that
+    has to be repeated is a check that will be forgotten in one of its
+    places**, so citations enter here and nowhere else.
+
+    A moving ref is rewritten to the commit the report states for that
+    repository (`_audited_commit`). Nothing is dropped for being unpinned any
+    more; what is dropped is a citation outside the reviewed repository, or any
+    citation at all when the report pins no single commit.
     """
     if repository is None:
         return []
-    seen: dict[str, SourceCitation] = {}
+    found: list[_Reviewed] = []
     for citation in permalinks(body):
-        if (
-            citation.is_solidity
-            and citation.is_pinned
-            and citation.repo_url == repository
-            and citation.path not in seen
-        ):
-            seen[citation.path] = citation
+        if not citation.is_solidity or citation.repo_url != repository:
+            continue
+        if citation.is_pinned:
+            found.append(_Reviewed(citation, recovered=False))
+        elif commit is not None:
+            found.append(_Reviewed(replace(citation, ref=commit), recovered=True))
+    return found
+
+
+def _solidity_files(body: str, repository: str | None, commit: str | None) -> list[_Reviewed]:
+    """One citation per distinct path, the candidate set an excerpt chooses from.
+
+    Ordered by first appearance so a rerun hands over the same set -- which of
+    them ends up in `path` is not load-bearing, since `normalize` requires the
+    excerpt to occur in exactly one of them however they are ordered.
+    """
+    seen: dict[str, _Reviewed] = {}
+    for reviewed in _reviewed(body, repository, commit):
+        if reviewed.citation.path not in seen:
+            seen[reviewed.citation.path] = reviewed
     return list(seen.values())
 
 
-def _cite(body: str) -> SourceCitation | None:
+def _cite(body: str, repository: str | None, commit: str | None) -> _Reviewed | None:
     """The one source location a finding states, or None if it states none.
 
     A "Lines of code" section is authoritative. Failing that, a body citing
@@ -423,10 +559,19 @@ def _cite(body: str) -> SourceCitation | None:
     """
     section = _LINES_OF_CODE.search(body)
     if section is not None:
-        cited = permalinks(section.group(1))
+        cited = _reviewed(section.group(1), repository, commit)
         if cited:
             return cited[0]
 
-    cited = permalinks(body)
-    distinct = {(c.repo_url, c.ref, c.path, c.start_line, c.end_line) for c in cited}
+    cited = _reviewed(body, repository, commit)
+    distinct = {
+        (
+            r.citation.repo_url,
+            r.citation.ref,
+            r.citation.path,
+            r.citation.start_line,
+            r.citation.end_line,
+        )
+        for r in cited
+    }
     return cited[0] if len(distinct) == 1 else None

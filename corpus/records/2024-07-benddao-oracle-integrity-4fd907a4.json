@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-07-benddao-oracle-integrity-4fd907a4",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/PriceOracle.sol",
+  "sha256": "394d2a45891e27803ffedbee20f1f828fd78f6aa483211ea9a6b2566e9a21679",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-benddao",
+  "commit": "117ef61967d4b318fc65170061c9577e674fffa1"
+ },
+ "locator": {
+  "file": "src/PriceOracle.sol",
+  "contract": "PriceOracle",
+  "function": "getAssetPriceFromChainlink",
+  "start_line": 124,
+  "end_line": 125
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-benddao-findings/issues/59",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}
