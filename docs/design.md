@@ -1008,15 +1008,45 @@ protocol's upstream repository. Of the nine findings naming a commit, two named
 a *dependency's* repository — citations, not fixes, which a rate computed from
 links alone would have counted.
 
-So a post-fix negative sourced this way is pinned to a **different repository**
-from its positive. `CorpusRecord` permits that, since the validator requires only
-that the pin's commit is the fix commit. But §6.2's claim for this kind of
-negative -- everything identical except the bug -- is not guaranteed across a
-mirror boundary, where paths may differ and the upstream has usually moved past
-the fix. That is an open question about the kind's soundness rather than a
-detail, and it is recorded here rather than resolved, because resolving it by
-assumption is how a negative that looks like the strongest control becomes the
-weakest.
+**The mirror boundary turned out not to be the problem, and checking it gave a
+better construction than the one it replaced.** The mirror is byte-identical to
+the upstream at the same paths — measured, not assumed. So both records can pin
+the *upstream*: the positive at the fix commit's **parent**, the negative at the
+fix commit. Same repository, same path, one commit apart, and §6.2's claim holds
+by construction rather than by tolerance. The mirror becomes provenance — where
+the report cited the code — rather than a pin.
+
+That yields an **admission condition, checked per fix rather than claimed in
+general**: the pair is admissible when the fix commit's parent holds bytes
+identical to the audited state. Where it does not, some other change landed
+between the audit and the fix, the pair straddles more than one change, and it
+is refused. Measured over the seven candidates: three admissible, two refused on
+exactly that condition, two with no comparable Solidity in the fix at all.
+
+**And then the kind's own semantics turned out to be the real obstacle.**
+`negative_for` asserts that *no instance* of the class exists anywhere in the
+pinned file — a completeness claim, which is what licenses a precision figure
+(§7.3). A fix commit licenses something weaker: **the reported instance is
+gone.** Other instances of the same class may remain in the file, and nothing in
+the fix speaks to them.
+
+Bridging the two needs the assumption that the audit found every instance of
+that class in that file. That is the corpus-completeness assumption, and
+adopting it here would reintroduce one level up the exact error §7.3 exists to
+correct — treating "has records for a class" as "is complete for that class".
+
+So **a post-fix negative does not license precision**, and this route does not
+reach the leaderboard figure. What it does reach is §6.4's pair-differential,
+where the claim it licenses is the claim it makes: the same file one commit
+apart, bytes-confirmed, with the defect present in one and absent in the other.
+
+The repair, recorded and not built, is the pattern used elsewhere: a kind that
+asserts what the fix licenses — *this instance is gone* — without claiming
+completeness, leaving the consumer to decide what it supports. Which leaves
+**confirmed-clean as the only kind that licenses precision**, because a human
+asserts completeness directly and records how they confirmed it. That is the
+opposite of where the cheapness argument pointed, and it was found by
+constructing the cheap route rather than by reasoning about it.
 
 **A post-fix negative requires a commit pin, and what that costs is the control
 rather than the executable half.** "After the fix" is identified by a commit,
