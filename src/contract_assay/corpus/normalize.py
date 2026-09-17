@@ -85,6 +85,43 @@ def _blank_comments(text: str) -> str:
 
 
 _LINE_PREFIX = re.compile(r"^\s*\d+:\s?")
+_POINTER = re.compile(r"^\s*(@>|\|>|=>)\s?")
+"""A reviewer's marker pointing at the line that matters.
+
+Two conventions seen in published reports -- `@> return x;` and
+`|>  require(...)` -- and they were costing whole records rather than one line
+each: the marked line failed to match, which broke *contiguity*, so an excerpt
+whose every other line was present matched nothing at all.
+"""
+
+
+def _comparable(raw: str) -> str:
+    """One line reduced to what a match should be sensitive to.
+
+    All whitespace goes, not merely runs of it. A report writing
+    `if(oracleTimestamp > lastPriceTimestamp){` against a source written
+    `if (oracleTimestamp > lastPriceTimestamp) {` is quoting the same code, and
+    collapsing runs left the two unequal -- an excerpt of fifteen lines matched
+    its first four and then stopped, and the record was lost to a space. Nothing
+    in Solidity's grammar makes whitespace meaningful outside a string literal,
+    and two literals differing only in spacing would at worst make a match
+    ambiguous, which is refused rather than recorded.
+    """
+    return "".join(_annotation_free(raw).split())
+
+
+def _annotation_free(raw: str) -> str:
+    """One line with the report's annotations removed, in either order.
+
+    Number prefixes and pointer markers both occur first, and both occur
+    together, so the two strips run twice rather than assuming an order.
+    """
+    line = raw
+    for _ in range(2):
+        line = _POINTER.sub("", _LINE_PREFIX.sub("", line))
+    return line
+
+
 _ELISION = frozenset({"...", "\u2026", "..", "/* ... */"})
 
 MIN_QUOTE_LINES = 3
@@ -100,14 +137,15 @@ def _normalised_lines(text: str) -> list[str]:
     """Code lines with comments, line-number prefixes and elisions removed.
 
     Comments go because reviewers annotate the code they quote. Line-number
-    prefixes go because some report tooling adds them. Whitespace collapses
-    because indentation is not semantic -- the same reasoning `check_citation`
-    applies to a detector's quote, and for consistency the same treatment.
+    prefixes and pointer markers go because some report tooling adds them.
+    Whitespace goes entirely because it is not semantic -- the same reasoning
+    `check_citation` applies to a detector's quote, and for consistency the same
+    treatment.
     """
     stripped = _COMMENT.sub("", text)
     out: list[str] = []
     for raw in stripped.split("\n"):
-        line = " ".join(_LINE_PREFIX.sub("", raw).split())
+        line = _comparable(raw)
         if line and line not in _ELISION:
             out.append(line)
     return out
@@ -169,8 +207,7 @@ def _match_quote(quote: str, source: str) -> tuple[int, int] | NormalizeCause | 
         return None
 
     numbered = [
-        (n, " ".join(_LINE_PREFIX.sub("", raw).split()))
-        for n, raw in enumerate(_blank_comments(source).split("\n"), 1)
+        (n, _comparable(raw)) for n, raw in enumerate(_blank_comments(source).split("\n"), 1)
     ]
     kept = [(n, line) for n, line in numbered if line and line not in _ELISION]
     haystack = [line for _, line in kept]
@@ -232,6 +269,25 @@ class NormalizeCause(StrEnum):
 
     NO_DECLARATION_AT_ANCHOR = "no_declaration_at_anchor"
     """The line the report pointed at is not inside any function-like declaration."""
+
+    LOCATION_CONTRADICTS_NAME = "location_contradicts_name"
+    """The finding named a function that is not declared where its location points.
+
+    Measured on six drafts, and the shape was identical in all six: the prose
+    named a function declared in *another file* -- a library's
+    `validateVariablePoolHasEnoughLiquidity` called from the quoted lines,
+    `nuke` when the quote shows `burn`, a hook's `onQueueWithdrawal` when the
+    quote shows `closeMarket` -- so the finding pointed at two places and said
+    nothing about which holds the defect. §7.3's rule, arriving in curation: a
+    call edge is not the same function.
+
+    Preferring the quote would have pinned three of the six to code the title
+    was not about. Preferring the name would have thrown away the only signal
+    the source can confirm. So the draft is refused, and refused *here*, where
+    both signals are in hand -- `verify` reported this as a span with a missing
+    declaration, which reads as a defect in the span and sends the reader to the
+    wrong place.
+    """
 
     NO_ENCLOSING_FUNCTION = "no_enclosing_function"
     """The located span is in no function, and the report named none either.
@@ -403,6 +459,20 @@ def _labels_from(draft: DraftRecord, *, function: bool = True) -> tuple[LocatorL
     return tuple(labels)
 
 
+def _declared_within(source: str, name: str, span: tuple[int, int]) -> bool:
+    """Whether a function of that name is declared inside the located lines.
+
+    The same question `verify` asks of the assembled record, asked at the stage
+    that still holds both signals. Unparseable source answers False, which
+    costs the draft; it would have been refused as unparseable a moment later
+    anyway.
+    """
+    parsed = Syntax.of(source)
+    if parsed is None:
+        return False
+    return bool(parsed.index.callables(name, within=span))
+
+
 def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     """Settle a draft's location by the strongest route the report supports.
 
@@ -432,6 +502,10 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
         # scored at function granularity -- so it would be lost for the sake of a
         # name the index can read off the span it was already given.
         enclosing = parsed_contract_of(source, draft.start_line)
+        if draft.function and not _declared_within(
+            source, draft.function, (draft.start_line, draft.end_line)
+        ):
+            return NormalizeCause.LOCATION_CONTRADICTS_NAME
         if not (draft.function or enclosing[1]):
             return NormalizeCause.NO_ENCLOSING_FUNCTION
         return Located(
@@ -449,6 +523,11 @@ def _locate(draft: DraftRecord, source: str) -> Located | NormalizeCause:
     if isinstance(quoted, tuple):
         start, end = quoted
         enclosing = parsed_contract_of(source, start)
+        # The prose name overrode the enclosing declaration here, which is how
+        # a finding that quoted a caller and named a callee became a record
+        # pinning the callee's name to the caller's lines.
+        if draft.function and not _declared_within(source, draft.function, (start, end)):
+            return NormalizeCause.LOCATION_CONTRADICTS_NAME
         if not (draft.function or enclosing[1]):
             return NormalizeCause.NO_ENCLOSING_FUNCTION
         return Located(

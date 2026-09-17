@@ -1604,6 +1604,60 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   route was valued for; trusting its numbers threw it away. The same finding now
   lands at 496-499, on the declaration holding the subtraction it is about.
 
+  The losses then moved from harvest to `normalize`, where 23 of 37 drafts were
+  dying, and the same rule applied again: a reader reporting that an excerpt is
+  not in the file is making a claim about the reader. Opening all 23 gave three
+  reader defects and one genuine absence.
+
+  - **A reviewer's marker is not code.** Published excerpts point at the line
+    that matters with `@> return x;` or `|>  require(...)`, and those cost whole
+    records rather than one line each: the marked line failed to match, which
+    broke *contiguity*, so an excerpt whose every other line was present matched
+    nothing at all.
+  - **A recommendation is not a quote of the defect.** A block of `+` lines
+    cannot occur in the pinned file by construction — it is what the report
+    wants the file to become. But the same block's context and removed lines are
+    the report quoting the code as it stands, so the pre-image is a quote and
+    the additions are not. Reconstructed rather than discarded, since some
+    findings carry no other excerpt. A diff whose pre-image holds no code is
+    dropped, and conflating "not a diff" with "a diff of nothing" in one `or`
+    handed the matcher exactly the lines that cannot match.
+  - **Spacing is not evidence**, and this one is worth stating for what it did
+    *not* do. The matcher collapsed runs of whitespace, so `a  =  b` matched
+    `a = b` and `a=b` did not — an inconsistency in a tolerance rather than a
+    tolerance withheld. Closing it recovered **no** draft. The excerpt that
+    prompted the look quoted genuinely different code: a ternary the report had
+    rewritten as an `if`, which is an absence the source confirms.
+
+  Two of those recovered records had to be thrown away again, and both taught
+  more than they cost. One was located in `test/mocks/PoolMock.sol` — the
+  finding's diff was of a library and its context lines occurred in the mock,
+  and the *candidate set* had no test-path restriction while the excerpt route
+  did. Third time that check has been needed somewhere it was not, so it now
+  lives where citations enter, with the repository restriction.
+
+  The other is §7.3 arriving in curation. Six drafts named a function in prose
+  that the quote's span does not contain, and in all six the name was declared
+  in **another file**: a library's `validateVariablePoolHasEnoughLiquidity`
+  called from the quoted lines, `nuke` where the quote shows `burn`, a hook's
+  `onQueueWithdrawal` where the quote shows `closeMarket`. **A call edge is not
+  the same function**, and the finding has pointed at two places without saying
+  which holds the defect. Preferring the quote would have pinned three of the
+  six to code the title was not about; preferring the name throws away the only
+  signal the source can confirm. So the draft is refused, under a cause that
+  says so — and refused in `normalize`, where both signals are still in hand.
+  `verify` had been reporting it as a span with a missing declaration, which
+  reads as a defect in the span and sends the reader to the wrong place; with
+  the disagreement settled upstream, verification rejects nothing at all on this
+  sample, which is what it should look like when every stage's refusals are its
+  own.
+
+  That last one exposed a disagreement between two stages about what a record
+  is. `normalize` had a rule that a function named in prose *rescues* a span
+  lying in no function, and the records it produced — lines 5-5, function
+  `setOwner`, declared nowhere near line 5 — are ones `verify` is documented to
+  reject and did. A test pinned the rescue rather than the contradiction.
+
   One more thing the recovery exposed, one level up. The class was being read
   off *identifiers*: `ETHOracle.getLatestPrice` classified a decimals bug as
   oracle integrity, `receiveFlashLoan` a callback bug as flash-loan

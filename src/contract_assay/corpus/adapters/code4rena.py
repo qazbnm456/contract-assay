@@ -90,7 +90,16 @@ _NUMBERED_LINE = re.compile(r"^[ \t]*(\d+):", re.M)
 # A proof of concept exercises the defect rather than containing it, so a block
 # quoting the harness is not a location -- one observed finding quoted the
 # vulnerable library and `TestUser.sol` side by side.
-_LOOKS_LIKE_A_TEST = re.compile(r"(^|/)(Test\w*|\w+\.t)\.sol$")
+#
+# The directory forms were added after a record was written against
+# `test/mocks/PoolMock.sol`: the finding's diff was of a library, and its
+# context lines occurred in the mock, so the excerpt route's restriction was
+# right and the *candidate set* had no restriction at all. Third time this
+# check has been needed somewhere it was not, hence one predicate, applied
+# where citations enter.
+_LOOKS_LIKE_A_TEST = re.compile(
+    r"(^|/)(test|tests|mock|mocks)/|(^|/)(Test\w*|\w+Test|\w+\.t)\.sol$"
+)
 
 # Findings quote the vulnerable code inline far more often than they cite it.
 # The quote is not a location by itself, but `normalize` can locate it by
@@ -617,14 +626,17 @@ def _reviewed(body: str, repository: str | None, commit: str | None) -> list[_Re
 
     A moving ref is rewritten to the commit the report states for that
     repository (`_audited_commit`). Nothing is dropped for being unpinned any
-    more; what is dropped is a citation outside the reviewed repository, or any
-    citation at all when the report pins no single commit.
+    more; what is dropped is a citation outside the reviewed repository, one of
+    test or mock code, or any citation at all when the report pins no single
+    commit.
     """
     if repository is None:
         return []
     found: list[_Reviewed] = []
     for citation in permalinks(body):
         if not citation.is_solidity or citation.repo_url != repository:
+            continue
+        if _LOOKS_LIKE_A_TEST.search(citation.path):
             continue
         if citation.is_pinned:
             found.append(_Reviewed(citation, recovered=False))

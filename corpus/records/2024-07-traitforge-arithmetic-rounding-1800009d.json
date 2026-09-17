@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-07-traitforge-arithmetic-rounding-1800009d",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/NukeFund/NukeFund.sol",
+  "sha256": "f378f93c401b1004ddc8b0e69a5ce5bb788446d152a0f8a071ced497fb68581e",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-traitforge",
+  "commit": "279b2887e3d38bc219a05d332cbcb0655b2dc644"
+ },
+ "locator": {
+  "file": "contracts/NukeFund/NukeFund.sol",
+  "contract": "NukeFund",
+  "function": "calculateAge",
+  "start_line": 118,
+  "end_line": 133
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-traitforge-findings/issues/223",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

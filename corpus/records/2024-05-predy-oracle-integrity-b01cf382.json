@@ -1,0 +1,32 @@
+{
+ "record_id": "2024-05-predy-oracle-integrity-b01cf382",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/PriceFeed.sol",
+  "sha256": "a2d62997fc6afbd3ed3700b010861378f807a77e2d00a2727515929b257e599d",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-05-predy",
+  "commit": "a9246db5f874a91fb71c296aac6a66902289306a"
+ },
+ "locator": {
+  "file": "src/PriceFeed.sol",
+  "contract": "PriceFeed",
+  "function": "getSqrtPrice",
+  "start_line": 45,
+  "end_line": 58
+ },
+ "classes": [
+  "oracle_integrity"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-05-predy-findings/issues/69",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

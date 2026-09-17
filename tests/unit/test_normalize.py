@@ -655,11 +655,16 @@ class TestASpanInNoFunction:
         assert report.records == ()
         assert report.by_cause == {NormalizeCause.NO_ENCLOSING_FUNCTION: 1}
 
-    def test_a_function_the_report_named_rescues_the_span(self) -> None:
-        # The span is unscoreable only when nothing names a function -- a report
-        # that named one is scored against that.
-        [record] = run(a_draft(function="setOwner", start_line=5, end_line=5)).records
-        assert record.locator.function == "setOwner"
+    def test_a_function_named_elsewhere_does_not_rescue_the_span(self) -> None:
+        # It used to. The record it produced -- lines 5-5, function `setOwner`,
+        # which is declared nowhere near line 5 -- is one `verify` is documented
+        # to reject, and did: the two stages disagreed about what a record is,
+        # and this test pinned the wrong side of it. The refusal now happens
+        # where both signals are still in hand, under a cause that says the
+        # finding pointed at two places.
+        report = run(a_draft(function="setOwner", start_line=5, end_line=5))
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.LOCATION_CONTRADICTS_NAME: 1}
 
 
 class TestTheExcerptChoosesTheFile:
@@ -787,3 +792,136 @@ contract Banner {
         )
         [record] = report.records
         assert record.locator.start_line == 11
+
+
+class TestTwoPlacesAndNoWordOnWhich:
+    """A quote showing a caller and prose naming a callee point at two functions.
+
+    Six drafts over one sample, identical in shape every time: the prose named
+    a function declared in *another file* -- a library's validator called from
+    the quoted lines, `nuke` where the quote shows `burn`, a hook's
+    `onQueueWithdrawal` where the quote shows `closeMarket`. §7.3's rule
+    arriving in curation: a call edge is not the same function.
+
+    The route used to let the prose name override the declaration the quote
+    landed in, which pinned the callee's name to the caller's lines. Preferring
+    the quote instead would have pinned three of the six to code the finding was
+    not about. Both signals are the report's, neither is obviously wrong, and
+    the record is refused.
+    """
+
+    CALLER = """\
+contract Market {
+    function closeMarket() external {
+        MarketState memory state = _getUpdatedState();
+        hooks.onQueueWithdrawal(state);
+    }
+}
+"""
+
+    def test_a_name_from_another_file_refuses_the_quoted_span(self) -> None:
+        report = run(
+            a_draft(
+                contract=None,
+                function="onQueueWithdrawal",
+                quoted_source=(
+                    "    function closeMarket() external {\n"
+                    "        MarketState memory state = _getUpdatedState();\n"
+                    "        hooks.onQueueWithdrawal(state);\n"
+                    "    }"
+                ),
+            ),
+            source=self.CALLER,
+        )
+        assert report.records == ()
+        assert report.by_cause == {NormalizeCause.LOCATION_CONTRADICTS_NAME: 1}
+
+    def test_the_name_the_quote_does_contain_is_kept(self) -> None:
+        [record] = run(
+            a_draft(
+                function="setOwner",
+                quoted_source=(
+                    "    function setOwner(address o) external {\n        owner = o;\n    }"
+                ),
+            )
+        ).records
+        assert record.locator.function == "setOwner"
+        assert record.locator_provenance is LocatorProvenance.QUOTED
+
+
+class TestAReviewersMarkerIsNotCode:
+    """`@> return x;` and `|>  require(...)` point at the line that matters.
+
+    They were costing whole records rather than one line each: the marked line
+    failed to match, which broke contiguity, so an excerpt whose every other
+    line was present matched nothing at all. Two published conventions, two
+    findings each in one sample.
+    """
+
+    @pytest.mark.parametrize("marker", ["@>", "|>", "=>"])
+    def test_a_marked_line_still_matches(self, marker: str) -> None:
+        [record] = run(
+            a_draft(
+                function=None,
+                contract=None,
+                quoted_source=(
+                    "    function setOwner(address o) external {\n"
+                    f"{marker}      owner = o;\n"
+                    "    }"
+                ),
+            )
+        ).records
+        assert record.locator.function == "setOwner"
+
+    def test_a_marker_after_a_line_number_is_also_removed(self) -> None:
+        # Both conventions at once, which is how one report writes it.
+        [record] = run(
+            a_draft(
+                function=None,
+                contract=None,
+                quoted_source=(
+                    "7:    function setOwner(address o) external {\n8: @>      owner = o;\n9:    }"
+                ),
+            )
+        ).records
+        assert record.locator.function == "setOwner"
+
+
+class TestSpacingIsNotEvidence:
+    """`if(a>b){` and `if (a > b) {` are the same code.
+
+    The matcher already collapsed *runs* of whitespace, so `a  =  b` matched
+    `a = b` and `a=b` did not -- an inconsistency in a tolerance rather than a
+    tolerance withheld. Worth saying plainly: closing it recovered **no** draft
+    in the sample that prompted the look. The excerpt that seemed to need it
+    turned out to quote genuinely different code, a ternary the report had
+    rewritten as an `if`, which is an absence the source confirms.
+    """
+
+    TIGHT = """\
+contract Vault {
+    function claim(uint256 id) external {
+        if(balances[id]>0){
+            payable(msg.sender).transfer(balances[id]);
+        }
+    }
+}
+"""
+
+    def test_a_quote_spaced_differently_still_matches(self) -> None:
+        [record] = run(
+            a_draft(
+                contract=None,
+                function=None,
+                quoted_source=(
+                    "    function claim(uint256 id) external {\n"
+                    "        if (balances[id] > 0) {\n"
+                    "            payable(msg.sender).transfer(balances[id]);\n"
+                    "        }\n"
+                    "    }"
+                ),
+            ),
+            source=self.TIGHT,
+        ).records
+        assert record.locator.function == "claim"
+        assert (record.locator.start_line, record.locator.end_line) == (2, 6)

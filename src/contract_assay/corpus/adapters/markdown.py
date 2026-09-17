@@ -42,6 +42,41 @@ _LOOKS_LIKE_SOURCE = re.compile(
 )
 _LOOKS_LIKE_HARNESS = re.compile(r"\bfunction\s+test\w*\s*\(|\bvm\.|\bconsole\.log")
 
+_DIFF_HEADER = re.compile(r"^(diff --git |index [0-9a-f]+\.\.|--- |\+\+\+ |@@ )")
+_DIFF_ADDED = re.compile(r"^\+(?!\+)")
+_DIFF_REMOVED = re.compile(r"^-(?!-)")
+
+
+def _is_a_diff(block: str) -> bool:
+    """Whether the block is written as a change rather than as code."""
+    return any(
+        _DIFF_HEADER.match(line) or _DIFF_ADDED.match(line) or _DIFF_REMOVED.match(line)
+        for line in block.split("\n")
+    )
+
+
+def _preimage(block: str) -> str | None:
+    """The code a diff was applied *to*, or None if nothing of the file is left.
+
+    A recommended fix is not a quote of the defect, and four drafts over one
+    sample died of being located by one: a block of `+` lines does not occur in
+    the pinned file, because it is what the report wants the file to become.
+    But the same block's context and removed lines are the report quoting the
+    code as it stands, so the pre-image is a quote and the additions are not.
+
+    Reconstructed rather than discarded because discarding loses findings whose
+    only excerpt is the diff. Nothing here decides anything: the result still
+    has to be found in the pinned source, which is the check that made the
+    additions fail in the first place.
+    """
+    kept = [
+        _DIFF_REMOVED.sub("", line, count=1)
+        for line in block.split("\n")
+        if not _DIFF_HEADER.match(line) and not _DIFF_ADDED.match(line)
+    ]
+    text = "\n".join(kept)
+    return text if _LOOKS_LIKE_SOURCE.search(text) else None
+
 
 @dataclass(frozen=True, slots=True)
 class SourceCitation:
@@ -110,13 +145,25 @@ def quoted_source(text: str) -> str | None:
     exercises the defect rather than containing it, so locating one would locate
     the test. Longest wins, because a longer excerpt is both likelier to locate
     uniquely and likelier to be the passage under discussion than an aside.
+
+    A block written as a diff is reduced to the code it was applied to, since
+    the additions are a recommendation and only the rest is a quote.
     """
-    candidates = [
-        match.group(2)
-        for match in _FENCE.finditer(text)
-        if _LOOKS_LIKE_SOURCE.search(match.group(2))
-        and not _LOOKS_LIKE_HARNESS.search(match.group(2))
-    ]
+    candidates: list[str] = []
+    for match in _FENCE.finditer(text):
+        block = match.group(2)
+        if not _LOOKS_LIKE_SOURCE.search(block) or _LOOKS_LIKE_HARNESS.search(block):
+            continue
+        if not _is_a_diff(block):
+            candidates.append(block)
+            continue
+        # A diff whose pre-image holds no code is a recommendation and nothing
+        # else. Falling back to the raw block here -- which an `or` did, by
+        # treating "not a diff" and "a diff of nothing" as one answer -- hands
+        # the matcher lines that cannot occur in the file by construction.
+        preimage = _preimage(block)
+        if preimage is not None:
+            candidates.append(preimage)
     return max(candidates, key=len) if candidates else None
 
 

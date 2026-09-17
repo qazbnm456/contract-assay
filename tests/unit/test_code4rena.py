@@ -594,3 +594,98 @@ class TestWhichCommitTheRecordRestsOn:
         assert isinstance(outcome, Skip)
         assert outcome.cause is SkipCause.NO_LOCATION
         assert "cites no source location" in outcome.detail
+
+
+class TestARecommendationIsNotAQuote:
+    """A block of `+` lines is what the report wants the file to become.
+
+    Four drafts over one sample were located by a diff and died: the additions
+    do not occur in the pinned file, by construction. The same block's context
+    and removed lines are the report quoting the code as it stands, so the
+    pre-image is a quote and the additions are not. Reconstructed rather than
+    discarded, because some findings carry no other excerpt.
+    """
+
+    def _draft(self, fence: str) -> DraftRecord | Skip:
+        body = (
+            f"# Scope\nAudited at <{REPO}/blob/{SHA}/README.md#L1>.\n\n"
+            "# High Risk Findings (1)\n\n"
+            "## [[H-01] Reentrancy in the withdrawal path](https://x.invalid/issues/1)\n\n"
+            "### Lines of code\n\n"
+            f"<{REPO}/blob/{SHA}/src/Vault.sol#L20>\n\n"
+            f"### Recommendation\n\n```solidity\n{fence}\n```\n"
+        )
+        report = a_report(body)
+        adapter = Code4renaAdapter()
+        [candidate] = adapter.candidates(report)
+        return adapter.extract(report, candidate)
+
+    def test_the_additions_are_dropped_and_the_rest_is_kept(self) -> None:
+        outcome = self._draft(
+            "@@ -20,6 +20,9 @@ contract Vault {\n"
+            "     function withdraw(uint256 amount) external {\n"
+            "-        payable(msg.sender).transfer(amount);\n"
+            "-        balances[msg.sender] -= amount;\n"
+            "+        balances[msg.sender] -= amount;\n"
+            "+        payable(msg.sender).transfer(amount);\n"
+            "     }"
+        )
+        assert isinstance(outcome, DraftRecord)
+        quote = outcome.quoted_source
+        assert quote is not None
+        assert "payable(msg.sender).transfer(amount);" in quote
+        assert "@@" not in quote
+        assert not any(line.startswith("+") for line in quote.split("\n"))
+
+    def test_a_git_style_header_is_not_part_of_the_code(self) -> None:
+        outcome = self._draft(
+            "diff --git a/src/Vault.sol b/src/Vault.sol\n"
+            "index 7e35e90..b7ce7a1 100644\n"
+            "--- a/src/Vault.sol\n"
+            "+++ b/src/Vault.sol\n"
+            "@@ -20,3 +20,4 @@\n"
+            "     function withdraw(uint256 amount) external {\n"
+            "         payable(msg.sender).transfer(amount);\n"
+            "     }"
+        )
+        assert isinstance(outcome, DraftRecord)
+        assert outcome.quoted_source is not None
+        assert "diff --git" not in outcome.quoted_source
+        assert "index 7e35e90" not in outcome.quoted_source
+
+    def test_a_block_that_is_only_additions_quotes_nothing(self) -> None:
+        # Nothing of the file is left, so there is nothing to find in it. The
+        # finding falls back to whatever else it stated.
+        outcome = self._draft(
+            "+    function withdraw(uint256 amount) external {\n"
+            "+        require(balances[msg.sender] >= amount);\n"
+            "+    }"
+        )
+        assert isinstance(outcome, DraftRecord)
+        assert outcome.quoted_source is None
+
+
+class TestTestCodeIsNotTheCodeUnderReview:
+    """A mock is not where a defect lives, wherever it is cited.
+
+    A record was written against `test/mocks/PoolMock.sol`: the finding's diff
+    was of a library, its context lines occurred in the mock, and the candidate
+    set had no restriction -- the excerpt route's did. Third time this check has
+    been needed somewhere it was not, so it applies where citations enter.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        ["test/mocks/PoolMock.sol", "tests/Vault.sol", "src/mocks/Aave.sol", "src/Vault.t.sol"],
+    )
+    def test_a_citation_of_test_code_is_not_a_location(self, path: str) -> None:
+        body = (
+            f"# Scope\nAudited at <{REPO}/blob/{SHA}/src/Vault.sol#L1>.\n\n"
+            "# High Risk Findings (1)\n\n"
+            "## [[H-01] Reentrancy in the withdrawal path](https://x.invalid/issues/1)\n\n"
+            "### Lines of code\n\n"
+            f"<{REPO}/blob/{SHA}/{path}#L20-L28>\n\n"
+            "### Impact\nThe balance is written after the transfer.\n"
+        )
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        assert all(d.path != path for d in result.drafts)
