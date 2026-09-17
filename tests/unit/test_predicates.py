@@ -647,3 +647,75 @@ class TestWhatAMemberNameCannotEstablish:
 """)
         [ref] = fired(source, "state_write_after_raw_external_call")
         assert ref.detail["call_member"] == "transfer"
+
+
+class TestAGuardThatAsksTheCallerForItsAnswer:
+    """Caller-taint at depth one, which needs no compiled backend.
+
+    The register entry this closed predicted the semantic tier. A value an
+    outside caller supplied enters the function under a parameter name, so an
+    expression mentioning that name reads something the caller chose -- and the
+    parser knows the parameter names and the identifiers in a condition already.
+    """
+
+    ID = "authorisation_reads_its_answer_from_caller_supplied_address"
+
+    def _fires(self, guard: str, *, params: str = "address from, address to, uint256 id") -> bool:
+        source = (
+            "contract R {\n"
+            f"    address owner;\n    address alchemech;\n"
+            f"    function f({params}) external {{\n"
+            f"        {guard}\n        total += 1;\n    }}\n}}\n"
+        )
+        parsed = Syntax.of(source)
+        assert parsed is not None
+        return any(e.predicate == self.ID for e in run_all(parsed, "src/R.sol"))
+
+    def test_an_answer_read_from_a_caller_supplied_address_fires(self) -> None:
+        assert self._fires("require(IVisor(from).owner() == msg.sender);")
+
+    def test_a_bare_receiver_fires_too(self) -> None:
+        # The receiver of `from.owner()` is a plain identifier rather than a
+        # nested expression, which a selector written for the nested shape
+        # misses -- and reports as an absence.
+        assert self._fires("require(from.owner() == msg.sender);")
+
+    def test_an_if_is_a_guard_as_much_as_a_require(self) -> None:
+        assert self._fires("if (from.owner() == msg.sender) { total += 1; }")
+
+    def test_a_caller_supplied_subject_does_not_fire(self) -> None:
+        # The measured false-positive source, and the reason this predicate is
+        # not simply "mentions msg.sender and a parameter": the caller passes an
+        # id and the contract resolves it against its own state. Sound, and the
+        # ordinary way to write the check.
+        assert not self._fires("require(IEscrow(owner).isApprovedOrOwner(msg.sender, id));")
+
+    def test_the_callers_own_account_does_not_fire(self) -> None:
+        assert not self._fires("require(to == msg.sender);")
+
+    def test_a_guard_reading_from_state_does_not_fire(self) -> None:
+        assert not self._fires("require(IVisor(owner).owner() == msg.sender);")
+
+    def test_a_mention_outside_a_guard_is_not_a_guard(self) -> None:
+        # The distinction the neighbouring predicate cannot make.
+        assert not self._fires("emit Changed(from, msg.sender);")
+
+    def test_a_guard_with_no_sender_check_does_not_fire(self) -> None:
+        # Ordinary input validation is not a broken authorisation.
+        assert not self._fires("require(from.balance() > 0);")
+
+    def test_a_function_with_no_parameters_cannot_be_tainted(self) -> None:
+        assert not self._fires("require(owner == msg.sender);", params="")
+
+    def test_it_reports_the_receiver_for_correlation_not_the_shape(self) -> None:
+        source = (
+            "contract R {\n    function f(address from) external {\n"
+            "        require(IVisor(from).owner() == msg.sender);\n"
+            "        total += 1;\n    }\n}\n"
+        )
+        parsed = Syntax.of(source)
+        assert parsed is not None
+        [ref] = [e for e in run_all(parsed, "src/R.sol") if e.predicate == self.ID]
+        assert ref.detail["caller_supplied_receiver_count"] == 1
+        assert ref.diagnostic["receivers"] == "from"
+        assert ref.locator.function == "f"

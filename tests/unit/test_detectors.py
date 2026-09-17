@@ -50,6 +50,7 @@ from contract_assay.models import (
     FailedCheck,
     Finding,
     InvalidReason,
+    LimitKind,
     Locator,
     RejectionKind,
     SkipReason,
@@ -869,15 +870,13 @@ contract Vault {
         assert not hasattr(Ok(), "check_citation")
 
 
-class TestTheBlindnessRegisterIsCheckable:
-    """Each claimed blindness is isolated, not inferred from one silent record.
+class TestTheDeclaredLimitsAreCheckable:
+    """Each entry names a record, which is what makes it a proof.
 
-    The first attempt declared one entry and attributed the silence to it. Four
-    minimal cases showed two independently sufficient conditions, and the record
-    trips both -- so the single entry was true and not sufficient, and a reader
-    would have concluded that removing the guard reference would make the record
-    visible. It would not. A cause recorded wrongly points at the wrong fix,
-    whether it is a harvest loss or a detector's own limits.
+    Three states are exercised here rather than two. A limit that was declared
+    and has since been closed; a limit still open; and the control that stops
+    "silent" from meaning "this predicate never works". A demonstrated limit
+    needs a demonstrated sighting beside it or it proves nothing.
 
     Fixtures are hand-written and reproduce the *shape*: no third-party source
     is vendored here.
@@ -904,54 +903,61 @@ class TestTheBlindnessRegisterIsCheckable:
         )
         return list(AccessControlDetector().evidence(a_context(source=source, path="src/R.sol")))
 
-    def _fires(self, *, guard: bool, external: bool) -> list[str]:
-        return [
-            e.locator.function
-            for e in self._evidence(guard=guard, external=external)
-            if e.is_established
+    def _predicates(self, *, guard: bool, external: bool) -> list[str]:
+        return sorted(
+            e.predicate for e in self._evidence(guard=guard, external=external) if e.is_established
+        )
+
+    def test_the_unguarded_case_is_the_control(self) -> None:
+        # Without it, "silent" would not distinguish a limit from a predicate
+        # that never fires.
+        assert self._predicates(guard=False, external=False) == [
+            "state_change_reachable_without_modifier_or_sender_reference"
         ]
 
-    def test_the_predicate_works_when_neither_condition_holds(self) -> None:
-        # The control. Without it, "silent" would not distinguish a blindness
-        # from a predicate that never fires.
-        assert self._fires(guard=False, external=False) == ["deposit"]
+    def test_an_unsound_guard_is_now_seen(self) -> None:
+        # The limit that was declared and is now closed. The neighbouring
+        # predicate is still silenced by the msg.sender mention -- which is why
+        # this needed its own predicate rather than a tightening.
+        assert self._predicates(guard=True, external=False) == [
+            "authorisation_reads_its_answer_from_caller_supplied_address"
+        ]
 
-    def test_an_unsound_guard_silences_it(self) -> None:
-        assert self._fires(guard=True, external=False) == []
-
-    def test_an_external_effect_is_reported_as_indeterminate(self) -> None:
-        # Independently of the guard, which is what makes it a second entry
-        # rather than a restatement of the first -- and it is now *reported*
-        # rather than silent, because the silence meant both "no state change
-        # here" and "the change happens where I cannot see", and only the first
-        # is a fact about this code.
-        assert self._fires(guard=False, external=True) == []
+    def test_an_external_effect_is_still_reported_as_indeterminate(self) -> None:
+        # The limit that is still open. Reported rather than silent, because the
+        # silence meant both "no state change here" and "the change happens
+        # where I cannot see", and only the first is a fact about this code.
+        assert self._predicates(guard=False, external=True) == []
         [entry] = self._evidence(guard=False, external=True)
         assert entry.determination is Determination.INDETERMINATE
         assert "not in the analysed unit" in (entry.indeterminate_because or "")
 
-    def test_both_together_leave_no_established_evidence(self) -> None:
-        # The record's own shape. The indeterminacy is reported and the
-        # established answer is absent, which are different things and now
-        # visible as different things.
-        assert self._fires(guard=True, external=True) == []
-        assert all(not e.is_established for e in self._evidence(guard=True, external=True))
+    def test_the_record_shape_is_seen_and_still_undecided(self) -> None:
+        # Both at once, which is the corpus record's own shape: the guard is now
+        # established evidence, and whether there is state to protect remains
+        # undecided. `isolated=False` said exactly this would happen.
+        evidence = self._evidence(guard=True, external=True)
+        assert [e.predicate for e in evidence if e.is_established] == [
+            "authorisation_reads_its_answer_from_caller_supplied_address"
+        ]
+        assert any(not e.is_established for e in evidence)
 
-    def test_both_shapes_are_declared(self) -> None:
-        shapes = [b.shape for b in AccessControlDetector().declared_limits]
-        assert len(shapes) == 2
-        assert any("present and unsound" in s for s in shapes)
-        assert any("external call" in s for s in shapes)
+    def test_the_closed_entry_records_that_its_prediction_was_wrong(self) -> None:
+        # The prediction and the outcome sit side by side, and the pair is the
+        # record of the error: it said the semantic tier, and no tier was needed.
+        closed = [b for b in AccessControlDetector().declared_limits if b.closed_by]
+        assert len(closed) == 1
+        assert "semantic tier" in closed[0].closed_when
+        assert "was not needed" in closed[0].closed_by  # type: ignore[operator]
 
-    def test_neither_is_isolated_by_its_record(self) -> None:
-        # The record trips both, so closing one will not make it visible, and
-        # the entry says so rather than leaving a reader to assume otherwise.
-        for entry in AccessControlDetector().declared_limits:
-            assert entry.isolated is False
+    def test_one_entry_remains_open_and_says_what_would_close_it(self) -> None:
+        open_limits = [b for b in AccessControlDetector().declared_limits if not b.closed_by]
+        assert len(open_limits) == 1
+        assert open_limits[0].kind is LimitKind.INDETERMINACY
+        assert "NOT the semantic tier" in open_limits[0].closed_when
 
-    def test_each_entry_names_a_reason(self) -> None:
-        # A blindness with no reason is a bug report filed against oneself and
-        # left open.
+    def test_every_entry_names_a_reason_and_a_record(self) -> None:
         for entry in AccessControlDetector().declared_limits:
             assert entry.unpatched_because.strip()
             assert entry.demonstrated_by.strip()
+            assert entry.closed_when.strip()

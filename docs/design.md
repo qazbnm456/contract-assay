@@ -513,8 +513,39 @@ backend is wired up.
 | `reentrancy` | control flow + state-write ordering | no |
 | `flashloan_manipulation` | interprocedural reachability | no |
 
-The "partly" against `access_control` has a measured instance behind it, and it
-arrived from the incident population rather than from review findings. The
+The `access_control` row says "partly" and **caller-taint turned out not to
+need the semantic tier at all**, which is worth recording because the
+prediction that it did was written into this document and into a register entry
+before anybody tested it.
+
+A value an outside caller supplied enters a function under a parameter name. So
+an expression mentioning that name is an expression reading something the caller
+chose, and the parser knows the parameter names and the identifiers in a
+condition already. Depth-one taint is syntactic. What is *not* syntactic is
+following an alias -- `address x = from;` and then a guard on `x` -- which needs
+def-use and is a genuine tier dependency, and is a much narrower claim than the
+one that was made.
+
+Getting there required narrowing the property twice, and the narrowing was
+driven by measurement rather than by argument. "A guard mentioning `msg.sender`
+and a parameter" fires 19 times over the corpus; 17 of those are **sound**
+guards of the form `isApprovedOrOwner(msg.sender, id)`, where the caller passes
+an identifier and the contract resolves it against its own state. The
+caller-supplied value there is the *subject* of the check. The defect is when it
+is the *source of the answer* -- `IVisor(from).owner() == msg.sender` asks a
+caller-chosen contract to adjudicate a check on itself -- and that distinction
+is the receiver position of a call inside the condition, which fires 4 times.
+
+The property remains **real and insufficient**, and the predicate's name is
+careful not to claim otherwise. One corpus source guards with
+`require(IAlchemechNFT(_nft).ownerOf(id) == msg.sender)` inside
+`if (_nft == alchemechNFT)`: caller-supplied, and pinned by a preceding
+comparison, so sound. Settling that belongs to the verdict layer (§2.1), and the
+prediction it produces costs precision, which is the correct price (§7.2) rather
+than something to suppress.
+
+The original observation arrived from the incident population rather than from
+review findings. The
 syntactic predicate's proxy for "is the caller checked?" is "is `msg.sender`
 referenced?". One record is a function whose authorisation check reads `owner()`
 from a **caller-supplied address** and compares the result to `msg.sender`: the
@@ -1574,8 +1605,31 @@ record **isolates** it, and what closed it once something has.
 question is whether a planned change will absorb the entry, and deriving the
 answer would encode a general claim — better analysis closes blindnesses, more
 scope closes indeterminacies — of exactly the sort that has already been wrong
-here once. The two open entries make the point: one closes when the semantic
-tier lands, and the other does not close then at all. The last field makes the register a work list
+here once.
+
+**It was wrong again, on the first entry, and the field is what made that
+legible.** The blindness entry predicted "the semantic tier lands and
+caller-taint becomes available". It closed at the *syntactic* tier, with no tier
+work at all (§4.2). The prediction is left as written and the outcome recorded
+beside it in `closed_by`, because the pair is the record of the error — a
+`closed_when` quietly corrected to match what happened would read as though the
+plan had been right.
+
+And closing it did **not** make the demonstrating record visible, which
+`isolated=False` had said in advance: the finding is now established by
+evidence, reaches the verdict, and is refused there by the indeterminacy the
+second entry describes. That is the register doing the job it was built for, on
+its first real use.
+
+**The register's completeness is bounded by the corpus**, which is a consequence
+of `demonstrated_by` being required and is worth stating so a reader does not
+take the register for a full list of limitations. A limitation known by
+construction but demonstrated by no record cannot become an entry — filing one
+with an inapplicable record would destroy the property that makes every entry
+checkable. Two such limitations exist for this class already: the alias case,
+and the pinned-address false positive. They live in the predicate's own
+docstring, which is the right place for a limitation nothing yet proves, and
+they are written down rather than left to be rediscovered. The last field makes the register a work list
 rather than a graveyard: when a tier lands and an entry closes, the entry names
 the change that closed it and stops excusing a miss, so a regression resurfaces
 as an unexplained one.

@@ -529,5 +529,100 @@ def _call_argument_is_zero_literal(syntax: Syntax, path: str) -> list[EvidenceRe
     ]
 
 
+@_register(
+    "authorisation_reads_its_answer_from_caller_supplied_address",
+    VulnerabilityClass.ACCESS_CONTROL,
+    summary="A guard checking msg.sender reads the value it compares against from an "
+    "address the caller supplied, so the check is satisfiable by construction.",
+)
+def _authorisation_reads_its_answer_from_caller_supplied_address(
+    syntax: Syntax, path: str
+) -> list[EvidenceRef]:
+    """A guard that is present and asks the caller for its own answer.
+
+    Named for the property, not for "broken access control": what is
+    established is that a gating condition checks `msg.sender` against a value
+    it reads *from an address the caller supplied*. The caller can pass an
+    address it controls, so the adjudicator of the check is chosen by the party
+    being checked.
+
+    The narrowness is the whole of it, and a broader version was measured and
+    rejected. Firing on any guard that mentions `msg.sender` and a parameter
+    fired nineteen times over the corpus where this fires twice, and seventeen
+    of the nineteen were **sound** guards -- `isApprovedOrOwner(msg.sender, id)`
+    takes a caller-supplied id and resolves it against the contract's own
+    state, which is the ordinary and correct way to write that check. The
+    caller-supplied value there is the *subject* of the check; here it is the
+    *source of the answer*, and only the second is a defect. Treating them alike
+    would have made the predicate fire mostly on correct code.
+
+    This exists because the neighbouring predicate treats *any* mention of
+    `msg.sender` as a check, so a guard that is present and unsound suppresses
+    it. That was a declared limit of the access-control detector with a corpus
+    record behind it, and the limit's stated closure was **wrong**: it said the
+    semantic tier and caller-taint. Depth-one taint needs neither. A value an
+    outside caller supplied enters under a parameter name, so an expression
+    mentioning that name is an expression reading something the caller chose,
+    and the parser already knows both.
+
+    The property is real and it is **not sufficient**, which the name is careful
+    not to claim. One corpus source guards with
+    `require(IAlchemechNFT(_nft).ownerOf(id) == msg.sender)` inside
+    `if (_nft == alchemechNFT)`: the address is caller-supplied and a preceding
+    comparison has pinned it to a state variable, so the check is sound. Deciding
+    that is the verdict layer's, not evidence's (§2.1) -- evidence reports a
+    shape, and a predicate that tried to settle soundness would be back to
+    guessing. The cost is a prediction against a location the corpus holds no
+    record for, which costs precision, and that is the correct price rather than
+    a problem to suppress (§7.2).
+
+    What it deliberately does not do, since the shallowness is the whole point:
+
+    *   It does not follow an alias. `address x = from;` and then a guard on `x`
+        names no parameter, and this predicate is silent. That is the part that
+        does need def-use. It is recorded here rather than in the declared-limit
+        register because that register requires a corpus record behind every
+        entry (§7.3), and no record demonstrates this shape -- which is a bound
+        on the register, not a reason to leave the limitation unwritten.
+    *   It does not check whether a preceding condition pinned the
+        caller-supplied address, as above.
+    *   It does not judge soundness. A guard may compare the sender against a
+        caller-supplied value and still be correct -- `require(to == msg.sender)`
+        restricts an action to the caller's own account. So this is evidence
+        about a shape, and the verdict layer is where a claim about it is
+        checked (§2.1).
+    """
+    found: list[EvidenceRef] = []
+    for function in syntax.functions:
+        declaration = function.declaration
+        if declaration.kind in (DeclarationKind.CONSTRUCTOR, DeclarationKind.MODIFIER):
+            continue
+        if not function.is_externally_reachable or function.is_read_only:
+            continue
+        if not function.parameter_names:
+            continue
+        for guard in syntax.guards:
+            if not _inside(declaration, guard.site.start_line):
+                continue
+            if "sender" not in guard.identifiers:
+                continue
+            supplied = sorted(frozenset(guard.call_receivers) & frozenset(function.parameter_names))
+            if not supplied:
+                continue
+            found.append(
+                EvidenceRef(
+                    predicate="authorisation_reads_its_answer_from_caller_supplied_address",
+                    tier=_SYNTACTIC,
+                    locator=function.site.locator(path),
+                    detail={
+                        "guard_line": guard.site.start_line,
+                        "caller_supplied_receiver_count": len(supplied),
+                    },
+                    diagnostic={"receivers": ",".join(supplied)},
+                )
+            )
+    return found
+
+
 def _inside(declaration: Declaration, line: int) -> bool:
     return declaration.start_line <= line <= declaration.end_line

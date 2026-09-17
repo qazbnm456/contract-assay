@@ -37,6 +37,7 @@ nested functions.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -274,6 +275,45 @@ class WriteSite:
 
 
 @dataclass(frozen=True, slots=True)
+class GuardSite:
+    """One condition that decides whether execution proceeds."""
+
+    site: Site
+    identifiers: tuple[str, ...]
+    """Every identifier the condition mentions, sorted and deduplicated.
+
+    For correlation, never for reporting: these are user identifiers (§2.3).
+    What they are for is telling a guard from a mention -- whether the thing
+    `msg.sender` is being compared against is something the caller supplied.
+    """
+
+    call_receivers: tuple[str, ...] = ()
+    """Identifiers appearing in the *receiver* position of a call in this condition.
+
+    The distinction this exists for, which a flat list of identifiers cannot
+    make. A condition may mention something the caller supplied in two quite
+    different roles:
+
+    *   as the **subject** of a check -- `isApprovedOrOwner(msg.sender, id)`,
+        where the caller passes an id and the contract resolves it against its
+        own state. Sound.
+    *   as the **address answered from** -- `IVisor(from).owner() == msg.sender`,
+        where the contract asks a caller-chosen contract to adjudicate a check
+        on itself. Satisfiable by construction.
+
+    Measured over the corpus, treating those alike fired nineteen times where
+    the sharper property fires twice, and seventeen of the nineteen were sound
+    guards.
+    """
+
+    def reads_any(self, names: Iterable[str]) -> bool:
+        return bool(frozenset(self.identifiers) & frozenset(names))
+
+    def answers_from_any(self, names: Iterable[str]) -> bool:
+        return bool(frozenset(self.call_receivers) & frozenset(names))
+
+
+@dataclass(frozen=True, slots=True)
 class FunctionSite:
     """One function-like declaration, with what the language says about its reach."""
 
@@ -291,6 +331,20 @@ class FunctionSite:
     state_mutability: str | None
     modifiers: tuple[str, ...]
     """Modifier invocations as written. User identifiers: correlate, do not report."""
+
+    parameter_names: tuple[str, ...] = ()
+    """Names of the declared parameters, in order.
+
+    Kept apart from `Declaration.parameter_types`, which identifies the function
+    for overload resolution and must be stable under a rename. These are for
+    *correlation*: a value an outside caller supplied enters the function under
+    one of these names, so an expression mentioning one is an expression reading
+    something the caller chose. That is the shallowest useful form of taint and
+    it needs no types -- which matters, because the alternative was assumed to
+    need a compiled backend.
+
+    User identifiers, so correlate on them and do not report them (§2.3).
+    """
 
     @property
     def is_externally_reachable(self) -> bool:
@@ -571,6 +625,92 @@ class Syntax:
             current = named[0]
         return self.text(current)
 
+    def _parameter_names(self, function: Node) -> tuple[str, ...]:
+        """Declared parameter names, in order, skipping any left unnamed.
+
+        A parameter may be declared with a type and no name, which is legal and
+        names nothing an expression could mention, so it contributes no entry
+        rather than an empty one.
+        """
+        names: list[str] = []
+        for parameters in (c for c in function.children if c.type == "parameter"):
+            identifier = next(
+                (c for c in parameters.children if c.type == "identifier"),
+                None,
+            )
+            if identifier is not None:
+                names.append(self.text(identifier))
+        return tuple(names)
+
+    @cached_property
+    def guards(self) -> tuple[GuardSite, ...]:
+        """Every condition the code uses to decide whether to proceed.
+
+        `require`, `assert` and `if` -- the places a contract asks a question
+        before acting. Collected together because what matters downstream is
+        that a condition gates behaviour, not which keyword expressed it.
+
+        Each carries the identifiers its condition mentions, which is what makes
+        a *guard* distinguishable from a *mention*: a condition comparing
+        `msg.sender` to a state variable and one comparing it to something the
+        caller passed in are the same shape and opposite facts.
+        """
+        found: list[GuardSite] = []
+        for node in self._nodes("call_expression", "if_statement"):
+            # Shapes read off the grammar rather than assumed: a call's callee
+            # sits under an `expression` child and its arguments are
+            # `call_argument` nodes, and an `if`'s condition is its `expression`
+            # child -- selecting "the first child that is not the keyword" picks
+            # the opening parenthesis, which mentions nothing. Both of those
+            # were guessed wrong first, and each wrong guess reported an
+            # absence, which is a claim about the reader (§1.3).
+            if node.type == "call_expression":
+                callee = next((c for c in node.children if c.type == "expression"), None)
+                if callee is None or self.text(callee).strip() not in ("require", "assert"):
+                    continue
+                conditions = [c for c in node.children if c.type == "call_argument"]
+            else:
+                # The condition only. The body is a sibling `statement`, and
+                # including it would count every identifier the branch touches
+                # as something the condition asked about.
+                conditions = [c for c in node.children if c.type == "expression"][:1]
+            if not conditions:
+                continue
+            names = {
+                self.text(identifier)
+                for condition in conditions
+                for identifier in self._descendants(condition, "identifier")
+            }
+            receivers: set[str] = set()
+            for condition in conditions:
+                for member in self._descendants(condition, "member_expression"):
+                    # The receiver is everything before the dot. Selecting a
+                    # child of type `expression` misses `from.owner()`, whose
+                    # receiver is a bare identifier -- another shape guessed
+                    # rather than read.
+                    for child in member.children:
+                        if child.type == ".":
+                            break
+                        receivers |= {self.text(i) for i in self._descendants(child, "identifier")}
+            found.append(
+                GuardSite(
+                    site=self._site(node),
+                    identifiers=tuple(sorted(names)),
+                    call_receivers=tuple(sorted(receivers)),
+                )
+            )
+        return tuple(sorted(found, key=lambda g: (g.site.start_line, g.site.text)))
+
+    def _descendants(self, node: Node, node_type: str) -> list[Node]:
+        found: list[Node] = []
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type == node_type:
+                found.append(current)
+            stack.extend(current.children)
+        return found
+
     @cached_property
     def functions(self) -> tuple[FunctionSite, ...]:
         """Every function-like declaration, with visibility, mutability and modifiers."""
@@ -599,6 +739,7 @@ class Syntax:
                     modifiers=tuple(
                         self.text(c) for c in node.children if c.type == "modifier_invocation"
                     ),
+                    parameter_names=self._parameter_names(node),
                 )
             )
         return tuple(found)

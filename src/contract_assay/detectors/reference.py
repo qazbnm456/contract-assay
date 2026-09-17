@@ -303,7 +303,12 @@ class AccessControlDetector(_SyntacticDetector):
     detector_id = "reference-access-control"
     class_id = VulnerabilityClass.ACCESS_CONTROL
     api_version = "1.1"
-    predicate_ids = frozenset({"state_change_reachable_without_modifier_or_sender_reference"})
+    predicate_ids = frozenset(
+        {
+            "state_change_reachable_without_modifier_or_sender_reference",
+            "authorisation_reads_its_answer_from_caller_supplied_address",
+        }
+    )
     # Two entries rather than one, and the corpus record trips both. Isolating
     # them took four minimal cases: a storage write with no guard fires; the
     # same write with an unsound guard does not; an external effect with no
@@ -331,6 +336,17 @@ class AccessControlDetector(_SyntacticDetector):
             closed_when=(
                 "the semantic tier lands and caller-taint becomes available, so the "
                 "other side of the comparison can be traced to a parameter"
+            ),
+            # The prediction above is left as written and the outcome recorded
+            # beside it, because the pair is the record of the error. It said
+            # the semantic tier; depth-one taint needed no tier at all, since a
+            # caller-supplied value enters under a parameter name and the parser
+            # already knows both. Third time a confident claim about *why*
+            # something was invisible turned out wrong, which is why
+            # `closed_when` is a field rather than an inference.
+            closed_by=(
+                "the syntactic predicate authorisation_reads_its_answer_from_caller_"
+                "supplied_address; the semantic tier this entry predicted was not needed"
             ),
         ),
         DeclaredLimit(
