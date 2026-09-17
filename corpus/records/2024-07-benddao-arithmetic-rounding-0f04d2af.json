@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-07-benddao-arithmetic-rounding-0f04d2af",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "src/libraries/logic/VaultLogic.sol",
+  "sha256": "060d161230ccc6e80a7da85bb922441278b0249a12afd81d35804c17b79dc7d6",
+  "resolved_from": "the commit the report states for the contest, the finding's excerpt naming none, and the directory the report's own citation of this file name gives",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-benddao",
+  "commit": "117ef61967d4b318fc65170061c9577e674fffa1"
+ },
+ "locator": {
+  "file": "src/libraries/logic/VaultLogic.sol",
+  "contract": "VaultLogic",
+  "function": "erc20TransferOutBidAmountToLiqudity",
+  "start_line": 496,
+  "end_line": 499
+ },
+ "classes": [
+  "arithmetic_rounding"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "quoted",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-benddao-findings/issues/27",
+  "reported_severity": "high"
+ },
+ "notes": ""
+}

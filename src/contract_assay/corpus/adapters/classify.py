@@ -16,6 +16,21 @@ predicates over *code*, where an identifier is the author's to rename and a name
 match is therefore evidence that can be manufactured. Nobody renames the English
 word "reentrancy" to defeat a harvester.
 
+Which is an argument about *prose*, and the table was reading identifiers too:
+a title is written in English with Solidity names quoted inside it, and
+`ETHOracle.getLatestPrice` was classifying a decimals bug as oracle integrity,
+`receiveFlashLoan` a callback bug as flash-loan manipulation. Those names are
+the author's to choose, so the exemption above does not cover them, and quoted
+spans are dropped before matching. It cost four classifications over one sample
+of 174 findings and every one of them was wrong.
+
+Two terms are dropped even unquoted, because they name a *guard that is
+present*: a finding about `nonReentrant` on a `receive()` making withdrawals
+fail is a denial of service, and the table read the modifier's name and called
+it reentrancy. No keyword can tell a missing guard from a harmful one, so the
+word stops being a signal either way; a title whose only claim is the guard's
+name is left unmapped and counted.
+
 The table is deliberately narrow. A title matching nothing is skipped and
 counted, which turns "how much of this platform do the nine classes cover" into
 a number the harvest report states. Widening it until the coverage number
@@ -25,9 +40,14 @@ figure by loosening what counts rather than by finding more.
 
 from __future__ import annotations
 
+import re
+
 from contract_assay.models import VulnerabilityClass
 
 __all__ = ["CLASS_KEYWORDS", "classify_title"]
+
+_QUOTED = re.compile(r"`[^`]*`")
+_NAMES_A_GUARD = ("nonreentrant", "reentrancyguard")
 
 CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     # Synonyms for a property already in the nine, added after hand-assessing 40
@@ -85,7 +105,9 @@ def classify_title(title: str) -> tuple[VulnerabilityClass, ...]:
     multi-labelled records because one *location* can host several classes, which
     is a different claim from one title matching several words.
     """
-    lowered = title.lower()
+    lowered = _QUOTED.sub(" ", title).lower()
+    for guard in _NAMES_A_GUARD:
+        lowered = lowered.replace(guard, " ")
     for keyword, cls in CLASS_KEYWORDS:
         if keyword in lowered:
             return (cls,)

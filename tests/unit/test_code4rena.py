@@ -345,11 +345,19 @@ File: src/Vault.sol
 """
     )
 
-    def test_the_path_and_span_come_from_the_excerpt(self) -> None:
+    def test_the_path_comes_from_the_excerpt_and_the_location_from_its_text(self) -> None:
+        # The numbers are not a location. One published excerpt read
+        # `503: function erc20TransferOutBidAmountToLiqudity(...)` and that
+        # declaration sits at 496 in the pinned file, with 503 inside the next
+        # function -- and every check downstream passed, because the function
+        # was derived from the span and so agreed with itself. The text is what
+        # can be found in the source or refused.
         [draft] = harvest(Code4renaAdapter(), [self.EXCERPT]).drafts
         assert draft.path == "src/Vault.sol"
-        assert (draft.start_line, draft.end_line) == (120, 123)
-        assert draft.has_stated_span
+        assert draft.has_stated_span is False
+        assert draft.quoted_source is not None
+        assert "function withdraw(uint256 amount) external {" in draft.quoted_source
+        assert "120:" not in draft.quoted_source
 
     def test_the_commit_comes_from_the_contest_not_the_finding(self) -> None:
         # A commit identifies the snapshot under audit, so any permalink in the
@@ -378,15 +386,49 @@ File: src/Vault.sol
         assert result.by_cause == {SkipCause.NO_LOCATION: 1}
 
     def test_an_excerpt_beats_a_function_named_in_prose(self) -> None:
-        # Both signals are present. The excerpt states a span, so it is used and
-        # the record is stated rather than prose-derived.
+        # Both signals are present. The excerpt quotes source, which locates a
+        # span exactly, where a name in prose has to be resolved and may not be
+        # the site the finding is about.
         body = self.EXCERPT.body.replace(
             "### Vulnerability details",
             "### Vulnerability details\n\nThe bug is in `Vault.somethingElse()`.",
         )
         [draft] = harvest(Code4renaAdapter(), [a_report(body)]).drafts
-        assert draft.has_stated_span
-        assert (draft.start_line, draft.end_line) == (120, 123)
+        assert draft.quoted_source is not None
+        assert "balances[msg.sender] -= amount;" in draft.quoted_source
+        assert draft.function != "somethingElse"
+
+    def test_several_quoted_regions_have_not_said_which_is_the_site(self) -> None:
+        # Of four such findings in one sample, three quoted a helper or an
+        # explanatory call first and the defect later. Taking the first block
+        # picked the wrong one three times out of four.
+        body = self.EXCERPT.body.replace(
+            "```\n",
+            "```\n\nand also\n\n```solidity\nFile: src/Other.sol\n"
+            "40:   function totalAssets() external view returns (uint256) {\n"
+            "41:     return asset.balanceOf(address(this));\n"
+            "42:   }\n```\n",
+            1,
+        )
+        result = harvest(Code4renaAdapter(), [a_report(body)])
+        # No excerpt, no citation of its own and nothing quoted outside the
+        # blocks, so this falls to the named-function route and is lost there.
+        assert result.drafts == ()
+        assert set(result.by_cause) <= {SkipCause.NO_LOCATION}
+
+    def test_a_block_quoting_the_harness_is_not_a_second_region(self) -> None:
+        # A proof of concept exercises the defect rather than containing it, so
+        # a test file beside the real one leaves the real one determinate.
+        body = self.EXCERPT.body.replace(
+            "```\n",
+            "```\n\nProof of concept:\n\n```solidity\nFile: test/Vault.t.sol\n"
+            "10:   function test_withdraw() public {\n"
+            "11:     vault.withdraw(1 ether);\n"
+            "12:   }\n```\n",
+            1,
+        )
+        [draft] = harvest(Code4renaAdapter(), [a_report(body)]).drafts
+        assert draft.path == "src/Vault.sol"
 
     def test_an_excerpt_with_no_line_numbers_is_not_a_location(self) -> None:
         body = self.EXCERPT.body.replace("120:   ", "").replace("121:     ", "")

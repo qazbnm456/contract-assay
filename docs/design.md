@@ -1544,6 +1544,50 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   rejected two for naming a function not declared in the located span, which is
   the check doing its job on a locator derived from prose. One admitted record
   rests on the recovered commit, and says so.
+
+  A third recoverable category, and the one that taught the most: the
+  line-numbered excerpt, which states a file and quotes it. Two thirds of those
+  drafts died resolving against no file in the repository, because the heading
+  carries a bare `Vault.sol` and the directory is in the report's own citation
+  of that name — recoverable, and only when exactly one cited path ends in it,
+  since two files of that name is the case where the report has not said which.
+
+  Fixing that exposed two things the numbers were hiding.
+
+  - **A finding quoting several regions has not stated a location.** Of four,
+    three quoted a helper or an explanatory call first and the defect site
+    later, and one quoted a test file beside the real one. Taking the first
+    block was a guess that landed wrong three times in four, so several blocks
+    means the route declines; a block quoting the harness is dropped first,
+    because a proof of concept exercises the defect rather than containing it.
+  - **The excerpt's line numbers are not a location.** One read
+    `503: function erc20TransferOutBidAmountToLiqudity(...)`; in the pinned file
+    that declaration is at 496 and 503 is inside the *next* function. The file
+    resolved, the span parsed, and the function was derived from the span and so
+    agreed with itself — the same self-consistency trap as a matcher that
+    shifted a quote by 28 lines and found it unique anyway (§6.3), arriving this
+    time from the report's side rather than the instrument's. A record would
+    have pinned a high-severity defect to an untouched function.
+
+  So the numbers are dropped and the excerpt's *text* is handed over as a quote,
+  to be found in the pinned source or refused. That is the falsifiability this
+  route was valued for; trusting its numbers threw it away. The same finding now
+  lands at 496-499, on the declaration holding the subtraction it is about.
+
+  One more thing the recovery exposed, one level up. The class was being read
+  off *identifiers*: `ETHOracle.getLatestPrice` classified a decimals bug as
+  oracle integrity, `receiveFlashLoan` a callback bug as flash-loan
+  manipulation. §6.3's exemption for keyword matching covers **prose** — nobody
+  renames the English word "reentrancy" — and an identifier quoted inside a
+  title is exactly the renameable thing the exemption does not reach, so quoted
+  spans are dropped before matching. Four classifications over 174 findings, all
+  four wrong. Two terms go even unquoted, because they name a *guard that is
+  present*: a finding about `nonReentrant` on a `receive()` making every
+  withdrawal fail is a denial of service, and the table read the modifier's name
+  and called it reentrancy. No keyword can tell a missing guard from a harmful
+  one, so the word stops being a signal either way and the title is left
+  unmapped and counted — 141 of 174 now, against 136 before, and the five it
+  gave up were five wrong labels.
 - **normalize** — resolve locations, deriving a span where the report named only
   a function, and pin commit SHAs and digests. Class mapping is *not* here: it
   belongs to the adapter, because the taxonomy being mapped from is the

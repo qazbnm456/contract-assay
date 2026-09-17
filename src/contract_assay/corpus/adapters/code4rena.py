@@ -87,6 +87,10 @@ _FILE_BLOCK = re.compile(
     r"^File:\s*(?P<path>\S+\.sol)\s*$\n(?P<lines>(?:^[ \t]*\d+:.*$\n?)+)", re.M
 )
 _NUMBERED_LINE = re.compile(r"^[ \t]*(\d+):", re.M)
+# A proof of concept exercises the defect rather than containing it, so a block
+# quoting the harness is not a location -- one observed finding quoted the
+# vulnerable library and `TestUser.sol` side by side.
+_LOOKS_LIKE_A_TEST = re.compile(r"(^|/)(Test\w*|\w+\.t)\.sol$")
 
 # Findings quote the vulnerable code inline far more often than they cite it.
 # The quote is not a location by itself, but `normalize` can locate it by
@@ -186,28 +190,92 @@ class Code4renaAdapter:
 
     platform = "code4rena"
 
-    def _from_excerpt(self, report: RawReport, finding: EnumeratedFinding) -> SourceCitation | None:
-        """A location from a line-numbered excerpt, if the finding carries one.
+    def _from_excerpt(
+        self,
+        report: RawReport,
+        finding: EnumeratedFinding,
+        audited: str | None = None,
+        commit: str | None = None,
+    ) -> _Excerpt | None:
+        """A quote from a line-numbered excerpt, and the assumptions it rests on.
 
-        The excerpt states a path and line numbers but not a commit, because a
-        commit is a property of the contest rather than of the finding. It is
-        taken from the report's own permalinks, which all point at the audited
-        snapshot; a report containing none is one where nothing can be pinned.
+        **The excerpt's line numbers are not a location.** One finding's excerpt
+        read `503: function erc20TransferOutBidAmountToLiqudity(...)`; in the
+        pinned file that declaration is at 496, and 503 is inside the next
+        function. Every check downstream passed -- the file resolved, the span
+        parsed, and the function was *derived from the span*, so it agreed with
+        itself -- and the record would have pinned a defect to an untouched
+        function. The same self-consistency trap as a matcher that shifted a
+        quote by 28 lines and found it unique anyway, arriving this time from the
+        report's side rather than the instrument's.
+
+        So the numbers are dropped and the excerpt's *text* is handed over as a
+        quote, to be found in the source or refused. That is the falsifiability
+        this route was valued for in the first place; trusting the numbers threw
+        it away. Nothing is lost by dropping them: a quote locates a span
+        exactly, and one that cannot be found is a claim the source denies.
+
+        The excerpt states line numbers and a file, but not a commit -- a commit
+        is a property of the contest rather than of the finding -- and often not
+        a directory either: the heading above the excerpt frequently carries a
+        bare `Vault.sol`. Neither is a location, and four of 22 drafts over one
+        sample died of the second, resolving against no file in the repository.
+
+        A finding quoting *several* numbered regions has not stated a location,
+        and taking the first is a guess that lands on the wrong one: of four such
+        findings, three quoted a helper or an explanatory call first and the
+        defect site later, and one quoted a test file. So several blocks means
+        the excerpt route declines and the quote route gets its turn, where an
+        excerpt has to be found in the source rather than trusted.
+
+        Both are recoverable from the report rather than guessed at. The commit
+        comes from its permalinks, which point at the audited snapshot; the
+        directory comes from its own citation of that file name, and only when
+        exactly one cited path ends in it. Two files of the same name in
+        different directories is the case where the report has not said which,
+        and the draft is lost rather than assigned to whichever was cited first.
+
+        The prose comes back with the citation because this route knows which
+        assumptions it made and the caller does not: a directory completed from
+        a citation and a directory the excerpt stated are the same bytes and
+        different claims, and `pin.resolved_from` is where that difference is
+        published.
         """
-        block = _FILE_BLOCK.search(finding.body)
-        if block is None:
+        blocks_raw = [
+            (match.group("path").lstrip("/"), match.group("lines"))
+            for match in _FILE_BLOCK.finditer(finding.body)
+            if not _LOOKS_LIKE_A_TEST.search(match.group("path"))
+            and _NUMBERED_LINE.search(match.group("lines"))
+        ]
+        if len(blocks_raw) != 1:
             return None
-        numbers = [int(n) for n in _NUMBERED_LINE.findall(block.group("lines"))]
+        cited_path, numbered = blocks_raw[0]
+        quote = _NUMBERED_LINE.sub("", numbered).strip("\n")
+        if not quote.strip():
+            return None
         snapshot = contest_snapshot(report.body)
-        if not numbers or snapshot is None:
+        if snapshot is None:
             return None
-        repo_url, commit = snapshot
-        return SourceCitation(
+        repo_url, snapshot_commit = snapshot
+        path = cited_path
+        assumption = _FROM_CONTEST_SNAPSHOT
+        if "/" not in path:
+            cited = {
+                reviewed.citation.path
+                for reviewed in _reviewed(report.body, audited, commit)
+                if reviewed.citation.path.rsplit("/", 1)[-1] == path
+            }
+            if len(cited) != 1:
+                return None
+            path = cited.pop()
+            if "/" in path:
+                assumption += _AND_CITED_DIRECTORY
+        return _Excerpt(
             repo_url=repo_url,
-            ref=commit,
-            path=block.group("path").lstrip("/"),
-            start_line=min(numbers),
-            end_line=max(numbers),
+            commit=snapshot_commit,
+            path=path,
+            quote=quote,
+            assumption=assumption,
         )
 
     def _by_name(
@@ -319,23 +387,41 @@ class Code4renaAdapter:
         # stated route attached `recovered_from` to every draft it produced,
         # including findings that pinned their own commit in the citation used.
         stated = _cite(finding.body, audited, commit)
-        if stated is not None:
-            citation: SourceCitation | None = stated.citation
-            resolved_from = recovered_from if stated.recovered else None
-        else:
-            citation = self._from_excerpt(report, finding)
-            # The excerpt states lines and a path but no commit, so a commit
-            # taken from the report rests on the excerpt having been written
-            # against the contest snapshot -- which the finding never said.
-            resolved_from = _FROM_CONTEST_SNAPSHOT if citation is not None else None
-        if citation is not None and audited is not None and citation.repo_url != audited:
+        if stated is None:
+            # The excerpt states a file and quotes it, but no commit, and often
+            # no directory either. It names its own assumptions, because it is
+            # the only thing that knows which of them it had to make.
+            excerpt = self._from_excerpt(report, finding, audited, commit)
+            if excerpt is None:
+                return self._by_name(report, candidate, finding, audited, commit, recovered_from)
+            if audited is not None and excerpt.repo_url != audited:
+                return Skip(
+                    SkipCause.CITES_ANOTHER_REPOSITORY,
+                    f"quotes {excerpt.repo_url.split('/')[-1]}/{excerpt.path}, which is not "
+                    "the code under review",
+                )
+            return DraftRecord(
+                candidate_id=finding.ident,
+                repo_url=excerpt.repo_url,
+                commit=excerpt.commit,
+                commit_resolved_from=excerpt.assumption,
+                path=excerpt.path,
+                quoted_source=excerpt.quote,
+                classes=candidate.classes,
+                provenance=Provenance(
+                    platform=report.platform,
+                    report_url=finding.issue_url or report.report_url,
+                    reported_severity=finding.severity,
+                ),
+            )
+        citation = stated.citation
+        resolved_from = recovered_from if stated.recovered else None
+        if audited is not None and citation.repo_url != audited:
             return Skip(
                 SkipCause.CITES_ANOTHER_REPOSITORY,
                 f"cites {citation.repo_url.split('/')[-1]}/{citation.path}, which is not "
                 "the code under review",
             )
-        if citation is None:
-            return self._by_name(report, candidate, finding, audited, commit, recovered_from)
         if not citation.path.endswith(".sol"):
             return Skip(SkipCause.NO_FILE_PATH, f"cited {citation.path}, which is not Solidity")
 
@@ -450,6 +536,18 @@ _FROM_DOMINANT_CITATION = "the commit the report's own citations of this reposit
 _FROM_CONTEST_SNAPSHOT = (
     "the commit the report states for the contest, the finding's excerpt naming none"
 )
+_AND_CITED_DIRECTORY = ", and the directory the report's own citation of this file name gives"
+
+
+@dataclass(frozen=True)
+class _Excerpt:
+    """A line-numbered excerpt: where it came from, what it quotes, what that rests on."""
+
+    repo_url: str
+    commit: str
+    path: str
+    quote: str
+    assumption: str
 
 
 @dataclass(frozen=True)
