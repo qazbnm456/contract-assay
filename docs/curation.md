@@ -128,6 +128,21 @@ being measured.
 to make a weak record look like a strong one, and nothing downstream can detect
 it afterwards.
 
+**Do not trust a line number the report gives without reading the line.** A
+published excerpt headed `File: VaultLogic.sol` numbered its first line 503; in
+the pinned file that declaration is at 496, and 503 is inside the next function.
+Nothing downstream catches this: the file resolves, the span parses, and a
+function derived from the span agrees with itself. Where the report quotes
+source, locate the record by *finding that text* and let the numbers be
+whatever they turn out to be. Where it gives numbers alone, open the file at
+them and check that what is there is what the finding describes — and if it is
+not, the finding has not given you a location.
+
+**Read every record against its source before writing it.** Two defects in one
+afternoon were invisible to the pipeline and obvious on sight: the above, and a
+pin published as resting on an inference when the report had stated the commit
+in the very citation used. Both produced records that passed every check.
+
 ## The one case curation is asked to settle, for now
 
 After a harvest, look for **records of the same class whose spans overlap but
