@@ -801,6 +801,36 @@ token balance that stops tracking one-to-one, a batch identifier collision,
 signature replay across chains, standards non-compliance. That is the residual
 category, arriving as a measurement.
 
+A hand-assessment of 141 unmapped titles from 17 reports says how much of that
+71-of-87 is the taxonomy and how much was the reader. Roughly 17 of 40 sampled
+were **inside** the nine and phrased in words the table did not hold: reports
+say "always reverts", "unable to", "inability to", "irrecoverable", "stuck",
+"bricked", "prevents" where the table held only the category's own name, which
+almost nothing writes. Adding those took mapping from 19% to 34% of accepted
+findings on this sample, and every added term was kept only if every title it
+newly mapped was right on inspection — "incorrect calculation" mapped two and
+both were wrong, because a mistaken formula is not a rounding defect.
+
+The other ~20 of 40 are genuinely outside the nine, and they are one thing
+wearing several hats: an accounting identity that no longer holds. Holdings that
+stop tracking one-to-one, a plot occupied by two renters, more entities in a
+generation than the cap, a fee computed from the wrong side. Judging any of them
+needs the protocol's specification, which is exactly what a pattern benchmark
+does not have and why they stay out. The remainder are a race between two
+transactions, an assumption about ERC-20 behaviour, an incentive, a mismatch
+with the documentation.
+
+The audit also caught the table doing to itself what §6.3 caught it doing with
+identifiers. **A word that names a mechanism is not a word that names a
+defect.** "flash loan" and "flashloan" alone mapped four titles and all four
+were wrong — two were flash-loan *fee accounting*, one a rounding defect in a
+fee, one a revert — because this class is a property, a price moved inside one
+transaction with borrowed capital, and the phrase merely names the instrument
+that moved it. The same shape as reading "reentrancy" off a `nonReentrant`
+modifier. Removing it let the defect word win: the rounding title maps to
+rounding, the reverting one to denial of service, and the two accounting titles
+to nothing at all, which is the correct answer three ways.
+
 So the claim this benchmark supports is:
 
 > Can a model find instances of nine known vulnerability patterns, at the right

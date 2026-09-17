@@ -339,7 +339,7 @@ class NormalizeReport:
         )
         folded = (
             f" {_plural(self.duplicates, 'further draft')} described a defect already "
-            "recorded and were folded in."
+            f"recorded and {'was' if self.duplicates == 1 else 'were'} folded in."
             if self.duplicates
             else ""
         )

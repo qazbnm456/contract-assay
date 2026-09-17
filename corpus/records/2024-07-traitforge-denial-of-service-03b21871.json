@@ -1,0 +1,33 @@
+{
+ "record_id": "2024-07-traitforge-denial-of-service-03b21871",
+ "population": "audit_review",
+ "split": "public",
+ "pin": {
+  "path": "contracts/EntityForging/EntityForging.sol",
+  "sha256": "9a60d864afe0150093d0d96b1ba0bb26bde6954c8009f4739d9b48248d8a8cdb",
+  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "kind": "commit",
+  "repo_url": "https://github.com/code-423n4/2024-07-traitforge",
+  "commit": "279b2887e3d38bc219a05d332cbcb0655b2dc644"
+ },
+ "locator": {
+  "file": "contracts/EntityForging/EntityForging.sol",
+  "contract": "EntityForging",
+  "function": "forgeWithListed",
+  "start_line": 102,
+  "end_line": 175
+ },
+ "classes": [
+  "denial_of_service"
+ ],
+ "negative_for": [],
+ "vulnerable_to": [],
+ "locator_provenance": "stated",
+ "asserted_labels": [],
+ "provenance": {
+  "platform": "code4rena",
+  "report_url": "https://github.com/code-423n4/2024-07-traitforge-findings/issues/41",
+  "reported_severity": "medium"
+ },
+ "notes": ""
+}

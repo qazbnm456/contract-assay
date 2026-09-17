@@ -62,11 +62,22 @@ CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     ("reenter", VulnerabilityClass.REENTRANCY),
     ("non-cei", VulnerabilityClass.REENTRANCY),
     ("checks-effects", VulnerabilityClass.REENTRANCY),
+    # Hand-assessed over 141 unmapped titles from 17 reports. Each addition was
+    # kept only if every title it newly mapped was right on inspection, and the
+    # rejections are recorded here because the count is the point: "incorrect
+    # calculation" mapped two titles and both were wrong -- a mistaken formula
+    # is not a rounding defect -- "entropy" two and one was wrong, "blacklist"
+    # two and one, "cannot" three and one ("role providers cannot be EOAs as
+    # stated in the documentation" is a documentation mismatch), "forced to" and
+    # "ignored" one each and both wrong. A keyword that raises coverage by
+    # admitting another property is the failure this table is built to avoid.
     ("access control", VulnerabilityClass.ACCESS_CONTROL),
     ("unauthori", VulnerabilityClass.ACCESS_CONTROL),
     ("permission", VulnerabilityClass.ACCESS_CONTROL),
     ("only owner", VulnerabilityClass.ACCESS_CONTROL),
     ("onlyowner", VulnerabilityClass.ACCESS_CONTROL),
+    ("unrestricted", VulnerabilityClass.ACCESS_CONTROL),
+    ("anyone can", VulnerabilityClass.ACCESS_CONTROL),
     ("slippage", VulnerabilityClass.SLIPPAGE),
     ("min amount out", VulnerabilityClass.SLIPPAGE),
     ("minimum amount out", VulnerabilityClass.SLIPPAGE),
@@ -74,8 +85,18 @@ CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     ("stale price", VulnerabilityClass.ORACLE_INTEGRITY),
     ("price feed", VulnerabilityClass.ORACLE_INTEGRITY),
     ("chainlink", VulnerabilityClass.ORACLE_INTEGRITY),
-    ("flash loan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
-    ("flashloan", VulnerabilityClass.FLASHLOAN_MANIPULATION),
+    # "flash loan" and "flashloan" alone were removed after mapping four titles
+    # and getting all four wrong: two were flash-loan *fee accounting*, one a
+    # rounding defect in a fee, one a revert. The phrase names a mechanism, and
+    # this class is a defect property -- a price moved inside one transaction
+    # with borrowed capital -- which is the same error as reading "reentrancy"
+    # off a `nonReentrant` modifier. Removing it let the defect word win: the
+    # rounding title now maps to rounding and the reverting one to denial of
+    # service, both correctly, and the two accounting titles map to nothing,
+    # also correctly.
+    ("flash loan attack", VulnerabilityClass.FLASHLOAN_MANIPULATION),
+    ("flashloan attack", VulnerabilityClass.FLASHLOAN_MANIPULATION),
+    ("price manipulation", VulnerabilityClass.FLASHLOAN_MANIPULATION),
     ("rounding", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("precision", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("overflow", VulnerabilityClass.ARITHMETIC_ROUNDING),
@@ -83,6 +104,7 @@ CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     ("truncat", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("downcast", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("integer division", VulnerabilityClass.ARITHMETIC_ROUNDING),
+    ("imprecis", VulnerabilityClass.ARITHMETIC_ROUNDING),
     ("denial of service", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("dos", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("griefing", VulnerabilityClass.DENIAL_OF_SERVICE),
@@ -90,6 +112,23 @@ CLASS_KEYWORDS: tuple[tuple[str, VulnerabilityClass], ...] = (
     ("locked indefinitely", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("permanently locked", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("lost forever", VulnerabilityClass.DENIAL_OF_SERVICE),
+    # How these reports actually phrase a denial of service. The class was
+    # matching the *name* of the category and almost nothing writes it: of 141
+    # unmapped titles, seventeen described an action that could be made to fail,
+    # in these words. They sit after the arithmetic terms deliberately -- "revert
+    # due to underflow error" is a rounding defect whose symptom is a revert, and
+    # first match wins.
+    ("revert", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("always fail", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("will fail", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("unable to", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("not able to", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("won't be able", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("inability to", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("irrecoverable", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("stuck", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("brick", VulnerabilityClass.DENIAL_OF_SERVICE),
+    ("prevent", VulnerabilityClass.DENIAL_OF_SERVICE),
     ("randomness", VulnerabilityClass.INSECURE_RANDOMNESS),
     ("unchecked return", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),
     ("return value", VulnerabilityClass.UNCHECKED_EXTERNAL_CALL),

@@ -1,11 +1,11 @@
 {
- "record_id": "2024-04-renzo-denial-of-service-f70d7162",
+ "record_id": "2024-04-renzo-denial-of-service-02c33f80",
  "population": "audit_review",
  "split": "public",
  "pin": {
   "path": "contracts/Delegation/OperatorDelegator.sol",
   "sha256": "677ffcf8901902c2c6819994c11799ace5ef6ed0dcb8a5291d0d0617370462ab",
-  "resolved_from": "the commit the report's own citations of this repository name most often",
+  "resolved_from": "the commit the report states for the contest, the finding's excerpt naming none, and the directory the report's own citation of this file name gives",
   "kind": "commit",
   "repo_url": "https://github.com/code-423n4/2024-04-renzo",
   "commit": "519e518f2d8dec9acf6482b84a181e403070d22d"
@@ -15,7 +15,7 @@
   "contract": "OperatorDelegator",
   "function": "completeQueuedWithdrawal",
   "start_line": 265,
-  "end_line": 324
+  "end_line": 274
  },
  "classes": [
   "denial_of_service"
@@ -26,7 +26,7 @@
  "asserted_labels": [],
  "provenance": {
   "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2024-04-renzo-findings/issues/87",
+  "report_url": "https://github.com/code-423n4/2024-04-renzo-findings/issues/368",
   "reported_severity": "high"
  },
  "notes": ""
