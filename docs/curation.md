@@ -138,6 +138,23 @@ whatever they turn out to be. Where it gives numbers alone, open the file at
 them and check that what is there is what the finding describes — and if it is
 not, the finding has not given you a location.
 
+**A refusal is a result, and it belongs somewhere durable.** Four predictions
+stand refused, and they are recorded here so the next person does not spend the
+afternoon reaching the same answer:
+
+| Location | Shape | Why it is refused |
+| --- | --- | --- |
+| `Stable2.calcLpTokenSupply` L94 | `Ann * sumReserves / A_PRECISION` then `* lpTokenSupply` | Dividing by a scaling constant inside a convergence iteration. Whether the loss survives the iteration is the protocol's tolerance, not the expression's. |
+| `Stable2.getBandC` L411 | `lpTokenSupply * lpTokenSupply / (reserves * N) * lpTokenSupply * A_PRECISION` | Same file, same question. |
+| `VotingEscrow.amountToRagequit` L350 | `fluxMultiplier * (MAXTIME / EPOCH)` | 365 days over 2 weeks is 26.07, truncated to 26. Truncating to whole epochs before scaling is defensible; so is the other order. The source does not say which was meant. |
+| `RewardsDistributor.amountToCompound` L129 | `((amount * price) / 1 ether) * normalizedWeights` | The loss is real and its size depends on the weight's scale, which is set elsewhere. |
+
+In every one of the four the *shape* is present -- that is what the predicate
+establishes -- and the defect is whether the loss matters. That is a question
+about the protocol's intent, so the honest answer is a refusal rather than a
+negative record. The cost is visible: `arithmetic_rounding` has no licensed
+precision, and it says so.
+
 **An adjudication is worth as much as the thing it settles.** The first one
 written to unblock a ranking took ten minutes and was decided by a single fact
 in the analysed unit: a loop bounded by a storage array whose only writer is an

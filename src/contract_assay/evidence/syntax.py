@@ -1008,6 +1008,36 @@ class Syntax:
         return tuple(sorted(found, key=lambda site: (site.start_line, site.text)))
 
     @cached_property
+    def identity_lookups(self) -> tuple[Site, ...]:
+        """Subscript indices whose collection is keyed by an address.
+
+        A subset of `selections`, and reported apart because indexing *by an
+        identity* is not choosing among candidates. `adminGasSpentInWei[
+        tx.origin]` has the same shape as `candidates[block.timestamp]` and the
+        opposite meaning: one looks up the row belonging to a party, the other
+        picks a row by a number a producer chose. Which it is, is in the
+        collection's declared key type.
+        """
+        found: list[Site] = []
+        for node in self._nodes("array_access", "index_access", "subscript_expression"):
+            base = next((c for c in node.children if c.type not in ("[", "]")), None)
+            if base is None:
+                continue
+            declared = self.state_variable_types.get(self.text(base).strip())
+            if declared is None or not declared.replace(" ", "").startswith("mapping(address"):
+                continue
+            after_bracket = False
+            for child in node.children:
+                if child.type == "[":
+                    after_bracket = True
+                    continue
+                if child.type == "]":
+                    break
+                if after_bracket:
+                    found.append(self._site(child))
+        return tuple(sorted(found, key=lambda site: (site.start_line, site.text)))
+
+    @cached_property
     def guards(self) -> tuple[GuardSite, ...]:
         """Every condition the code uses to decide whether to proceed.
 

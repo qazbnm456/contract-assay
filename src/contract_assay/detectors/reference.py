@@ -293,8 +293,18 @@ class InsecureRandomnessDetector(_SyntacticDetector):
         # the timestamp is not what indexes it -- checking overlap alone left 21
         # of 88 firing on exactly that shape.
         read_sites = reads + [call.site for call in blockhash]
+        # Indexing an address-keyed mapping is an identity lookup, not a choice
+        # among candidates. `adminGasSpentInWei[tx.origin]` has the shape of
+        # `candidates[block.timestamp]` and the opposite meaning, and both of
+        # this class's remaining predictions over one corpus were the first --
+        # `tx` is in the producer-controlled member set, which is right for the
+        # class (a signer's identity is attacker-chosen) and says nothing about
+        # whether the value was used as though unpredictable.
+        identity = set(parsed.identity_lookups)
         selections = [
-            site for site in parsed.selections if any(site.contains(read) for read in read_sites)
+            site
+            for site in parsed.selections
+            if site not in identity and any(site.contains(read) for read in read_sites)
         ]
         if not selections:
             return [

@@ -2488,6 +2488,32 @@ curation at all -- `docs/curation.md`'s "fix the instrument before adjudicating
 the pool", paying for itself literally. The hit it also removed was at *file*
 strength, which the function floor never counted, so no score moved.
 
+#### What is left in the queue, and why it is not a backlog
+
+Six entries, and none of them is work waiting to be done.
+
+Two are predictions in `insecure_randomness`, a class the corpus holds no
+positive record of. Judging them would license a precision that no recall will
+ever meet, so the queue now says what each entry can buy: a length with no such
+mark sends an adjudicator to work that cannot pay. Both index
+`adminGasSpentInWei[tx.origin]`, which is an identity lookup rather than a
+choice among candidates -- `candidates[block.timestamp]` is the same shape and
+the opposite meaning, and which one it is lives in the collection's declared key
+type. A narrowing for exactly that is in place and fired on *nothing* here,
+because the mapping is declared in an inherited storage contract: the key type
+is not in the analysed unit, which is an indeterminacy rather than a shape.
+
+The other four are refused, and `docs/curation.md` records each with its reason.
+In all four the shape is present and the question is whether the loss *matters*
+-- a scaling constant divided out inside a convergence iteration, 365 days over
+2 weeks truncated to 26 epochs -- which is the protocol's intent and not the
+expression's. Refusing leaves `arithmetic_rounding` without licensed precision,
+which is the cost, stated.
+
+So the adjudication queue is 110 → 6 → and the six are two that cannot pay and
+four the source cannot settle. What remains is not curation work; it is corpus
+work, which is a different thing and belongs to a different section (§6.6).
+
 #### Nine that were one false fact
 
 The nine reentrancy predictions were opened expecting another split and found

@@ -259,6 +259,12 @@ def score_document(
         # What ranking waits on. Carried in full: a queue truncated for size is
         # a queue that cannot be worked through, and the count beside it would
         # then disagree with the leaderboard's own sentence.
+        #
+        # `unlocks` says what judging the entry can buy, because two of six
+        # entries over one sample could buy nothing: they are predictions in a
+        # class the corpus holds no positive record of, so judging them licenses
+        # a precision that will never meet a recall. A queue length with no such
+        # mark sends an adjudicator to work that cannot pay.
         "adjudication_queue": [
             {
                 "class": entry.class_id.value,
@@ -267,6 +273,11 @@ def score_document(
                 "file": entry.locator.file,
                 "start_line": entry.locator.start_line,
                 "end_line": entry.locator.end_line,
+                "unlocks": (
+                    "f1"
+                    if report.by_class[entry.class_id].records
+                    else "precision only -- this class has no positive record, so no f1"
+                ),
             }
             for entry in report.unjudged
         ],

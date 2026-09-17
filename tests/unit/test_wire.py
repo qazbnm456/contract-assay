@@ -124,16 +124,20 @@ class TestTheNumberIsAList:
             ),
         )
         document = score_document(a_submission(a_report(judged=3, unjudged=queued)), [a_record()])
-        assert document["adjudication_queue"] == [
-            {
-                "class": CLS.value,
-                "source_id": "vault@abc",
-                "detector_id": "d",
-                "file": "src/Vault.sol",
-                "start_line": 9,
-                "end_line": 11,
-            }
-        ]
+        [entry] = document["adjudication_queue"]
+        assert entry == {
+            "class": CLS.value,
+            "source_id": "vault@abc",
+            "detector_id": "d",
+            "file": "src/Vault.sol",
+            "start_line": 9,
+            "end_line": 11,
+            # The class holds positive records, so judging this can complete an
+            # F1. Where it cannot, the entry says so -- two of six entries over
+            # one sample were predictions in a class with no positive record,
+            # and judging those licenses a precision no recall will ever meet.
+            "unlocks": "f1",
+        }
 
     def test_the_queue_length_agrees_with_the_class_count(self) -> None:
         queued = tuple(

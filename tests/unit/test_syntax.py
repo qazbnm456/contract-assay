@@ -532,3 +532,43 @@ class TestASiteKnowsWhatItContains:
         assert syntax is not None
         [read] = [s for s, r, p in syntax.member_reads if r == "block"]
         assert any(selection.contains(read) for selection in syntax.selections)
+
+
+class TestIndexingByAnIdentity:
+    """`balances[msg.sender]` and `candidates[block.timestamp]` are one shape.
+
+    Both index by a value, and only the second chooses among candidates. Which
+    it is lives in the collection's declared key type, so it is reported apart
+    from `selections` rather than removed from it.
+
+    Worth recording: this fired on *nothing* in the sample that prompted it. The
+    two predictions it was written for index `adminGasSpentInWei`, which is
+    declared in an inherited storage contract -- the key type is not in the
+    analysed unit, which is an indeterminacy rather than a shape.
+    """
+
+    SOURCE = """contract I {
+    mapping(address => uint256) balances;
+    mapping(uint256 => address) candidates;
+
+    function credit() external payable {
+        balances[msg.sender] += msg.value;
+    }
+    function pick() external view returns (address) {
+        return candidates[block.timestamp];
+    }
+}
+"""
+
+    def test_an_address_keyed_subscript_is_an_identity_lookup(self) -> None:
+        parsed = Syntax.of(self.SOURCE)
+        assert parsed is not None
+        lookups = {site.text.strip() for site in parsed.identity_lookups}
+        assert "msg.sender" in lookups
+        assert "block.timestamp" not in lookups
+
+    def test_both_are_still_selections(self) -> None:
+        parsed = Syntax.of(self.SOURCE)
+        assert parsed is not None
+        selected = {site.text.strip() for site in parsed.selections}
+        assert {"msg.sender", "block.timestamp"} <= selected
