@@ -64,8 +64,14 @@ from contract_assay.models import (
 )
 
 __all__ = [
+    "REFERENCE_DETECTORS",
     "AccessControlDetector",
+    "ArithmeticRoundingDetector",
+    "DenialOfServiceDetector",
     "InsecureRandomnessDetector",
+    "OracleIntegrityDetector",
+    "ReentrancyDetector",
+    "SlippageDetector",
     "UncheckedExternalCallDetector",
 ]
 
@@ -1336,3 +1342,27 @@ class SlippageDetector(_SyntacticDetector):
                 )
             )
         return failures
+
+
+REFERENCE_DETECTORS: tuple[type[Detector], ...] = (
+    AccessControlDetector,
+    ArithmeticRoundingDetector,
+    DenialOfServiceDetector,
+    InsecureRandomnessDetector,
+    OracleIntegrityDetector,
+    ReentrancyDetector,
+    SlippageDetector,
+    UncheckedExternalCallDetector,
+)
+"""Every reference detector, in one name.
+
+Exported because the reference detectors are this project's own control group,
+and a control group that cannot be imported through the documented surface is a
+floor nobody outside the repository can reproduce. Six of these were reachable
+only by their module path until a runner outside the package went looking for
+them -- the same gap `corpus.records.load_records` had, found the same way.
+
+`InsecureRandomnessDetector` is in the tuple although its class holds one
+positive record: the set is what the package ships, and which classes a given
+corpus can score is the corpus's statement rather than this list's.
+"""

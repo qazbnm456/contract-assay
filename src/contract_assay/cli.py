@@ -15,6 +15,7 @@ import typer
 from pydantic import ValidationError
 
 from contract_assay import __version__
+from contract_assay.corpus.fetch import fetch_records, urllib_fetcher
 from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
 from contract_assay.corpus.verify import verify_all
 from contract_assay.evidence.solidity import index_source
@@ -235,6 +236,35 @@ def _weights_from(path: Path | None) -> dict[DifficultyLevel, float]:
             typer.secho(f"{path.name}: {key!r} is not a difficulty level", fg=typer.colors.RED)
             raise typer.Exit(1) from bad
     return weights
+
+
+@app.command("fetch")
+def fetch_command(
+    records: Annotated[Path, typer.Argument(exists=True, help="Corpus record file or directory.")],
+    source_root: Annotated[
+        Path, typer.Option("--source-root", help="Where the checkout is built.")
+    ],
+    workers: Annotated[int, typer.Option("--workers", min=1, max=32)] = 8,
+) -> None:
+    """Build a source checkout from the records' pins, verifying every digest.
+
+    `verify` and `score` both need a checkout, and until this existed nobody
+    outside this repository could build one -- the pins were a promise of
+    reproducibility that could not be collected.
+
+    A file whose digest does not match its pin is **not written**, and the
+    reason is the one failure here with no symptom: its record's locators index
+    lines that have moved, so a score over it would be a real number about the
+    wrong source.
+    """
+    report = fetch_records(
+        _records_from(records), source_root, workers=workers, fetch=urllib_fetcher()
+    )
+    for outcome in report.by_state("mismatched") + report.by_state("unavailable"):
+        typer.secho(f"  {outcome.state:<12} {outcome.path}: {outcome.detail}", fg=typer.colors.RED)
+    typer.echo(report.statement())
+    if not report.usable:
+        raise typer.Exit(1)
 
 
 @app.command("score")
