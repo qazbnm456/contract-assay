@@ -980,6 +980,44 @@ The second kind is the reason all nine classes are built together rather than
 one at a time. It also yields two measurements a single-class corpus cannot
 produce: cross-class false-positive rate, and detector overlap.
 
+**Post-fix negatives are the cheapest kind to verify and the hardest to
+source, and both halves are measured.** They are cheapest because nothing needs
+a human judgement: the same file at the fix commit, and `verify` confirms it.
+They are hardest to source because a report has to name the fix, which most do
+not.
+
+| population | findings measured | naming a fix | usable |
+| --- | --- | --- | --- |
+| bounty-competition archive | 1002 documents | ~2% link any commit | ~0 |
+| contest platform with a mitigation phase | 87 H/M findings, 6 contests | 10% | 7 |
+
+The bounty archive's near-zero is **genuine and structural**, which is the one
+case this week where investigating a zero confirmed the absence rather than the
+instrument: a competition submission is written before a fix exists, so it
+cannot cite one. Most of its 2% cite other projects' source rather than a fix.
+
+The contest platform's 10% is real but **concentrated**: one contest supplied
+four of nine and two supplied none, so availability is a per-contest property
+and harvesting broadly for fix commits would be the wrong shape. Harvest the
+contests that have them.
+
+And the usable figure is lower than the rate for a reason worth stating: the
+platform **mirrors** the audited code into its own repository, so a positive
+record pins `platform/contest` at the contest commit while the fix lives in the
+protocol's upstream repository. Of the nine findings naming a commit, two named
+a *dependency's* repository — citations, not fixes, which a rate computed from
+links alone would have counted.
+
+So a post-fix negative sourced this way is pinned to a **different repository**
+from its positive. `CorpusRecord` permits that, since the validator requires only
+that the pin's commit is the fix commit. But §6.2's claim for this kind of
+negative -- everything identical except the bug -- is not guaranteed across a
+mirror boundary, where paths may differ and the upstream has usually moved past
+the fix. That is an open question about the kind's soundness rather than a
+detail, and it is recorded here rather than resolved, because resolving it by
+assumption is how a negative that looks like the strongest control becomes the
+weakest.
+
 **A post-fix negative requires a commit pin, and what that costs is the control
 rather than the executable half.** "After the fix" is identified by a commit,
 and an address pin (§6.1) has no commit to compare a fix against, so the
