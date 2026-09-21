@@ -26,6 +26,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
+    "DEFAULT_PREDICTIONS_PER_UNIT",
     "MAX_DESCRIPTION_CHARS",
     "MAX_QUOTE_CHARS",
     "MAX_REASONING_CHARS",
@@ -80,6 +81,26 @@ MAX_QUOTE_CHARS = 4_000
 
 MAX_DESCRIPTION_CHARS = 1_000
 """Upper bound on a classification claim's description."""
+
+DEFAULT_PREDICTIONS_PER_UNIT = 9
+"""How many findings per source unit per class a submission may have scored.
+
+Nine, because the corpus's most heavily recorded unit-class pair holds nine
+records: a lower cap would put a perfect recall out of reach, and there is no
+reading of the numbers under which a benchmark should do that.
+
+A cap and not an option, because **recall over an unbounded prediction pool is
+not a measurement.** A review submitted 668,655 quotes over 435 records and had
+its recall published while its precision stayed unlicensed, since precision
+waits on adjudication and recall does not -- so an uncapped pool let a
+submission buy recall with volume somebody else would have to judge. The cap is
+the bound that makes the figure a measurement; it is published in the document
+and it is one of the six fields a result must share before two scores compare.
+
+`test_the_default_cap_covers_the_corpus` fails if a record set arrives that
+needs more, because a constant checked in one place and relied on in another is
+a constant that will rot.
+"""
 
 
 # ---------------------------------------------------------------------------

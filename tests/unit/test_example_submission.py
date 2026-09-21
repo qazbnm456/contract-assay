@@ -122,7 +122,13 @@ class TestTheVerdictAsksTheEvidence:
         run = run_detector(
             detector,
             ctx,
-            model_findings=[self.a_finding(6, 6, "owner = who;")],
+            # The quote is every line the locator names: `owner = who;` alone
+            # is four tokens, and a span that short is not citable.
+            model_findings=[
+                self.a_finding(
+                    5, 6, "function setOwner(address who) external {\n        owner = who;"
+                )
+            ],
             produced_without_a_model=True,
         )
         assert run.outcome is Outcome.VULNERABLE
@@ -155,7 +161,7 @@ class TestTheVerdictAsksTheEvidence:
         run = run_detector(
             detector,
             ctx,
-            model_findings=[self.a_finding(1, 1, "contract Vault {")],
+            model_findings=[self.a_finding(1, 2, "contract Vault {\n    address owner;")],
             produced_without_a_model=True,
         )
         assert "assignment_established_here" in [c.check for c in run.findings[0].failed_checks]
@@ -174,11 +180,18 @@ class TestTheSelfCheckIsTheOneWorthCopying:
         ctx = a_context()
         bad = Finding(
             detector_id="example-unguarded-state-write",
-            locator=Locator(file=PATH, start_line=6, end_line=6),
+            locator=Locator(file=PATH, start_line=5, end_line=6),
             quote="owner = msg.sender;",
             reasoning="paraphrased rather than quoted",
         )
         assert submission.self_check(ctx, bad) is not None
-        good = bad.model_copy(update={"quote": "owner = who;"})
+        # And a quote that is real but is only part of the span it declared: the
+        # forgery that closed was a submitter declaring the span the corpus
+        # published and hiding a guessable fragment inside it.
+        fragment = bad.model_copy(update={"quote": "owner = who;"})
+        assert submission.self_check(ctx, fragment) is not None
+        good = bad.model_copy(
+            update={"quote": "function setOwner(address who) external {\n        owner = who;"}
+        )
         assert submission.self_check(ctx, good) is None
         assert check_citation(ctx, good) is None

@@ -70,10 +70,12 @@ refs = run_all(parsed, ctx.path, classes=[VulnerabilityClass.REENTRANCY])
 
 Every site carries `start_line`, `end_line`, `host` (contract and function) and
 `text` — the **exact** source it spans — plus `site.locator(path)` in the shape a
-`Finding` wants. Quote `site.text`: a finding's quote is re-read against the
-source unconditionally, and one typed from memory fails that check about half
-the time, which reads as a detector that found nothing rather than one that was
-wrong.
+`Finding` wants. Quote `site.text` *at* `site.locator(path)`: a finding's quote
+is re-read against the source unconditionally and has to be the whole of the
+span the locator names, so a pair that came from the same site passes by
+construction. A quote typed from memory, or one narrowed to part of what the
+locator declares, fails — and a failed citation reads as a detector that found
+nothing rather than one that was wrong.
 
 Override a layer when you can establish something the default cannot. The layers
 run in a fixed order:
@@ -102,10 +104,18 @@ demonstrably so rather than only in principle.
 somebody else's.
 
 The scorer re-reads every quote you mark verified, against its own copy of the
-source, and refuses a submission that is incoherent: a quote absent from the
-file, a quote made of punctuation, a locator naming a file other than the unit
-it declares, or source whose digest disagrees with the record's pin. Those were
-each a way to score without reading anything, and they are closed.
+source, and refuses a submission that is incoherent: a quote that is not the
+text of the lines it declared, a span too short to be citable, a locator naming
+a file other than the unit it declares, or source whose digest disagrees with
+the record's pin. Each of those was a way to score without reading anything.
+
+How far that goes, measured over the whole corpus rather than argued: a
+181-entry dictionary of generic Solidity idioms sprayed at every published
+locator used to score **micro recall 0.913** and now scores **0**; a dictionary
+of generic full *statements*, declared at every one- and two-line locator inside
+every published span, scores **0.009** -- four records out of 435 whose lines
+happen to be a statement anybody can type. That 0.009 is the floor of what this
+class of forgery gets, and it is published rather than rounded down.
 
 What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
@@ -228,15 +238,40 @@ outcomes from how they happened to format a string:
 - Leading and trailing whitespace is stripped **per line**, and blank lines are
   ignored. Indentation is not semantic; a quote reproduced with its indentation
   shifted has still quoted the code.
-- Everything else is compared literally. Identifiers, punctuation, operators and
-  the order of lines all have to match.
-- The quote must appear **within** the locator's line span — it need not be the
-  whole span, but a quote wider than the span is a mismatch.
+- Both sides are split into tokens — an identifier, a number, or one other
+  character — and compared as token sequences. So whitespace *between* tokens
+  does not matter either: `total-=amount;` and `total -= amount ;` are the same
+  quote. Note that a multi-character operator is two tokens here, which is why
+  the floor below is six and not five.
+- **The quote must be the whole span the locator declares**, not a part of it.
+  Quote what you name: if your finding is one statement, narrow the locator to
+  that statement's lines and quote those. That is a better locator and it scores
+  the same — measured over the whole corpus, one real statement with the locator
+  narrowed to it scores 0.9954, exactly what quoting the whole declared span
+  scores. A fragment of a wider span is refused, because a submitter picks its
+  own locator: allowed to quote a part, it declares the span the corpus
+  published and hides something guessable inside, which is how a generated
+  dictionary reached 0.913 reading no source.
+- **A span must carry at least six tokens, one of them an identifier.** The
+  language's own statements run to five — `} else {`, `msg.sender,`,
+  `address(this),`, `) internal {` — so a shorter span is a location anyone can
+  name without opening the file. Widen the locator by a line.
+- The order of lines has to match the file's.
 - A quote that is blank once normalised is a failure, not a pass.
 
-Three failures are distinguished, because they say different things about a
-detector: `citation_span_out_of_range`, `citation_quote_elsewhere_in_file` (real
-code, wrong place) and `citation_quote_absent_from_source`.
+Five failures are distinguished, because they say different things about a
+detector: `citation_span_out_of_range`, `citation_span_is_not_substantive` (the
+lines you declared are not citable), `citation_quote_is_a_fragment` (you quoted
+part of what you declared), `citation_quote_elsewhere_in_file` (real code, wrong
+place) and `citation_quote_absent_from_source`. The scorer adds two of its own:
+`citation_file_is_not_the_units_file` and `citation_unchecked`, the second
+meaning it had no source it could trust and therefore established nothing.
+
+**The cheapest way to satisfy all of this** is to build the quote by slicing the
+source at the locator you are about to report, which is what the bundled
+`PredicateDetector` does. `self_check()` in `examples/reference_runner/
+submission.py` runs the host's check during development so a mismatch is a
+message you see immediately rather than a run that scored zero.
 
 **Skipping.** There is no `gate()` method to override. Whether a source unit is
 passed over is decided by `detectors.gate`, outside your submission, and it
@@ -484,14 +519,24 @@ where one is waiting on adjudication is no ranking at all.
 states what the exercise values. Without it the per-class figures are still
 reported and the aggregate is refused, with that as its stated reason.
 
-`--predictions-per-unit` is the same kind of parameter and is also not supplied
-by default. It scores at most that many verified findings per source unit per
-class, in the order the runs returned them, and reports the rest as
-`capped_predictions`. It exists because **precision waits on adjudication and
-adjudication is somebody's afternoon**: a submission that proposed every
-declaration in every file would buy itself an unbounded amount of that, and the
-resulting queue is one nobody works through. A cap states how much adjudication
-the exercise will fund.
+`--predictions-per-unit` is **not** that kind of parameter, and it has a
+default: nine, the most records any single unit-class pair in the corpus holds,
+so a perfect submission is never capped. It scores at most that many findings
+per source unit per class, in the order the runs returned them — counting the
+ones whose citations failed, because a refused citation is still a claim you
+made about a location — and reports the rest as `capped_predictions`.
+
+Two reasons, and the second is why it is a default rather than an option.
+**Precision waits on adjudication and adjudication is somebody's afternoon**: a
+submission that proposed every declaration in every file would buy itself an
+unbounded amount of that. And **recall over an unbounded pool is not a
+measurement**: precision waits, recall does not, so without a cap a submission
+can buy recall with volume nobody has judged yet. A review did exactly that —
+668,655 quotes over 435 records, per-class recall published, precision
+unlicensed in all nine classes. Raise it if your exercise funds more
+adjudication; it is one of the six fields two results must share before they
+compare, so a figure computed under a different cap will not be ranked against
+one computed under this one.
 
 Two things about where it is enforced. It is enforced **here**, at scoring,
 because this is the only layer that sees a whole submission's runs at once — a

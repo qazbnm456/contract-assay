@@ -58,6 +58,7 @@ from contract_assay.corpus.verify import SourceResolver
 from contract_assay.detectors.base import quote_is_at
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
+    DEFAULT_PREDICTIONS_PER_UNIT,
     CitationStatus,
     DeclaredLimit,
     DetectorRun,
@@ -185,16 +186,19 @@ class ClassScore:
     precision, so that emitting many is not free (§7.2)."""
 
     capped_predictions: int = 0
-    """Verified findings this class produced that a per-unit cap did not score.
+    """Findings this class offered that the per-unit cap did not score.
 
-    Zero unless `score` was given `predictions_per_unit`. Published rather than
-    absorbed, for the same reason the runner publishes its discarded count: a cap
-    that silently ate a submission's best finding would be a trap, and a
-    participant should be able to see that the cap bit.
+    Published rather than absorbed, for the same reason the runner publishes its
+    discarded count: a cap that silently ate a submission's best finding would be
+    a trap, and a participant should be able to see that the cap bit.
 
-    These enter no confusion matrix and no adjudication queue, which is the whole
-    purpose -- every prediction has to be adjudicated before precision exists for
-    its class, so an unbounded pool is a queue nobody can work through.
+    **Offered, not verified.** A finding whose citation the scorer refused still
+    spends a slot, because it is still a claim the submission made about a
+    location -- and counting only the survivors made the citation check a free
+    search oracle, which a review used to submit 668,655 quotes and keep
+    whatever landed. So this counts both, and the ones it counts enter no
+    confusion matrix and no adjudication queue: a finding the cap did not score
+    is not a prediction, so it can be neither a hit nor a false positive.
     """
 
     false_negatives: int = 0
@@ -848,28 +852,43 @@ def recheck_citations(
     guarantee has to live. `docs/api.md` §1 says the same thing where a
     submitter reads it.
 
-    What the four checks did close, measured over the whole corpus:
+    What the checks close, every figure measured over the whole corpus through
+    `contract-assay score`:
 
-    | forgery, reading no source | before | after |
+    | forgery, reading no source | before | now |
     | --- | --- | --- |
     | a constant absent from the source | 12/12 matched | 0 |
-    | `";"` at every published locator | micro recall 0.972 | 0 |
-    | **`"er"`** at every published locator | **micro recall 0.938** | **0** |
-    | `"function"` at every published locator | micro recall 0.754 | 0 |
-    | one donor unit, every locator elsewhere | recall 1.000 | 0 |
-    | a submitter's own `--source-root` | recall 0.982 | 0.009 |
+    | `";"` at every published locator | 0.972 | 0 |
+    | `"er"`, inside `require`/`transfer`/`reserve` | 0.938 | 0 |
+    | `"function"` at every published locator | 0.754 | 0 |
+    | a 181-entry generated dictionary of idioms | **0.913** | **0** |
+    | generic full statements, every line run in every span | 0.249 | **0.009** |
+    | one donor unit, every locator elsewhere | 1.000 | 0 |
+    | a submitter's own `--source-root` | 0.922 | 0 |
 
-    The `"er"` row is why the quote and the span are both tokenised. A first
-    attempt asked whether the *quote* looked token-shaped and left the span test
-    a raw substring search, so the two did not compose: `"er"` lives inside
-    `require`, `transfer` and `reserve`, and a two-character constant scored
-    0.938 with precision 0.953. Reviewing the fix found that; the fix's own
-    table had claimed the class closed.
+    **The fifth row is why the quote must now equal the span it declares**, and
+    it is the third time this check was declared closed and was not. The first
+    version compared bytes; the second tokenised the quote but not the span, so
+    `"er"` composed through; the third tokenised both and demanded a contiguous
+    run, and a cross product of elementary types, visibility and mutability
+    still landed inside 397 of 435 published spans -- because a submitter picks
+    its own locator, so a rule about *part* of the span is a rule it can satisfy
+    with vocabulary. `quote_is_at` has the argument and the rest of the numbers.
 
-    The last row is not zero, and the reason is `by_source`: `source_id`
-    excludes the digest, so several records collapse to one pin and a
-    digest-less record used to win. A pin carrying a digest is now preferred,
-    which leaves the residue at the units whose *only* pin has none.
+    **The sixth row is not zero and will not become zero.** A dictionary of
+    generic full statements -- `balances[msg.sender] = 0;`,
+    `balanceOf[msg.sender] -= amount;` -- declared at every one- and two-line
+    locator inside every published span lands on 4 of 435 records: 668,655
+    quotes, 666,233 of them refused, four spans that happen to be a statement
+    anybody can type. Raising the floor to ten tokens halves it and costs an
+    honest one-statement citation, so it sits where it is and is reported.
+
+    The last row is zero because a pin carrying a digest now wins its
+    `source_id`. Measured: with every digest stripped the forgery scores 0.922,
+    under the previous last-write-wins rule it kept 3 of 435 at the four units
+    that pair a digest-bearing record with a later digest-less one, and at HEAD
+    it keeps none. The earlier docstring printed that 3 as a *remaining*
+    residue; it was the amount the rule removed.
 
     Returns the runs with failed citations demoted, how many were demoted, and
     how many could not be checked at all.
@@ -1023,7 +1042,7 @@ def score(
     records: Iterable[CorpusRecord],
     resolve: SourceResolver | None = None,
     *,
-    predictions_per_unit: int | None = None,
+    predictions_per_unit: int | None = DEFAULT_PREDICTIONS_PER_UNIT,
 ) -> ScoreReport:
     """Score runs against ground truth, per class and stratified.
 
@@ -1031,12 +1050,25 @@ def score(
     out, function-strength matching is reported as unavailable rather than
     approximated from names -- which is a weaker report, and an honest one.
 
-    `predictions_per_unit` scores at most that many verified findings per source
-    unit per class, in the order the runs and their findings arrived. It exists
-    because **every prediction has to be adjudicated before precision exists for
-    its class**, so an uncapped pool is a queue nobody can work through -- and a
+    `predictions_per_unit` scores at most that many findings per source unit per
+    class, in the order the runs and their findings arrived. Two reasons, and
+    the second is the load-bearing one:
+
+    **Every prediction has to be adjudicated before precision exists for its
+    class**, so an uncapped pool is a queue nobody can work through -- and a
     submission that proposed every declaration in every file would buy itself an
     unbounded amount of somebody else's labour.
+
+    And **recall over an unbounded pool is not a measurement.** Precision waits
+    on adjudication; recall does not. A review used that asymmetry: 668,655
+    quotes over 435 records, recall published per class, precision unlicensed in
+    all nine. The default is `DEFAULT_PREDICTIONS_PER_UNIT` -- nine, the most
+    records any one unit-class pair holds, so a perfect submission is never
+    capped -- and it used to be `None`, on the argument that "a cap states how
+    much adjudication an exercise will fund and the benchmark is not the
+    exercise". That argument was about the queue and it missed the figure.
+    `None` is still accepted and still caps nothing, for tooling that wants the
+    whole pool; it is no longer what a submission gets by default.
 
     Enforced here rather than by whatever ran the submission, because this is the
     only layer that sees a whole submission's runs at once. A cap applied by the
@@ -1047,8 +1079,7 @@ def score(
     The order is the submission's own and is not reordered: a harness that puts
     its best finding first is making exactly the choice the cap asks it to make,
     and re-ranking for it would take the choice away and then charge it for the
-    result. `None` -- the default -- caps nothing, because a cap states how much
-    adjudication an exercise will fund and the benchmark is not the exercise.
+    result.
     """
     if predictions_per_unit is not None and predictions_per_unit < 1:
         raise ValueError(
@@ -1178,13 +1209,20 @@ def score(
         # detectors for one class can use the quota between them -- a cap applied
         # per run could not see that, and a class quantified over a set gets
         # satisfied by different members.
+        #
+        # **The quota counts what was offered, not what survived.** It used to
+        # skip a refused citation before charging for it, which made the
+        # citation check a free search oracle: a review submitted 668,655
+        # generated quotes, 666,233 of them refused at no cost, and kept
+        # whatever landed. A finding whose citation failed is still a claim the
+        # submission made about a location, so it spends a slot -- and the order
+        # is the submission's own, so spending slots on guesses is its choice.
         claimed: list[tuple[str, str, Locator]] = []
         capped = 0
+        uncheckable = 0
         per_unit: Counter[str] = Counter()
         for run in class_runs:
             for finding in run.findings:
-                if finding.status is not CitationStatus.VERIFIED:
-                    continue
                 if (
                     predictions_per_unit is not None
                     and per_unit[run.source_id] >= predictions_per_unit
@@ -1192,6 +1230,15 @@ def score(
                     capped += 1
                     continue
                 per_unit[run.source_id] += 1
+                # A claim that failed its citation measured nothing about the
+                # source, and costs precision so that emitting many is not free
+                # (§7.2). Counted inside the quota for the same reason `claimed`
+                # is: a finding the cap did not score is not a prediction, so it
+                # can be neither a hit nor a false positive.
+                if finding.has_citation_failure:
+                    uncheckable += 1
+                if finding.status is not CitationStatus.VERIFIED:
+                    continue
                 claimed.append((run.source_id, run.detector_id, finding.finding.locator))
         predictions = [locator for _, _, locator in claimed]
         judged_files = complete_for.get(cls, set())
@@ -1207,12 +1254,6 @@ def score(
                 for adjudication in adjudications
             )
         ]
-        # A claim that failed its citation measured nothing about the source, and
-        # costs precision so that emitting many is not free (§7.2).
-        uncheckable = sum(
-            1 for run in class_runs for finding in run.findings if finding.has_citation_failure
-        )
-
         candidates: list[tuple[int, int, Match]] = []
         for pi, prediction in enumerate(predictions):
             for ri, record in enumerate(class_records):

@@ -130,7 +130,7 @@ $ contract-assay run --manifest my-detector.json --records corpus/records \
 
 $ contract-assay score runs.jsonl --records corpus/records \
     --submission-id my-detector --source-root ./checkout \
-    --weights weights.json --predictions-per-unit 3 --out my-detector.json
+    --weights weights.json --out my-detector.json
 
 $ contract-assay results        # compare with what others have published
 ```

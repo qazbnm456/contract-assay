@@ -26,7 +26,12 @@ from contract_assay.detectors.loading import (
 )
 from contract_assay.evidence.solidity import index_source
 from contract_assay.harness import load_caller, run_submission, units_from
-from contract_assay.models import DetectorRun, DifficultyLevel, VulnerabilityClass
+from contract_assay.models import (
+    DEFAULT_PREDICTIONS_PER_UNIT,
+    DetectorRun,
+    DifficultyLevel,
+    VulnerabilityClass,
+)
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import score
 from contract_assay.report.wire import leaderboard_document, score_document
@@ -472,15 +477,16 @@ def score_command(
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
     ] = None,
     predictions_per_unit: Annotated[
-        int | None,
+        int,
         typer.Option(
             "--predictions-per-unit",
             min=1,
-            help="Score at most this many verified findings per source unit per class, in "
-            "the order returned. Left out, nothing is capped -- a cap states how much "
-            "adjudication an exercise will fund, which is the exercise's to state.",
+            help="Score at most this many findings per source unit per class, in the order "
+            "returned, whether or not their citations held. The default is the most "
+            "records any one unit-class pair holds, so a perfect submission is never "
+            "capped and an unbounded pool cannot buy recall with volume.",
         ),
-    ] = None,
+    ] = DEFAULT_PREDICTIONS_PER_UNIT,
     out: Annotated[
         Path | None, typer.Option("--out", help="Write the document here instead of stdout.")
     ] = None,
@@ -531,15 +537,16 @@ def rank_command(
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
     ] = None,
     predictions_per_unit: Annotated[
-        int | None,
+        int,
         typer.Option(
             "--predictions-per-unit",
             min=1,
-            help="Score at most this many verified findings per source unit per class, in "
-            "the order returned. Left out, nothing is capped -- a cap states how much "
-            "adjudication an exercise will fund, which is the exercise's to state.",
+            help="Score at most this many findings per source unit per class, in the order "
+            "returned, whether or not their citations held. The default is the most "
+            "records any one unit-class pair holds, so a perfect submission is never "
+            "capped and an unbounded pool cannot buy recall with volume.",
         ),
-    ] = None,
+    ] = DEFAULT_PREDICTIONS_PER_UNIT,
     baseline: Annotated[
         str | None,
         typer.Option(

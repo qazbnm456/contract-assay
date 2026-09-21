@@ -357,17 +357,20 @@ to a span **at token boundaries**, and any tokenisation that agrees with itself
 on both sides gives that.
 """
 
-_MINIMUM_QUOTE_TOKENS = 3
-"""How many tokens a quote must carry to cite anything.
+_MINIMUM_SPAN_TOKENS = 6
+"""How many tokens a cited span must carry before it can be cited at all.
 
-Three, because the shortest real statement is four -- `owner = who ;` -- and one
-or two tokens name something that appears in most spans rather than this one. A
-review scored **recall 0.953 with precision 0.953** over the whole published
-corpus, reading no source at all, from the two-character quote `"er"`: it
-satisfied a check that looked for a token-shaped *pattern* while the span
-comparison stayed a raw substring test, so `"er"` matched inside `require`,
-`transfer` and `reserve`. Neither check was token-aware, so they did not
-compose, and the floor was two characters inside a token rather than a token.
+Six, measured. The language's own statements run to five tokens -- `} else {`,
+`msg.sender,`, `address(this),`, `) internal {` -- so a span below six is
+something a submitter can type out of the language and the published locator
+without opening the file. A dictionary of generic full statements, sprayed at
+every line run inside every published span, scored **0.2488 at a floor of
+three, 0.0530 at five and 0.0046 at six**. Ten buys 0.0023 and costs a
+submitter the ability to cite one short statement, so six is where it sits.
+
+The floor is on the **span**, not on the quote, because the two must now be
+equal (`quote_is_at`). A submitter whose finding is one short statement widens
+the locator by a line; that is a better locator, not a worse one.
 """
 
 
@@ -375,15 +378,14 @@ def _tokens(text: str) -> list[str]:
     return _TOKEN.findall(text)
 
 
-def _quote_is_in_span(quote_tokens: list[str], span_tokens: list[str]) -> bool:
+def _is_token_run_of(quote_tokens: list[str], span_tokens: list[str]) -> bool:
     """Whether the quote's tokens are a contiguous run of the span's.
 
-    Contiguous rather than equal, deliberately: a record's locator spans a
-    function and a correct finding often cites one statement inside it, so
-    demanding the whole span would reject true findings for citing precisely.
-    What is demanded is that the run align to token boundaries -- which is what
-    a substring test does not give, and is the whole of the difference between
-    quoting `total -= amount;` and quoting `er`.
+    Not the acceptance test -- `quote_is_at` demands equality. This only tells
+    two refusals apart: a quote that is a run *inside* the span is a submitter
+    citing less than it declared, and a quote that is a run of the file
+    somewhere else is a locator pointing at the wrong lines. Each has its own
+    check name because each has a different fix.
     """
     width = len(quote_tokens)
     if width == 0 or width > len(span_tokens):
@@ -395,7 +397,7 @@ def _quote_is_in_span(quote_tokens: list[str], span_tokens: list[str]) -> bool:
 
 
 def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
-    """Whether `quote` is the source at `locator`. The comparison, without a context.
+    """Whether `quote` is the source at `locator` -- the whole of it, not a part.
 
     Extracted so the **scorer** can run it. `check_citation` is called from
     `run_detector`, which means it only ever protected a run this package
@@ -403,12 +405,53 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
     the documented way a third party submits. A submitted run arrived with
     `status: verified` already set and nothing re-read the source.
 
-    Measured before the fix: a hand-written submission quoting `"THIS TEXT IS
+    Measured before the check existed: a submission quoting `"THIS TEXT IS
     NOWHERE IN THE SOURCE"` at every recorded access-control locator scored 12
-    predictions, **12 matches**, and `unverifiable_claims: 0`. The locators are
-    in the published corpus, so that is the whole benchmark in one file anybody
-    can write. The check has to live where the figures are computed, not where
-    this package happens to produce a run.
+    predictions, **12 matches**, and `unverifiable_claims: 0`.
+
+    **Equality, not containment, and that is the whole of the defence.** A
+    submitter picks its own locator, so letting the quote be a fragment of the
+    declared span lets it declare the span the corpus published and hide a
+    guessed fragment inside. Containment was tried twice and broke twice:
+
+    | forgery, reading no source | recall |
+    | --- | --- |
+    | `";"` contained in every published span, floor 1 token | 0.972 |
+    | `"er"` inside `require`/`transfer`, floor 1 token untokenised | 0.938 |
+    | a 181-entry generated dictionary, floor 3 tokens, tokenised | **0.913** |
+    | 9 generic fragments, containment, floor raised to 6 tokens | 0.270 |
+    | the same dictionary, **equality**, floor 6 tokens | **0** |
+    | generic full *statements*, equality, floor 6 tokens | **0.009** |
+
+    The third row is the state this replaced: both sides were tokenised and a
+    contiguous run was demanded, and a cross product of elementary types,
+    visibility and mutability -- `; if (`, `msg.sender`, `returns (uint256` --
+    still landed inside 397 of 435 published spans, because a 3-token run is
+    vocabulary and not a fingerprint. Raising the floor under containment does
+    not reach it either: `for (uint256 i = 0; i <` is ten tokens and generic.
+
+    Equality reaches it because a span cannot be guessed. What a submitter must
+    now produce is the text of the lines it declared, which is exactly the thing
+    that requires opening the file. The last row is what is left: a dictionary
+    of generic full statements, declared at every one- and two-line locator
+    inside every published span, lands on 4 of 435 records -- four spans that
+    happen to be a statement anybody can type. It is reported rather than
+    rounded, and `recheck_citations` carries the same number.
+
+    Honest submissions are unaffected, measured the same way: quoting each
+    record's whole declared span scores 0.9885, and quoting one real statement
+    with the locator narrowed to it scores 0.9954 -- the same figure the
+    fragment pattern used to get, from a better locator. The benchmark's own
+    `PredicateDetector` baseline is unchanged at 34 predictions and 0.11, since
+    it quotes each evidence item's own span and its shortest is 13 tokens.
+
+    What it still does **not** establish is that the submitter found a defect.
+    The corpus publishes the full locator and `fetch` builds the scorer's
+    checkout from public coordinates, so a submitter reading the public source
+    can quote the real span at the published locator: measured **micro recall
+    0.9977 with precision 1.0 in all nine classes**. That class is not closable
+    here, it is why a figure over the published corpus is self-reported, and
+    `docs/api.md` §1 says so where a submitter reads it.
     """
     # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
     # on \v, \f, \x1c-\x1e and U+2028/2029, none of which a compiler or an
@@ -433,34 +476,36 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
             kind=RejectionKind.CITATION,
             detail="the quote is blank once whitespace is normalised",
         )
+
+    span_tokens = _tokens(span)
     quote_tokens = _tokens(normalised)
-    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not any(
-        token[0].isalpha() or token[0] == "_" for token in quote_tokens
+    if len(span_tokens) < _MINIMUM_SPAN_TOKENS or not any(
+        token[0].isalpha() or token[0] == "_" for token in span_tokens
     ):
-        # A review scored **micro recall 0.972** across the whole corpus, at
-        # `exact` strength, by quoting `";"` at every published locator. The
-        # comparison below is containment, so a quote that appears in nearly
-        # every span establishes nothing about whether the author read it.
-        #
-        # The fix is a granularity one. The first attempt asked whether the
-        # *quote* looked token-shaped while the span test stayed a raw substring
-        # search, so the two did not compose and `"er"` -- inside `require`,
-        # `transfer`, `reserve` -- scored 0.953. Both sides are tokenised now,
-        # and a quote must be a contiguous run of the span's tokens.
-        #
-        # Contiguous rather than equal: a correct finding often cites one
-        # statement inside a record's function span, and demanding the whole
-        # span would reject true findings for citing precisely.
+        # The span itself, not the quote: a one-line locator over `} else {` is
+        # a location a submitter can name from the language alone, and demanding
+        # its text back proves nothing. Widening the locator by a line fixes it
+        # and improves the locator.
         return FailedCheck(
-            check="citation_quote_is_not_substantive",
+            check="citation_span_is_not_substantive",
             kind=RejectionKind.CITATION,
-            detail=f"{quote.strip()[:40]!r} is {len(quote_tokens)} token(s) and needs at "
-            f"least {_MINIMUM_QUOTE_TOKENS} including an identifier; a shorter quote names "
-            "something that appears in most spans rather than this one",
+            detail=f"lines {locator.start_line}-{locator.end_line} carry "
+            f"{len(span_tokens)} token(s) and a citable span needs at least "
+            f"{_MINIMUM_SPAN_TOKENS} including an identifier; a shorter span is one "
+            "the language supplies rather than this file",
         )
-    if _quote_is_in_span(quote_tokens, _tokens(span)):
+
+    if quote_tokens == span_tokens:
         return None
-    if _quote_is_in_span(quote_tokens, _tokens(normalise(source))):
+    if _is_token_run_of(quote_tokens, span_tokens):
+        return FailedCheck(
+            check="citation_quote_is_a_fragment",
+            kind=RejectionKind.CITATION,
+            detail=f"the quote is {len(quote_tokens)} of the span's {len(span_tokens)} "
+            "tokens; quote the lines the locator declares, or narrow the locator to "
+            "the lines being quoted",
+        )
+    if _is_token_run_of(quote_tokens, _tokens(normalise(source))):
         return FailedCheck(
             check="citation_quote_elsewhere_in_file",
             kind=RejectionKind.CITATION,

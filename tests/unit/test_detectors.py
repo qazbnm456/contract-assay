@@ -17,6 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.detectors.base import (
+    _MINIMUM_SPAN_TOKENS,
     API_VERSION,
     AnalysisContext,
     ClassificationClaim,
@@ -25,9 +26,11 @@ from contract_assay.detectors.base import (
     ModelTaskSpec,
     SubmissionLimits,
     TaskOutput,
+    _tokens,
     check_citation,
     gate,
     is_compatible,
+    quote_is_at,
     validate_claim,
 )
 from contract_assay.detectors.loading import (
@@ -891,6 +894,137 @@ contract Vault {
         # Same reasoning as the gate: a submission that could skip it would have
         # its unverifiable claims accepted.
         assert not hasattr(Ok(), "check_citation")
+
+
+class TestWhatMakesASpanCitable:
+    """Each refusal by name, and the floor pinned from both sides.
+
+    Written this way because of how the last two versions of this check failed.
+    A parametrized test held sixteen quote strings and asserted a *count* --
+    `refuted_citations == 1` -- so a mutation that let a case through the floor
+    was still refused by the comparison that followed, the count did not move,
+    and the suite passed with the floor effectively at one token. A review found
+    that by mutation. Asserting the reason is what makes the assertion about the
+    rule rather than about the arithmetic.
+    """
+
+    SOURCE = """\
+contract Vault {
+    uint256 total;
+
+    function withdraw(uint256 amount) external {
+        payable(msg.sender).transfer(amount);
+        total = total - amount;
+    }
+
+    function other(uint256 amount) external {
+        total -= amount;
+        total = total + amount;
+    }
+}
+"""
+
+    def _check(self, quote: str, start: int, end: int) -> str | None:
+        failure = quote_is_at(
+            self.SOURCE, Locator(file="src/Vault.sol", start_line=start, end_line=end), quote
+        )
+        return None if failure is None else failure.check
+
+    def test_the_span_quoted_back_is_accepted(self) -> None:
+        assert self._check("payable(msg.sender).transfer(amount);", 5, 5) is None
+
+    def test_a_multi_line_span_quoted_back_is_accepted(self) -> None:
+        assert (
+            self._check("payable(msg.sender).transfer(amount);\ntotal = total - amount;", 5, 6)
+            is None
+        )
+
+    def test_a_multi_character_operator_counts_as_two(self) -> None:
+        # Stated because the floor's justification depends on it: `-=` is two
+        # atoms here, so a span carrying one clears a six-atom floor with five
+        # Solidity tokens. It is the reason the floor is six and not five.
+        assert len(_tokens("total -= amount;")) == 5
+        assert len(_tokens("total = total - amount;")) == 6
+
+    def test_a_fragment_of_the_declared_span_is_named_as_one(self) -> None:
+        # The forgery: declare the span the corpus published, quote something
+        # guessable inside it. Measured at micro recall 0.913 over the whole
+        # corpus from a generated dictionary of Solidity idioms.
+        assert self._check("total = total - amount;", 4, 7) == "citation_quote_is_a_fragment"
+
+    def test_a_span_of_five_tokens_cannot_be_cited(self) -> None:
+        # Pins the floor from below. `total -= amount;` is five tokens as this
+        # counts them, and the language's own statements run to five: at a floor
+        # of five a dictionary of generic statements scored 0.053 over the whole
+        # corpus, at six 0.005.
+        assert self._check("total -= amount;", 10, 10) == "citation_span_is_not_substantive"
+
+    def test_a_span_of_six_tokens_can_be_cited(self) -> None:
+        # Pins the floor from above: at seven this stops being citable, and an
+        # honest one-statement finding has nothing left to quote.
+        assert self._check("total = total - amount;", 6, 6) is None
+
+    def test_the_floor_is_six(self) -> None:
+        # Stated, so that moving the constant without a measurement fails here
+        # rather than silently changing what a citation proves.
+        assert _MINIMUM_SPAN_TOKENS == 6
+
+    def test_a_span_of_punctuation_alone_cannot_be_cited(self) -> None:
+        # Six tokens, no identifier -- so the floor alone does not refuse it and
+        # this is the only test that holds the identifier clause. A review
+        # deleted that clause and 1154 tests still passed, because every case
+        # the suite offered was refused by something else first.
+        failure = quote_is_at(
+            "a();\n}}}});\n", Locator(file="f.sol", start_line=2, end_line=2), "}}}});"
+        )
+        assert failure is not None
+        assert len(_tokens("}}}});")) == _MINIMUM_SPAN_TOKENS
+        assert failure.check == "citation_span_is_not_substantive"
+
+    def test_real_code_from_elsewhere_in_the_file_is_named_as_such(self) -> None:
+        assert (
+            self._check("payable(msg.sender).transfer(amount);", 11, 11)
+            == "citation_quote_elsewhere_in_file"
+        )
+
+    def test_text_that_is_nowhere_in_the_file_is_named_as_such(self) -> None:
+        assert (
+            self._check("selfdestruct(owner); total = 0;", 5, 6)
+            == "citation_quote_absent_from_source"
+        )
+
+    def test_a_substring_that_straddles_tokens_is_not_a_citation(self) -> None:
+        # `ayable(msg.sender).transfer(amoun` is a substring of the span. Before
+        # both sides were tokenised a substring was enough, and `"er"` -- inside
+        # `require`, `transfer`, `reserve` -- scored 0.938 over the whole corpus.
+        assert (
+            self._check("ayable(msg.sender).transfer(amoun", 5, 5)
+            == "citation_quote_absent_from_source"
+        )
+
+    @pytest.mark.parametrize(
+        "quote",
+        [
+            "payable(msg.sender).transfer(amount);\ntotal = total - amount;",
+            "   payable(msg.sender).transfer(amount);\n\n   total = total - amount;   ",
+            "payable(msg.sender).transfer(amount);\n\n\ntotal = total - amount;",
+            "payable( msg . sender ) . transfer ( amount ) ;\ntotal = total - amount ;",
+        ],
+    )
+    def test_whitespace_and_blank_lines_are_not_semantic(self, quote: str) -> None:
+        # A model reproducing code with its indentation shifted has still quoted
+        # it, and rejecting that would cost recall for a reason unrelated to
+        # whether the finding is true.
+        assert self._check(quote, 5, 6) is None
+
+    def test_the_lines_have_to_be_in_the_order_the_file_has_them(self) -> None:
+        assert (
+            self._check("total = total - amount;\npayable(msg.sender).transfer(amount);", 5, 6)
+            == "citation_quote_absent_from_source"
+        )
+
+    def test_a_span_past_the_end_of_the_file_is_named_before_anything_else(self) -> None:
+        assert self._check("anything at all here", 99, 120) == "citation_span_out_of_range"
 
 
 class TestTheDeclaredLimitsAreCheckable:

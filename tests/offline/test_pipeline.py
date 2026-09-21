@@ -130,7 +130,10 @@ class TestAMeasuredRun:
         run = run_detector(
             UncheckedExternalCallDetector(),
             a_context(DifficultyLevel.S),
-            model_findings=[a_finding(2, 2, "address owner;")],
+            # Two lines, because a span has to carry six tokens to be citable
+            # and `address owner;` is three: a shorter span is one a submitter
+            # can name out of the language without opening the file.
+            model_findings=[a_finding(2, 3, "address owner;\n    uint256 total;")],
             produced_without_a_model=True,
         )
         assert run.outcome is Outcome.CLEAN

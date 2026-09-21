@@ -46,9 +46,12 @@ work**:
 - **a non-zero token count** in the score document's `models` — a provider that
   reports no usage meters every run at zero, and every budget built on that is
   decoration;
-- **a quote that matches the source** — a model that paraphrases instead of
-  quoting fails its citation check on every claim, and the runs come back
-  `invalid` rather than wrong. That reads like a harness that finds nothing.
+- **a quote that is the whole span its locator names** — a model that
+  paraphrases, or that returns one statement while pointing its locator at the
+  whole function, fails its citation check on every claim, and the runs come
+  back `invalid` rather than wrong. That reads like a harness that finds
+  nothing. Slice `ctx.source` at the locator you are about to report and the
+  two cannot disagree.
 
 `submission.py` has a `self_check()` for exactly the second one, callable during
 development so you see it immediately rather than in a score.

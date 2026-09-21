@@ -7,6 +7,8 @@ looks exactly like a figure that does not have the problem.
 
 from __future__ import annotations
 
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,8 +25,10 @@ from contract_assay.corpus.records import (
     Population,
     Provenance,
     SourcePin,
+    load_records,
 )
 from contract_assay.models import (
+    DEFAULT_PREDICTIONS_PER_UNIT,
     CitationStatus,
     DeclaredLimit,
     DetectorRun,
@@ -58,16 +62,16 @@ contract Vault {
 
     function withdraw(uint256 amount) external {
         payable(msg.sender).transfer(amount);
-        total -= amount;
+        total = total - amount;
     }
 
     function withdraw(uint256 amount, address to) external {
         payable(to).transfer(amount);
-        total -= amount;
+        total = total - amount;
     }
 
     function unrelated() external {
-        total = 0;
+        total = total * 0;
     }
 
     function filler1() external { total = total + 1; }
@@ -390,10 +394,11 @@ class TestPrecisionCountsEveryPrediction:
     def test_spraying_claims_lowers_precision(self) -> None:
         got = only(
             score(
-                # (18, 18) rather than (16, 16): line 16 is a bare `}` and a
-                # punctuation-only quote is now refused, which would make this
-                # a test of the citation check instead of of precision.
-                [a_run([(5, 6), (15, 16), (2, 2), (18, 18)])],
+                # (1, 2) rather than (2, 2), and (18, 18) rather than (16, 16):
+                # a bare `}` and a lone `uint256 total;` are spans the language
+                # supplies, and a citation over one is refused -- which would
+                # make this a test of the citation check instead of of precision.
+                [a_run([(5, 6), (15, 16), (1, 2), (18, 18)])],
                 [a_record(), a_negative()],
                 resolver(),
             )
@@ -1080,7 +1085,7 @@ contract Vault {
     }
 
     function unrelated(uint256 amount) external {
-        total -= amount;
+        total = total - amount;
     }
 
     function _twice(uint256 a) internal {}
@@ -1116,7 +1121,10 @@ contract Vault {
     def test_the_same_function_is_still_stronger(self) -> None:
         # The tier sits below `function`, so it must never capture what the
         # stricter tiers would.
-        assert self._strength_of((5, 5), self._record(4, 6, "entry")) == "exact"
+        # (5, 6) rather than (5, 5): `_work(amount);` alone is five tokens and
+        # a span that short cannot be cited, which would test the citation
+        # check rather than the tier.
+        assert self._strength_of((5, 6), self._record(4, 6, "entry")) == "exact"
 
     def test_an_overloaded_name_is_refused_rather_than_resolved(self) -> None:
         # An overload would make two unrelated functions look adjacent, and
@@ -1228,23 +1236,67 @@ class TestThePoolIsBounded:
         assert len(uncapped.unjudged) == 2
         assert len(capped.unjudged) == 0
 
-    def test_nothing_is_capped_by_default(self) -> None:
-        # A cap states how much adjudication an exercise will fund, which is the
-        # exercise's to state and not the instrument's.
+    def test_the_default_cap_is_generous_and_is_a_cap(self) -> None:
+        # It used to be no cap at all, on the argument that a cap states how
+        # much adjudication an exercise will fund. That argument was about the
+        # queue and it missed the figure: recall over an unbounded pool is not a
+        # measurement, and a review published one by submitting 668,655 quotes.
         got = only(score([a_run([(5, 6), (20, 21), (30, 31)])], [a_record()], resolver()))
         assert (got.predictions, got.capped_predictions) == (3, 0)
+        ten = only(score([a_run([(20 + n, 21 + n) for n in range(10)])], [a_record()], resolver()))
+        assert (ten.predictions, ten.capped_predictions) == (DEFAULT_PREDICTIONS_PER_UNIT, 1)
+
+    def test_the_default_cap_covers_the_shipped_corpus(self) -> None:
+        # A cap below the most records any one unit-class pair holds would put a
+        # perfect recall out of reach. The constant is checked against the
+        # corpus here because a constant relied on in one place and justified in
+        # another is a constant that rots.
+        records = load_records(Path(__file__).resolve().parents[2] / "corpus" / "records")
+        per_unit_class: Counter[tuple[str, VulnerabilityClass]] = Counter()
+        for record in records:
+            if record.locator is None or not record.is_positive:
+                continue
+            for cls in record.classes:
+                per_unit_class[(record.pin.source_id, cls)] += 1
+        assert max(per_unit_class.values()) <= DEFAULT_PREDICTIONS_PER_UNIT
+
+    def test_the_cap_can_be_lifted_for_tooling(self) -> None:
+        # `None` is the explicit opt-out, for a consumer that wants the whole
+        # pool -- not what a submission gets by default.
+        got = only(
+            score(
+                [a_run([(20 + n, 21 + n) for n in range(10)])],
+                [a_record()],
+                resolver(),
+                predictions_per_unit=None,
+            )
+        )
+        assert (got.predictions, got.capped_predictions) == (10, 0)
 
     def test_a_cap_of_zero_is_refused(self) -> None:
         with pytest.raises(ValueError, match="at least 1"):
             score([a_run([(5, 6)])], [a_record()], resolver(), predictions_per_unit=0)
 
-    def test_unverifiable_claims_are_not_capped(self) -> None:
-        # They enter no queue and already cost precision, so a cap would only
-        # hide how many were emitted.
+    def test_a_refused_citation_spends_a_slot(self) -> None:
+        # The quota used to skip a refused citation before charging for it,
+        # which made the citation check a free search oracle: a review submitted
+        # 668,655 generated quotes, had 666,233 refused at no cost, and kept
+        # whatever landed. A finding whose citation failed is still a claim the
+        # submission made about a location.
         runs = [a_run([(5, 6)], unverifiable=4)]
         got = only(score(runs, [a_record()], resolver(), predictions_per_unit=1))
-        assert got.unverifiable_claims == 4
-        assert got.capped_predictions == 0
+        assert got.capped_predictions == 4
+        # And the one slot it did spend went to whichever finding came first,
+        # which is the submission's own ordering and is not reordered here.
+        assert got.predictions + got.unverifiable_claims == 1
+
+    def test_a_claim_the_cap_did_not_score_is_neither_a_hit_nor_a_false_positive(self) -> None:
+        # Symmetry, and the reason `unverifiable_claims` is counted inside the
+        # quota: a finding the cap did not score is not a prediction, so
+        # charging precision for it would charge for something that was
+        # excluded from the denominator.
+        got = only(score([a_run([(5, 6)], unverifiable=4)], [a_record()], resolver()))
+        assert (got.unverifiable_claims, got.capped_predictions) == (4, 0)
 
     def test_the_statement_says_the_cap_and_what_it_cost(self) -> None:
         # A precision over three predictions per unit and one over every
@@ -1345,18 +1397,34 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert report.refuted_citations == 1, f"{quote!r} established a citation"
         assert only(report).predictions == 0
 
-    def test_a_three_token_quote_at_the_right_lines_is_accepted(self) -> None:
-        # The other direction, and the floor is where it is because of this: a
-        # correct finding often cites one statement inside a record's function
-        # span, so the check must not demand the whole span.
-        report = score([self.a_submitted_run("total -= amount;", (6, 6))], [a_record()], resolver())
+    def test_the_span_a_submission_declares_quoted_back_is_accepted(self) -> None:
+        # The other direction. A submission that cites one statement narrows its
+        # locator to that statement and quotes it, which is a better locator
+        # than the function and scores the same: measured over the whole
+        # corpus, quoting one real statement with the locator narrowed to it
+        # scores 0.9954, exactly what quoting the whole declared span scores.
+        report = score([self.a_submitted_run(_at(6, 6), (6, 6))], [a_record()], resolver())
         assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
         assert only(report).predictions == 1
 
+    def test_a_fragment_of_the_declared_span_is_refused(self) -> None:
+        # The forgery this closed: with containment, a submitter declared the
+        # span the corpus published and hid a guessed fragment inside it. A
+        # 181-entry generated dictionary of Solidity idioms -- `; if (`,
+        # `msg.sender`, `returns (uint256` -- scored micro recall 0.913 over the
+        # whole published corpus that way, reading no source at all.
+        report = score(
+            [self.a_submitted_run("total = total - amount;", (4, 7))], [a_record()], resolver()
+        )
+        assert report.refuted_citations == 1
+        assert only(report).predictions == 0
+
     def test_a_quote_that_straddles_tokens_is_refused(self) -> None:
-        # `otal -= amoun` is a substring of the span and not a run of its
+        # `otal = total - amoun` is a substring of the span and not a run of its
         # tokens. Before both sides were tokenised, a substring was enough.
-        report = score([self.a_submitted_run("otal -= amoun", (6, 6))], [a_record()], resolver())
+        report = score(
+            [self.a_submitted_run("otal = total - amoun", (6, 6))], [a_record()], resolver()
+        )
         assert report.refuted_citations == 1
 
     def test_a_locator_naming_another_file_is_refuted(self) -> None:
