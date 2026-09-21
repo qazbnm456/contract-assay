@@ -307,6 +307,25 @@ class TestResolvingAnAddressPin:
         assert _local_resolver(tmp_path)(pin) is None
 
 
+class TestTheResolverReadsARevisionedCheckout:
+    """`fetch` writes one name per revision, so the resolver looks for it."""
+
+    def test_the_revisioned_name_is_preferred(self, tmp_path: Path) -> None:
+        pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Vault.sol").write_text("the other revision")
+        (tmp_path / "src" / f"Vault@{'a' * 12}.sol").write_text("this revision")
+        assert _local_resolver(tmp_path)(pin) == "this revision"
+
+    def test_the_plain_path_still_resolves(self, tmp_path: Path) -> None:
+        # Every checkout that is not this corpus's one colliding path, and every
+        # checkout built by hand, has only the plain name.
+        pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Vault.sol").write_text("contract Vault {}")
+        assert _local_resolver(tmp_path)(pin) == "contract Vault {}"
+
+
 class TestTheCapIsTheSameOnBothSurfaces:
     """The number `score` counts, the number `run` hands over, and one test each.
 

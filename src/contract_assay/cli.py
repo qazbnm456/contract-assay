@@ -15,7 +15,7 @@ import typer
 from pydantic import ValidationError
 
 from contract_assay import __version__
-from contract_assay.corpus.fetch import fetch_records, urllib_fetcher
+from contract_assay.corpus.fetch import fetch_records, revisioned_name, urllib_fetcher
 from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
 from contract_assay.corpus.verify import verify_all
 from contract_assay.detectors.base import Detector
@@ -110,10 +110,16 @@ def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
         # file, or no file, and says nothing about why; so the pin is asked, and
         # the two kinds are read from the two shapes they actually have.
         if pin.is_filesystem_path:
-            candidate = root / pin.path
-            if not candidate.is_file():
-                return None
-            return candidate.read_text(encoding="utf-8", errors="replace")
+            # The revision-named file first. A path the corpus pins at two
+            # commits cannot live under one name, so `fetch` writes each
+            # revision as `Pool@<commit>.sol`; a checkout built any other way
+            # has the plain name and is read exactly as before.
+            revisioned = revisioned_name(pin)
+            for relative in ((revisioned,) if revisioned else ()) + (pin.path,):
+                candidate = root / relative
+                if candidate.is_file():
+                    return candidate.read_text(encoding="utf-8", errors="replace")
+            return None
         return _source_from_manifest(root, pin)
 
     return resolve

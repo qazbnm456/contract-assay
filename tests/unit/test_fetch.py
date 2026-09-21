@@ -125,6 +125,89 @@ class TestItIsIdempotent:
 
 
 class TestWhatItWillNotGuess:
+    def test_one_path_at_two_revisions_gets_one_name_each(self, tmp_path: Path) -> None:
+        # `source_id` carries the commit and a filesystem path does not. The
+        # corpus pins `plaza-evm/src/Pool.sol` at two commits whose bytes
+        # differ, and this wrote both to one file: the second write won, its
+        # digest was checked before the first was clobbered, and the summary
+        # said "140 matched their recorded digest" over a tree the scorer then
+        # refused 8 records of. Measured end to end, the honest ceiling read
+        # 0.9770 on a checkout this command built.
+        other = b"contract Vault { address owner; uint256 total; }\n"
+        records = [
+            a_record(record_id="one"),
+            a_record(
+                record_id="two",
+                pin=CommitPin(
+                    repo_url="https://github.com/example/vault",
+                    commit="b" * 40,
+                    path=PATH,
+                    sha256=hashlib.sha256(other).hexdigest(),
+                ),
+            ),
+        ]
+
+        def fetch(url: str) -> bytes:
+            return other if "bbbb" in url else BODY
+
+        report = fetch_records(records, tmp_path, fetch=fetch)
+        assert sorted(o.state for o in report.outcomes) == ["verified", "verified"]
+        assert report.collisions == (PATH,)
+        assert (tmp_path / "src" / f"Vault@{'a' * 12}.sol").read_bytes() == BODY
+        assert (tmp_path / "src" / f"Vault@{'b' * 12}.sol").read_bytes() == other
+        # And the plain path, for a resolver that has not learned the names.
+        assert (tmp_path / PATH).read_bytes() in {BODY, other}
+        assert "pinned at more than one revision" in report.statement()
+
+    def test_the_statement_is_true_of_the_tree_and_not_of_the_writes(self, tmp_path: Path) -> None:
+        # Each outcome is true of the moment it was produced, and the statement
+        # is read as a claim about the checkout afterwards. Those were the same
+        # sentence until one path pinned at two revisions made them different
+        # ones -- and the fix for that must not be the only thing keeping them
+        # the same, so this makes a *second* fetch touch a file the first had
+        # already verified.
+        first, second = "src/A.sol", "src/B.sol"
+
+        def pin_at(path: str) -> CommitPin:
+            return CommitPin(
+                repo_url="https://github.com/example/vault",
+                commit="a" * 40,
+                path=path,
+                sha256=DIGEST,
+            )
+
+        def fetch(url: str) -> bytes:
+            if url.endswith(second):
+                (tmp_path / first).write_bytes(b"clobbered after verification\n")
+            return BODY
+
+        report = fetch_records(
+            [
+                a_record(
+                    record_id="one",
+                    pin=pin_at(first),
+                    locator=Locator(
+                        file=first, contract="A", function="f", start_line=1, end_line=1
+                    ),
+                ),
+                a_record(
+                    record_id="two",
+                    pin=pin_at(second),
+                    locator=Locator(
+                        file=second, contract="B", function="f", start_line=1, end_line=1
+                    ),
+                ),
+            ],
+            tmp_path,
+            fetch=fetch,
+            workers=1,
+        )
+        assert {o.path: o.state for o in report.outcomes} == {
+            first: "mismatched",
+            second: "verified",
+        }
+        assert "replaced after they were verified" in report.by_state("mismatched")[0].detail
+
     def test_a_deployed_address_is_unavailable_with_its_reason(self, tmp_path: Path) -> None:
         # Its source of truth is a chain explorer. Guessing at a repository that
         # may not hold the deployed bytecode's source would produce a file that

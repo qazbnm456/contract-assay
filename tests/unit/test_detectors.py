@@ -17,6 +17,8 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.detectors.base import (
+    _LANGUAGES_OWN_MEMBERS,
+    _LANGUAGES_OWN_WORDS,
     _MINIMUM_QUOTE_TOKENS,
     API_VERSION,
     AnalysisContext,
@@ -27,6 +29,7 @@ from contract_assay.detectors.base import (
     SubmissionLimits,
     TaskOutput,
     _is_the_languages_own,
+    _names_something_of_its_own,
     _tokens,
     check_citation,
     cited_lines,
@@ -1003,6 +1006,39 @@ contract Vault {
         # 0.9885 over the whole corpus, which is two records whose natural quote
         # is language only.
         assert self._check("total = total - amount;", 6, 6) is None
+
+    @pytest.mark.parametrize(
+        "member", ["sender", "value", "data", "length", "name", "min", "max", "encodePacked"]
+    )
+    def test_a_member_name_is_the_languages_only_after_a_dot(self, member: str) -> None:
+        # Listing these context-free was a defect: they are members of `msg`,
+        # `abi` and the elementary types, and they are also among the commonest
+        # variable names in Solidity. A review measured 16 records losing their
+        # single-line citation to it, 7 of them to `encodePacked` in
+        # `keccak256(abi.encodePacked(sender, block.timestamp))` -- the
+        # canonical insecure-randomness line, where `sender` is a parameter.
+        assert member in _LANGUAGES_OWN_MEMBERS
+        assert member not in _LANGUAGES_OWN_WORDS
+        assert _is_the_languages_own(member, after_dot=True)
+        assert not _is_the_languages_own(member)
+        assert _names_something_of_its_own([member, "=", "1", ";"])
+        assert not _names_something_of_its_own(["msg", ".", member, ";"])
+
+    def test_the_canonical_randomness_line_is_citable(self) -> None:
+        # End to end for the same defect: every other token is the language's.
+        assert _names_something_of_its_own(
+            _tokens("keccak256(abi.encodePacked(sender, block.timestamp))")
+        )
+
+    @pytest.mark.parametrize(
+        "word", ["hours", "transient", "layout", "fixed", "blobhash", "iszero", "mstore", "sha3"]
+    )
+    def test_the_grammar_words_a_review_found_missing_are_in_the_set(self, word: str) -> None:
+        # A sample, and it is a sample on purpose: there is no machine-readable
+        # grammar here to check the whole set against, so this pins the entries
+        # a review had to find by attack. Deleting any of them used to leave the
+        # suite green -- 13 of 13 sampled deletions did.
+        assert _is_the_languages_own(word)
 
     @pytest.mark.parametrize("counter", ["i", "j", "k"])
     def test_a_loop_counter_is_not_a_name_of_its_own(self, counter: str) -> None:

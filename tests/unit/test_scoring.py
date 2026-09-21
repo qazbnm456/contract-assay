@@ -1503,6 +1503,18 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert finding.status is CitationStatus.VERIFIED
         assert (finding.finding.locator.start_line, finding.finding.locator.end_line) == (6, 6)
 
+    def test_a_locator_that_already_matches_is_not_reported_as_moved(self) -> None:
+        # The counter has to mean something, so the guard has to hold: a build
+        # that reports every verified citation as repositioned passes every
+        # other test here, and the honest-exact submission would read 429
+        # instead of 2.
+        runs, refuted, unchecked, moved, elsewhere = recheck_citations(
+            [self.a_submitted_run(_at(5, 6), (5, 6))], [a_record()], resolver()
+        )
+        assert (refuted, unchecked) == (0, 0)
+        assert (moved, elsewhere) == (0, 0)
+        assert runs[0].findings[0].finding.locator.start_line == 5
+
     def test_a_widened_span_no_longer_buys_the_function_it_started_in(self) -> None:
         # The consequence, at the level the figures read: a quote matched in
         # another function is scored in that other function, which is a file

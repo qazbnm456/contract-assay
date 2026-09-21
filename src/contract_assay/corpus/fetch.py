@@ -37,10 +37,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field, replace
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 from contract_assay.corpus.records import AddressPin, CommitPin, CorpusRecord, SourcePin
@@ -51,6 +52,7 @@ __all__ = [
     "Fetcher",
     "fetch_records",
     "raw_url",
+    "revisioned_name",
     "urllib_fetcher",
 ]
 
@@ -95,6 +97,8 @@ class FetchReport:
     """Every pin's outcome, and the sentence that has to accompany a checkout."""
 
     outcomes: list[FetchOutcome] = field(default_factory=list)
+    collisions: tuple[str, ...] = ()
+    """Paths the corpus pins at more than one revision, so each got its own name."""
 
     def by_state(self, state: str) -> list[FetchOutcome]:
         return [o for o in self.outcomes if o.state == state]
@@ -123,6 +127,15 @@ class FetchReport:
             parts.append(
                 f"{trusted} had no digest recorded and were taken on trust -- "
                 "absence of a check is not a passed check."
+            )
+        if self.collisions:
+            named = ", ".join(self.collisions[:3])
+            parts.append(
+                f"{len(self.collisions)} path(s) are pinned at more than one revision "
+                f"({named}). Each revision was written under its own name -- "
+                "`Pool@<commit>.sol` -- so nothing was clobbered, and the plain path holds "
+                "whichever revision the most records pin, for a resolver that has not "
+                "learned the names."
             )
         mismatched = self.by_state("mismatched")
         if mismatched:
@@ -202,6 +215,48 @@ def _pins(records: Iterable[CorpusRecord]) -> list[tuple[str, SourcePin]]:
     return sorted(seen.items())
 
 
+def _still_true(root: Path, pin: SourcePin, outcome: FetchOutcome) -> FetchOutcome:
+    """Re-read what is on disk now and correct an outcome that has stopped holding."""
+    if not outcome.is_usable or not outcome.digest_checked or pin.sha256 is None:
+        return outcome
+    target = root / outcome.path
+    if not target.is_file():
+        return replace(
+            outcome, state="unavailable", detail="present when fetched, absent afterwards"
+        )
+    present = _digest(target.read_bytes())
+    if present == pin.sha256:
+        return outcome
+    return replace(
+        outcome,
+        state="mismatched",
+        detail=f"on disk {present[:12]}, pinned {pin.sha256[:12]} -- these bytes were "
+        "replaced after they were verified, which one path pinned at two revisions does",
+    )
+
+
+def revisioned_name(pin: SourcePin) -> str | None:
+    """Where a pin's bytes go when its path is pinned at more than one revision.
+
+    `Pool@14a962c5aa72.sol` beside `Pool.sol`, because `source_id` carries the
+    commit and a filesystem path does not: the corpus pins
+    `plaza-evm/src/Pool.sol` at two commits whose bytes differ, and a checkout
+    keyed on `pin.path` alone wrote both to one file. The second write won, its
+    digest was checked *before* the first was clobbered, and `fetch` reported
+    "140 matched their recorded digest" over a tree the scorer then refused 8
+    records of -- measured, the whole-span ceiling read 0.9770 on a checkout
+    built by this command and 0.9931 on one that happened to hold both.
+
+    The commit is truncated to 12 characters, which is the width `describe`
+    prints and long enough that two pins of one path colliding again is not a
+    thing to plan for. `None` for a pin with no revision to name.
+    """
+    if not isinstance(pin, CommitPin):
+        return None
+    path = PurePosixPath(pin.path)
+    return str(path.with_name(f"{path.stem}@{pin.commit[:12]}{path.suffix}"))
+
+
 def _digest(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
@@ -223,6 +278,7 @@ def fetch_records(
     """
     get = fetch or urllib_fetcher()
     report = FetchReport()
+    pin_of = {record.pin.source_id: record.pin for record in records}
 
     def one(entry: tuple[str, SourcePin]) -> FetchOutcome:
         source_id, pin = entry
@@ -234,18 +290,24 @@ def fetch_records(
                 detail="a deployed address's source of truth is a chain explorer, not a repository",
             )
         assert isinstance(pin, CommitPin)
-        target = root / pin.path
+        # One name per revision when the path is pinned at several, so that no
+        # write clobbers another's bytes. Every pin of a colliding path is
+        # renamed, not just the losers: leaving one of them at the plain path
+        # would make which revision a reader gets depend on which pin happened
+        # to be primary.
+        relative = (collisions.get(pin.path) and revisioned_name(pin)) or pin.path
+        target = root / relative
         expected = pin.sha256
 
         if target.is_file():
             present = _digest(target.read_bytes())
             if expected is None:
-                return FetchOutcome(source_id, pin.path, "unverified", detail="no digest recorded")
+                return FetchOutcome(source_id, relative, "unverified", detail="no digest recorded")
             if present == expected:
-                return FetchOutcome(source_id, pin.path, "present", digest_checked=True)
+                return FetchOutcome(source_id, relative, "present", digest_checked=True)
             return FetchOutcome(
                 source_id,
-                pin.path,
+                relative,
                 "mismatched",
                 digest_checked=True,
                 detail=f"on disk {present[:12]}, pinned {expected[:12]}; not replaced",
@@ -256,7 +318,7 @@ def fetch_records(
         except Exception as failure:
             return FetchOutcome(
                 source_id,
-                pin.path,
+                relative,
                 "unavailable",
                 detail=f"{type(failure).__name__}: {failure}",
             )
@@ -267,7 +329,7 @@ def fetch_records(
             # wrong source -- a failure with no symptom.
             return FetchOutcome(
                 source_id,
-                pin.path,
+                relative,
                 "mismatched",
                 digest_checked=True,
                 detail=f"fetched {_digest(body)[:12]}, pinned {expected[:12]}",
@@ -279,13 +341,45 @@ def fetch_records(
         staging.replace(target)
         return FetchOutcome(
             source_id,
-            pin.path,
+            relative,
             "written" if expected is None else "verified",
             digest_checked=expected is not None,
             detail="" if expected is not None else "no digest recorded",
         )
 
     entries = _pins(records)
+    digests: dict[str, set[str | None]] = {}
+    for _, pin in entries:
+        if isinstance(pin, CommitPin):
+            digests.setdefault(pin.path, set()).add(pin.sha256)
+    collisions = {path: True for path, seen in digests.items() if len(seen) > 1}
+
     with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
         report.outcomes = list(pool.map(one, entries))
+
+    # And the plain path as well, holding whichever revision the most records
+    # pin. A third party's `--source-root` resolver is documented as joining
+    # `pin.path` to a root, and this package's own does; one that has not
+    # learned the revision names still finds a file, and the pins it is the
+    # wrong revision for fail the digest gate and are reported `unchecked`
+    # rather than scored against bytes their locators do not describe.
+    for path in collisions:
+        weight: Counter[str] = Counter()
+        for record in records:
+            if isinstance(record.pin, CommitPin) and record.pin.path == path:
+                weight[record.pin.commit] += 1
+        for commit, _ in sorted(weight.items(), key=lambda kv: (-kv[1], kv[0]))[:1]:
+            for _, pin in entries:
+                if isinstance(pin, CommitPin) and pin.path == path and pin.commit == commit:
+                    name = revisioned_name(pin)
+                    written = root / name if name else None
+                    if written is not None and written.is_file():
+                        (root / path).write_bytes(written.read_bytes())
+
+    # **Verified against the tree, not against the writes.** Each outcome above
+    # is true of the moment it was produced, and the statement is read as a
+    # claim about the checkout that is there afterwards. Those were the same
+    # sentence until two pins of one path made them different ones.
+    report.outcomes = [_still_true(root, pin_of[o.source_id], o) for o in report.outcomes]
+    report.collisions = tuple(sorted(collisions))
     return report

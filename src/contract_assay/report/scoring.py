@@ -914,16 +914,17 @@ def recheck_citations(
     builds the scorer's checkout from public coordinates, so the submitter's
     bytes and the scorer's bytes are the same bytes and the answer is a
     published field. A review demonstrated the consequence: quoting the *real*
-    span at each published locator scores **micro recall 0.9931**, with
-    precision 0.9815 in access control, 0.9947 in denial of service and 1.0 in
-    the rest. Two earlier versions of this sentence were wrong in two different
-    ways: "0.9977 with every counter at zero" cannot hold, because one positive
-    record's source resolves from no public coordinates and another resolves to
-    bytes whose digest disagrees with its pin, so the cleanest submission
-    possible still reports an unchecked citation; and the correction of it,
-    "434 of 435 is the ceiling ... = 0.9908", is two errors in one clause, since
-    434/435 is 0.9977 and 0.9908 is 431/435. Re-reading public source at a
-    published locator cannot
+    span at each published locator scores **micro recall 0.9954** over a
+    checkout `contract-assay fetch` builds, with precision 0.9815 in access
+    control and 1.0 everywhere else. Three earlier versions of this sentence
+    were each wrong: "0.9977 with every counter at zero" (cannot hold: one
+    positive record's source resolves from no public coordinates); its
+    correction "434 of 435 is the ceiling ... = 0.9908" (two errors in one
+    clause, since 434/435 is 0.9977 and 0.9908 is 431/435); and "0.9931,
+    precision 1.0 in every class", which was measured on a checkout assembled
+    by hand. The documented `fetch` gave **0.9770** until this week, because it
+    wrote two revisions of one path to one file -- `corpus.fetch.revisioned_name`
+    has that story. Re-reading public source at a published locator cannot
     distinguish a finding from a copy, and no amount of strictness in this
     function changes that.
 
@@ -951,15 +952,15 @@ def recheck_citations(
     | brace-and-keyword lines, over widened spans | 0.0138 | **0** |
     | one donor unit, every locator elsewhere | 1.000 | 0.0069 |
     | a submitter's own `--source-root` | 0.922 | 0 |
-    | **a generic vocabulary over widened windows, in-sample** | -- | **0.2161** |
-    | **the same, cross-fitted** | -- | **0.0414** |
+    | **a generic vocabulary over widened windows, in-sample** | -- | **0.2115** |
+    | **the same, held out (leave-one-out)** | -- | **0.0598** |
 
     **The last two rows are the same attack, and the difference between them is
     the most important number here.** A blind attack is a list of guesses, and
     every list in this table was chosen by its yield over the same 435 published
     records it was then scored on. Cross-fitted -- rank the guesses on half the
     corpus, score the other half, so every record is measured under an order
-    that never saw it -- the strongest family falls from **0.2161 to 0.0414**.
+    that never saw it -- the strongest family falls from **0.2115 to 0.0598**.
     In-sample says how much a published corpus leaks to somebody willing to fit
     it; cross-fitted says what the same method gets on records it has not seen,
     and that is the figure a competitive ranking has to be designed against.
@@ -974,7 +975,7 @@ def recheck_citations(
     carries that argument with the rest of the numbers.
 
     Positioning each prediction at the lines its quote matched is why the
-    in-sample figure is 0.2161 rather than higher again: the declared span is
+    in-sample figure is 0.2115 rather than higher again: the declared span is
     the submitter's own field, `_strength` takes the containing function from
     `start_line` alone, and a window hundreds of lines long used to keep `exact`
     strength while the attack reduced to "name one line of this function". That

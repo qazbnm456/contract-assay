@@ -111,15 +111,34 @@ recorded as a harness failure rather than as the absence of a finding.
 [docs/api.md](docs/api.md) states the compatibility surface and what running
 under isolation asks of a submission.
 
+## What a figure over this corpus is
+
+**Self-reported.** The corpus is public and every record publishes its full
+locator — file, contract, function, start and end line — and `contract-assay
+fetch` builds the scorer's checkout from the same public coordinates you have.
+So a script that quotes the real span at each published locator scores **micro
+recall 0.9954** without finding anything, and the citation check cannot tell
+that apart from a detector that did. Measured, not hypothesised.
+
+That is a property of publishing the answers, not a defect in the checking, and
+it is the same trade SWE-bench and HumanEval make. It means a figure here is a
+real measurement **of an honest submission** — which is what a development
+benchmark is for — and it is not evidence against a motivated one. A competitive
+ranking needs records whose locators are not published; that is what
+[`assay-arena`](../assay-arena) exists for. `docs/api.md` §1 has the numbers,
+including what a submission that opens no source file can still score (0.21
+in-sample over this corpus, 0.06 on records it has not seen).
+
 ## Using it
 
-The corpus lives in this repository, so the flow below starts from a clone.
-`pip install contract-assay` gets you the engine — the 442 records under
-`corpus/records` and the pointers under `results/` are not in the wheel, and a
-`--records` path is how you point the engine at them (or at your own).
+The corpus lives in this repository, so the flow below starts from a clone. The
+engine is not on PyPI yet, so install it from the clone; when it is published,
+`pip install contract-assay` will get you the engine alone — the 442 records
+under `corpus/records` and the pointers under `results/` are not in the wheel,
+and a `--records` path is how you point the engine at them (or at your own).
 
 ```console
-$ git clone https://github.com/qazbnm456/contract-assay && cd contract-assay
+$ cd contract-assay          # your clone of this repository
 $ pip install -e .
 
 $ contract-assay fetch corpus/records --source-root ./checkout
@@ -129,11 +148,17 @@ $ contract-assay run --manifest my-detector.json --records corpus/records \
     --source-root ./checkout --out runs.jsonl
 
 $ contract-assay score runs.jsonl --records corpus/records \
-    --submission-id my-detector --source-root ./checkout \
-    --weights weights.json --out my-detector.json
+    --submission-id my-detector --source-root ./checkout --out my-detector.json
 
 $ contract-assay results        # compare with what others have published
 ```
+
+That gives you per-class recall and a refused aggregate, and the refusal names
+its two reasons: this engine ships no difficulty weighting, because a weighting
+states what an exercise values, and precision does not exist for a class until
+its predictions have been adjudicated. Add `--weights your-weights.json` when
+you have decided what yours are — `docs/api.md` §6 has the shape and the
+argument.
 
 A submission is three declarations. This is the whole of it:
 

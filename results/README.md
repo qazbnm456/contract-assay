@@ -2,6 +2,16 @@
 
 This directory holds **pointers** to results, not results, and no ranking.
 
+**Every number here is self-reported, and the corpus it is over is public.**
+Each record publishes its full locator, so a script that quotes the real span at
+each one scores micro recall 0.9954 having found nothing, and a submission that
+opens no source file at all can reach 0.21 over these records (0.06 over records
+it has not seen). What a pointer establishes is that somebody published a
+document and stood behind it; what it does not establish is that the figure came
+from an analysis. Read a row as a claim by its author, ranked against nobody.
+`docs/api.md` §1 has the measurements and `CorpusSplit.PRIVATE_HOLDOUT` is where
+a figure that does not have this property would have to come from.
+
 ## Why it is shaped this way
 
 A leaderboard in a benchmark's own repository makes its maintainers the
@@ -25,8 +35,13 @@ not.
        --source-root ./checkout --out runs.jsonl
    $ contract-assay score runs.jsonl --records corpus/records \
        --submission-id my-detector --source-root ./checkout \
-       --weights weights.json --out my-detector.json
+       --weights your-weights.json --out my-detector.json
    ```
+
+   The weighting is yours to supply and this repository ships none: it states
+   what an exercise values, and `docs/api.md` §6 has the shape. Without it the
+   per-class figures still appear and the aggregate is refused, with that as its
+   stated reason.
 
 2. Build the pointer from the document rather than by hand — a pointer typed out
    is a number somebody typed:

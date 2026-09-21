@@ -376,6 +376,7 @@ does the work this was once credited with.
 
 _LANGUAGES_OWN_WORDS = frozenset(
     [
+        "blobhash",
         "abi",
         "abstract",
         "add",
@@ -390,18 +391,12 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "assembly",
         "assert",
         "auto",
-        "balance",
-        "basefee",
-        "blobbasefee",
-        "blobhash",
         "block",
         "blockhash",
         "bool",
         "break",
         "byte",
         "bytes",
-        "call",
-        "callcode",
         "calldata",
         "calldataload",
         "calldatasize",
@@ -409,35 +404,20 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "callvalue",
         "case",
         "catch",
-        "chainid",
-        "code",
-        "codehash",
-        "coinbase",
-        "concat",
         "constant",
         "constructor",
         "continue",
         "contract",
         "copyof",
-        "creationCode",
-        "data",
         "days",
-        "decode",
         "default",
         "define",
-        "delegatecall",
         "delete",
-        "difficulty",
         "div",
         "do",
         "ecrecover",
         "else",
         "emit",
-        "encode",
-        "encodeCall",
-        "encodePacked",
-        "encodeWithSelector",
-        "encodeWithSignature",
         "enum",
         "eq",
         "error",
@@ -452,10 +432,7 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "fixed",
         "for",
         "function",
-        "gas",
         "gasleft",
-        "gaslimit",
-        "gasprice",
         "global",
         "gt",
         "gwei",
@@ -471,7 +448,6 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "inline",
         "int",
         "interface",
-        "interfaceId",
         "internal",
         "is",
         "iszero",
@@ -479,16 +455,13 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "k",
         "keccak256",
         "layout",
-        "length",
         "let",
         "library",
         "lt",
         "macro",
         "mapping",
         "match",
-        "max",
         "memory",
-        "min",
         "minutes",
         "mload",
         "mod",
@@ -498,26 +471,20 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "mul",
         "mulmod",
         "mutable",
-        "name",
         "new",
         "not",
         "now",
         "null",
-        "number",
         "of",
         "or",
-        "origin",
         "override",
         "partial",
         "payable",
-        "pop",
         "pragma",
-        "prevrandao",
         "private",
         "promise",
         "public",
         "pure",
-        "push",
         "receive",
         "reference",
         "relocatable",
@@ -527,28 +494,22 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "returns",
         "revert",
         "ripemd160",
-        "runtimeCode",
         "sar",
         "sdiv",
         "sealed",
         "seconds",
-        "selector",
         "selfdestruct",
-        "send",
-        "sender",
         "sgt",
         "sha256",
         "sha3",
         "shl",
         "shr",
-        "sig",
         "sizeof",
         "sload",
         "slt",
         "smod",
         "sstore",
         "static",
-        "staticcall",
         "storage",
         "string",
         "struct",
@@ -559,8 +520,6 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "szabo",
         "this",
         "throw",
-        "timestamp",
-        "transfer",
         "transient",
         "true",
         "try",
@@ -572,16 +531,13 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "uint",
         "unchecked",
         "unicode",
-        "unwrap",
         "using",
-        "value",
         "var",
         "view",
         "virtual",
         "weeks",
         "wei",
         "while",
-        "wrap",
         "xor",
         "years",
     ]
@@ -601,8 +557,13 @@ Why a citation must name something outside it: the identifier test used to be
 `} } return false; }` was "substantive" at six tokens, and a review built a
 blind submission out of nothing but braces and keywords. Measured, this clause
 costs an honest submission 0.9931 -> 0.9885, which is two records whose whole
-anchor line is language: `receive() external payable {}` and
-`return (false, 0);`.
+anchor line is language -- `receive() external payable {}` and
+`return (false, 0);` -- and a third record, `2024-12-plaza-finance-…-1e5ed5cb`,
+which has no citable quote for a different reason (its anchor line is blank, so
+the token floor refuses it with or without this clause). An earlier version of
+this note named that third record as a cost of the clause and omitted the one
+the clause actually took, `alchemix-v2-dao-…-ab3d30ba`, whose anchor is
+`for (uint256 i = 0; i < 50; i++) {`.
 
 **Under-inclusive is the failure direction, and it was under-inclusive.** A
 review found 70 words the language supplies that were missing -- `hours` while
@@ -622,7 +583,7 @@ need no entry each.
 **What this set is not.** A review measured the stronger axis: refuse a quote
 whose only names are ones *any project* writes -- `i`, `amount`, `token`, `to`,
 `from`, `owner`, `IERC20`, `SafeERC20`, `nonReentrant`. That takes the best
-blind attack from 0.2414 to 0.0920 for three honest records, a better trade than
+blind attack from 0.2115 to about 0.09 for three honest records, a better trade than
 anything declined here. It is declined anyway, on the axis rather than the
 price: a list of names "projects use" has no definition to maintain it against,
 it would be extended each time a review found a new carrier -- which is fitting
@@ -633,12 +594,94 @@ somebody else maintains; "common" is not.
 """
 
 
-def _is_the_languages_own(token: str) -> bool:
-    """Whether one identifier is the language's rather than a file's."""
+_LANGUAGES_OWN_MEMBERS = frozenset(
+    [
+        "balance",
+        "basefee",
+        "blobbasefee",
+        "call",
+        "callcode",
+        "chainid",
+        "code",
+        "codehash",
+        "coinbase",
+        "concat",
+        "creationCode",
+        "data",
+        "decode",
+        "delegatecall",
+        "difficulty",
+        "encode",
+        "encodeCall",
+        "encodePacked",
+        "encodeWithSelector",
+        "encodeWithSignature",
+        "gas",
+        "gaslimit",
+        "gasprice",
+        "interfaceId",
+        "length",
+        "max",
+        "min",
+        "name",
+        "number",
+        "origin",
+        "pop",
+        "prevrandao",
+        "push",
+        "runtimeCode",
+        "selector",
+        "send",
+        "sender",
+        "sig",
+        "staticcall",
+        "timestamp",
+        "transfer",
+        "unwrap",
+        "value",
+        "wrap",
+    ]
+)
+"""Names the language supplies **only after a dot**.
+
+Split out of `_LANGUAGES_OWN_WORDS` because listing them context-free was a
+defect: `sender`, `value`, `data`, `name`, `min`, `max`, `length` and
+`encodePacked` are members of `msg`, `abi` and the elementary types, and they
+are also among the commonest variable names in Solidity. Listed as standalone
+words, a correct one-line citation of
+`keccak256(abi.encodePacked(sender, block.timestamp))` -- the canonical
+insecure-randomness line, where `sender` is a parameter -- had no name of its
+own left and was refused. A review measured 16 records losing their single-line
+citation that way, 7 of them to `encodePacked` alone.
+
+So a member name counts as the language's only where the language puts it:
+immediately after a `.`. Bare, it is a name the file chose.
+"""
+
+
+def _is_the_languages_own(token: str, *, after_dot: bool = False) -> bool:
+    """Whether one identifier is the language's rather than a file's.
+
+    `after_dot` says the token is a member access, which is the only position
+    where `sender`, `encodePacked` or `max` are the language's.
+    """
     if token in _LANGUAGES_OWN_WORDS:
+        return True
+    if after_dot and token in _LANGUAGES_OWN_MEMBERS:
         return True
     for stem in ("uint", "int", "bytes"):
         if token.startswith(stem) and token[len(stem) :].isdigit():
+            return True
+    return False
+
+
+def _names_something_of_its_own(tokens: Sequence[str]) -> bool:
+    """Whether a quote names anything the language does not supply."""
+    for index, token in enumerate(tokens):
+        if not (token[0].isalpha() or token[0] == "_"):
+            continue
+        after_dot = index > 0 and tokens[index - 1] == "."
+        if not _is_the_languages_own(token, after_dot=after_dot):
             return True
     return False
 
@@ -721,7 +764,7 @@ def cited_lines(
     slot list here was *chosen* by its yield over the same 435 published records
     it was then scored on. Cross-fitted -- rank the slots on half the corpus,
     score the other half, each record measured under an order that never saw it
-    -- the strongest family drops from **0.2161 to 0.0414**. So the last column
+    -- the strongest family drops from **0.2115 to 0.0598**. So the last column
     measures how finely an attacker is allowed to fit the record set it is
     evaluated on, and the number that generalises to a record set it has not
     seen is the cross-fitted one. Held-out is the figure a competitive ranking
@@ -742,13 +785,13 @@ def cited_lines(
 
     | honest submission, quote unchanged | equality | now |
     | --- | --- | --- |
-    | locator exactly the quoted lines | 0.993 | 0.986 |
-    | locator one line wider below | **0.076** | **0.986** |
-    | locator five lines wider below | 0.005 | 0.986 |
-    | locator one line wider above | 0.409 | 0.986 |
-    | locator one line wider on both sides | 0.005 | 0.986 |
-    | locator five lines wider on both sides | 0.005 | 0.986 |
-    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.993 |
+    | locator exactly the quoted lines | 0.993 | 0.9885 |
+    | locator one line wider below | **0.076** | **0.9885** |
+    | locator five lines wider below | 0.005 | 0.9885 |
+    | locator one line wider above | 0.409 | 0.9885 |
+    | locator one line wider on both sides | 0.005 | 0.9885 |
+    | locator five lines wider on both sides | 0.005 | 0.9885 |
+    | each record's whole span, from a fresh `fetch` | 0.989 | **0.9954** |
 
     Locator slop in *any* direction is free now. Two of those rows were not
     free under a line run alone: a span starting a line above a function
@@ -756,14 +799,18 @@ def cited_lines(
     Positioning (below) fixed them as a side effect -- the prediction is where
     its quote is, and its quote is inside the function.
 
-    The 0.993 -> 0.986 is `_LANGUAGES_OWN_WORDS`, and it is three records, each
-    named: `2025-05-dodo-…-94722659`, whose anchor line is
-    `receive() external payable {}`; `2025-05-lend-…-ad76a9bd`, whose anchor is
-    `return (false, 0);`; and `2024-12-plaza-finance-…-1e5ed5cb`, whose anchor
-    line is blank. Three further records have no citable single line **anywhere**
-    in their span and can only be cited with a multi-line quote. These are the
-    canonical one-line access-control and DoS shapes, so on a differently
-    weighted corpus the cost would not be three.
+    The 0.993 -> 0.9885 is three records with no citable quote in their anchor
+    window: `2025-05-dodo-…-94722659` (`receive() external payable {}`) and
+    `2025-05-lend-…-ad76a9bd` (`return (false, 0);`), which
+    `_LANGUAGES_OWN_WORDS` refuses, and `2024-12-plaza-finance-…-1e5ed5cb`,
+    whose anchor line is blank and which the token floor refuses either way.
+
+    **The figure depends on a submission shape neither number states, so both
+    are here.** A submitter that may widen its quote by a line scores 0.9885. A
+    submitter confined to quoting its anchor line alone scores **0.7126** --
+    124 records have no citable single line at their anchor, and 121 of those
+    are the six-token floor rather than the naming clause. The floor's cost is
+    the dominant one in that shape and it was never published.
 
     Accepting part of a span has a price, and it was published wrong twice. A
     donor-unit forgery -- real text out of one file, every locator pointing at
@@ -788,7 +835,7 @@ def cited_lines(
     anchor, so a submission could declare the published start line and an end
     line hundreds of lines later, keep `exact` strength, and reduce its whole
     problem to naming **one line of a large window**. Measured, that took a
-    blind submission from 0.0414 to **0.1448**, and 0.092 of it needed nothing
+    blind submission from 0.0391 to **0.1448** in-sample, and 0.092 of it needed nothing
     but braces and keywords. Positioning costs an honest submission nothing at any
     slop measured -- one line or five, above, below or both -- and for two of
     those it is what makes them free.
@@ -798,13 +845,20 @@ def cited_lines(
     identifier names every project writes (`i`, `amount`, `token`, `owner`,
     `IERC20`, `nonReentrant`), and the two names the record publishes -- and
     declares each over a window derived from the published line numbers. It
-    scores **0.2161 in-sample and 0.0414 cross-fitted**. Widening the window
+    scores **0.2115 in-sample and 0.0598 held out**. Widening the window
     *upward* is worth more than downward, because it pulls the function's own
     declaration line and its top-of-body guards into the pool while every match
     still scores `function`.
 
+    The held-out figure is leave-one-out over the 435 records: every record
+    scored under a guess order fitted on the other 434. Two-fold cross-fitting
+    reads 0.0460, and it *understates* -- an attacker has the whole public
+    corpus, not half of it -- so leave-one-out is the estimator quoted.
+    Both numbers move by about two records with the tie-break order of the
+    greedy that produces them, so read them as 0.21 and 0.06.
+
     This is the fifth version of this check and each of the first four was
-    exceeded by the next review -- 0.938, 0.913, 0.1448, 0.2161 in-sample. So
+    exceeded by the next review -- 0.938, 0.913, 0.1448, 0.2115 in-sample. So
     the number here is a measurement of the best attack anybody has run, not a
     floor, and the next reviewer should expect to beat it. The size of what is
     left is clearest from the other side: a submitter who could name **one real
@@ -861,11 +915,7 @@ def cited_lines(
         )
 
     quote_tokens = _tokens(quote)
-    names_something = any(
-        (token[0].isalpha() or token[0] == "_") and not _is_the_languages_own(token)
-        for token in quote_tokens
-    )
-    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not names_something:
+    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not _names_something_of_its_own(quote_tokens):
         # Two things at once, and the second is the load-bearing one. A review
         # scored **micro recall 0.972** by quoting `";"` at every published
         # locator, which the length floor closes. It then scored **0.0138**

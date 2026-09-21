@@ -118,17 +118,18 @@ publishes: the record gives you the function's *name*, so `function {F}()
 external {` is the right text for a zero-argument function's declaration line.
 The strongest such submission measured — whole lines built from a fixed generic
 vocabulary, declared over windows derived from the published line numbers —
-scores **0.2161**.
+scores **0.2115**.
 
-**That 0.2161 is in-sample, and the held-out figure for the same method is
-0.0414.** A blind attack is a list of guesses, and every list measured here was
-chosen by its yield over the same 435 records it was then scored on.
-Cross-fitted — rank the guesses on half the corpus, score the other half — the
-family drops to 0.0414. Use the in-sample number to ask how much a *published*
+**That 0.2115 is in-sample, and the held-out figure for the same method is
+0.0598.** A blind attack is a list of guesses, and every list measured here was
+chosen by its yield over the same 435 records it was then scored on. Scored
+leave-one-out — every record under a guess order fitted on the other 434 — the
+family drops to 0.0598. Use the in-sample number to ask how much a *published*
 corpus leaks to somebody willing to fit it; use the held-out one to ask what a
 submission gets on records it has not seen. A competition is the second
 question, and `assay-arena` answers it with records whose locators are not
-published.
+published. Both figures move by about two records with the tie-break order of
+the greedy that produces them, so read them as 0.21 and 0.06.
 
 Read both as measurements and not as bounds. This check has been rewritten five
 times, the first three published as zeroes, and every one of them was exceeded
@@ -140,12 +141,10 @@ What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
 builds the scorer's checkout from the same public coordinates you have. So a
 script that quotes the real span at each published locator scores **micro recall
-0.9931**, with precision 0.9815 in access control, 0.9947 in denial of service
-and 1.0 in the rest. Measured, not hypothesised. (Not 1.0 anywhere near
-everywhere, and no submission gets a clean sheet of counters: one positive
-record's source resolves from no public coordinates and one more resolves to
-bytes whose digest disagrees with its pin, so the best possible submission still
-reports an unchecked citation.)
+0.9954** over a checkout `contract-assay fetch` builds, with precision 0.9815 in
+access control and 1.0 everywhere else. Measured, not hypothesised. (Not 435 of
+435: one positive record's source is verified source for a deployed address,
+which no repository fetch reaches.)
 
 That is a property of publishing the answer, not a defect in the checking. It
 means:
@@ -275,7 +274,9 @@ outcomes from how they happened to format a string:
   spans, and a rule that accepted it scored 0.126 over the whole corpus reading
   no source.
 - **A quote must carry at least six tokens, one of them naming something the
-  language does not supply.** Below that it is a line anybody can type —
+  language does not supply.** A member name counts as the language's only after
+  a dot, so `msg.sender` is language and a variable called `sender` is a name of
+  your own. Below that it is a line anybody can type —
   `} else {`, `msg.sender,`, `) internal {` — and a line of nothing but braces
   and keywords, `} } return false; }`, is six tokens of the same thing: a review
   scored 0.0138 over the whole corpus out of lines of that shape. One variable,
@@ -283,7 +284,7 @@ outcomes from how they happened to format a string:
   line as well when your statement is short.
 - **Your prediction is scored at the lines your quote matched**, not at the span
   you declared. So locator slop is free in every direction — measured over the
-  whole corpus, an honest submission scores the same 0.9862 with its locator
+  whole corpus, an honest submission scores the same 0.9885 with its locator
   exact, one line wider, five wider, wider above, or wider on both sides — and
   a wide span does not launder a quote into a function it is not in: a quote
   matched in another function is a file match, not a function one. It is not
@@ -305,6 +306,12 @@ code, wrong place) and `citation_quote_absent_from_source`. The scorer adds two
 of its own: `citation_file_is_not_the_units_file` and `citation_unchecked`, the
 second meaning it had no source it could trust and therefore established
 nothing.
+
+**What the floor costs, measured.** A submitter that may widen its quote by a
+line scores 0.9885 over the whole corpus. One confined to quoting a single
+anchor line scores **0.7126**: 124 records have no citable single line at their
+anchor, 121 of them because the line is under six tokens. Widen, or narrow the
+locator to a run of two lines and quote both.
 
 **Shapes this refuses, with what they cost.** A quote assembled from
 non-adjacent lines — a model reporting a function by its three interesting lines

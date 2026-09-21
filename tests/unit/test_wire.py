@@ -90,6 +90,33 @@ def a_submission(report: ScoreReport, submission_id: str = "alice"):  # type: ig
     return score_submission(submission_id, report, weights=WEIGHTS, at_least=MatchStrength.EXACT)
 
 
+class TestEveryDisagreementReachesAJsonReader:
+    """The `citations` block, key by key and value by value.
+
+    The block exists because `refuted_citations` lived only in `statement()`'s
+    prose: a consumer parsing JSON could not see that the scorer had disagreed
+    with the submitter about its own evidence. It was then unpinned, so a review
+    deleted all four keys and swapped two of them with the suite green -- which
+    is the same defect one level up.
+    """
+
+    def test_the_four_counters_are_published_with_their_own_values(self) -> None:
+        report = ScoreReport(
+            by_class=a_report().by_class,
+            refuted_citations=7,
+            unchecked_citations=5,
+            repositioned_predictions=3,
+            repositioned_into_another_function=2,
+        )
+        document = score_document(a_submission(report), [a_record()])
+        assert document["citations"] == {
+            "refuted": 7,
+            "unchecked": 5,
+            "repositioned": 3,
+            "repositioned_into_another_function": 2,
+        }
+
+
 class TestAFigureAndItsAbsenceAreTheSameShape:
     """A missing key is a zero to every consumer that writes `or 0`."""
 
