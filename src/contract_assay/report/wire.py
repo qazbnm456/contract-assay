@@ -235,6 +235,15 @@ def score_document(
         "weights": {level.value: weight for level, weight in sorted(submission.weights.items())},
         "corpus": corpus_fingerprint(records),
         "models": _models(report),
+        # The two counts that say whether the scorer agreed with the submission
+        # about its own evidence. They existed on the report and reached the
+        # document only as prose inside `statement`, so a reader parsing the
+        # JSON could not see that citations had been refuted -- in a wire format
+        # whose whole rule is that every figure carries its own basis.
+        "citations": {
+            "refuted": report.refuted_citations,
+            "unchecked": report.unchecked_citations,
+        },
         "statement": report.statement(),
         "classes": [
             _class_document(

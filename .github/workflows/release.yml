@@ -73,7 +73,13 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install "$(ls dist/*.whl)"
-          # The project's own pinned tool versions, not whatever resolves today.
+          # The project's own tool *bounds*, not whatever resolves today -- and
+          # bounds rather than pins, which is worth saying precisely because the
+          # first version of this comment said "pinned". `pyproject.toml`
+          # declares `ruff>=0.16.7,<0.17`, so a release can still resolve 0.16.8
+          # against a CI run that resolved 0.16.7. What the upper bound buys is
+          # that the failure named below cannot happen; what it does not buy is
+          # two identical resolutions.
           # `ruff format --check` and new lint rules are version-sensitive, so
           # unpinned tools mean the first ruff 0.17 turns every tagged release
           # red under a check `ci.yml` never applied -- which is not "the same
@@ -93,6 +99,10 @@ jobs:
           ruff format --check .
           mypy
           python -m pytest -q -m offline --cov=contract_assay --cov-fail-under=90
+          # `ci.yml`'s last step, which this omitted while the header claimed
+          # "the same gate that guards a commit". It exits 1 on a malformed
+          # published pointer, and nothing else validates `results/`.
+          contract-assay results results
 
       - name: The documented entry points, from the wheel and nowhere near the checkout
         run: |

@@ -52,6 +52,7 @@ from contract_assay.corpus.records import (
     LocatorProvenance,
     NegativeKind,
     Population,
+    SourcePin,
 )
 from contract_assay.corpus.verify import SourceResolver
 from contract_assay.detectors.base import quote_is_at
@@ -849,12 +850,26 @@ def recheck_citations(
 
     What the four checks did close, measured over the whole corpus:
 
-    | forgery | before | after |
+    | forgery, reading no source | before | after |
     | --- | --- | --- |
     | a constant absent from the source | 12/12 matched | 0 |
     | `";"` at every published locator | micro recall 0.972 | 0 |
+    | **`"er"`** at every published locator | **micro recall 0.938** | **0** |
+    | `"function"` at every published locator | micro recall 0.754 | 0 |
     | one donor unit, every locator elsewhere | recall 1.000 | 0 |
-    | a submitter's own `--source-root` | recall 0.982 | 0 |
+    | a submitter's own `--source-root` | recall 0.982 | 0.009 |
+
+    The `"er"` row is why the quote and the span are both tokenised. A first
+    attempt asked whether the *quote* looked token-shaped and left the span test
+    a raw substring search, so the two did not compose: `"er"` lives inside
+    `require`, `transfer` and `reserve`, and a two-character constant scored
+    0.938 with precision 0.953. Reviewing the fix found that; the fix's own
+    table had claimed the class closed.
+
+    The last row is not zero, and the reason is `by_source`: `source_id`
+    excludes the digest, so several records collapse to one pin and a
+    digest-less record used to win. A pin carrying a digest is now preferred,
+    which leaves the residue at the units whose *only* pin has none.
 
     Returns the runs with failed citations demoted, how many were demoted, and
     how many could not be checked at all.
@@ -865,7 +880,18 @@ def recheck_citations(
     hole for anybody invoking `score` without `--source-root`, which is the
     easier way to invoke it.
     """
-    by_source = {record.pin.source_id: record.pin for record in records}
+    # A pin carrying a digest wins. `source_id` is
+    # `commit:<repo>@<commit>:<path>` and excludes `sha256`, so several records
+    # collapse to one key -- and a last-write-wins dict let one digest-less
+    # record disable the digest gate for every other record pinning the same
+    # unit. Measured: four units in the shipped corpus pair a digest-bearing
+    # record with a later `*-adjudicated-*` record that has none, and the forged
+    # `--source-root` forgery leaked exactly those four.
+    by_source: dict[str, SourcePin] = {}
+    for record in records:
+        held = by_source.get(record.pin.source_id)
+        if held is None or (held.sha256 is None and record.pin.sha256 is not None):
+            by_source[record.pin.source_id] = record.pin
     cache: dict[str, str | None] = {}
 
     def source_of(source_id: str) -> str | None:

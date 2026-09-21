@@ -349,18 +349,49 @@ def gate(source: str) -> SkipReason | None:
     return None
 
 
-_WORD = re.compile(r"[A-Za-z_][A-Za-z_0-9]{1,}")
+_TOKEN = re.compile(r"[A-Za-z_][A-Za-z_0-9]*|\d+|[^\sA-Za-z_0-9]")
+"""One Solidity token, roughly: an identifier, a number, or one other character.
+
+Rough is enough. This is not a parser -- it exists so that a quote is compared
+to a span **at token boundaries**, and any tokenisation that agrees with itself
+on both sides gives that.
+"""
+
+_MINIMUM_QUOTE_TOKENS = 3
+"""How many tokens a quote must carry to cite anything.
+
+Three, because the shortest real statement is four -- `owner = who ;` -- and one
+or two tokens name something that appears in most spans rather than this one. A
+review scored **recall 0.953 with precision 0.953** over the whole published
+corpus, reading no source at all, from the two-character quote `"er"`: it
+satisfied a check that looked for a token-shaped *pattern* while the span
+comparison stayed a raw substring test, so `"er"` matched inside `require`,
+`transfer` and `reserve`. Neither check was token-aware, so they did not
+compose, and the floor was two characters inside a token rather than a token.
+"""
 
 
-def _is_substantive(normalised: str) -> bool:
-    """Whether a quote carries content rather than punctuation.
+def _tokens(text: str) -> list[str]:
+    return _TOKEN.findall(text)
 
-    At least one identifier-shaped token of two or more characters. Solidity is
-    case-sensitive and this does not fold case, for the same reason a predicate
-    does not: a match manufactured by folding is one the compiler would not
-    make.
+
+def _quote_is_in_span(quote_tokens: list[str], span_tokens: list[str]) -> bool:
+    """Whether the quote's tokens are a contiguous run of the span's.
+
+    Contiguous rather than equal, deliberately: a record's locator spans a
+    function and a correct finding often cites one statement inside it, so
+    demanding the whole span would reject true findings for citing precisely.
+    What is demanded is that the run align to token boundaries -- which is what
+    a substring test does not give, and is the whole of the difference between
+    quoting `total -= amount;` and quoting `er`.
     """
-    return bool(_WORD.search(normalised))
+    width = len(quote_tokens)
+    if width == 0 or width > len(span_tokens):
+        return False
+    return any(
+        span_tokens[start : start + width] == quote_tokens
+        for start in range(len(span_tokens) - width + 1)
+    )
 
 
 def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
@@ -402,28 +433,34 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
             kind=RejectionKind.CITATION,
             detail="the quote is blank once whitespace is normalised",
         )
-    if not _is_substantive(normalised):
+    quote_tokens = _tokens(normalised)
+    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not any(
+        token[0].isalpha() or token[0] == "_" for token in quote_tokens
+    ):
         # A review scored **micro recall 0.972** across the whole corpus, at
         # `exact` strength, by quoting `";"` at every published locator. The
         # comparison below is containment, so a quote that appears in nearly
         # every span establishes nothing about whether the author read it.
         #
-        # Containment is kept deliberately: a record's locator spans a function
-        # and a correct finding often cites one statement inside it, so
-        # demanding the whole span would reject true findings. What is demanded
-        # instead is that the quote carry *content* -- an identifier or a
-        # keyword, not punctuation. That raises the floor from one character to
-        # one token and no further, which is worth being plain about: it removes
-        # the trivial forgery and not the informed one.
+        # The fix is a granularity one. The first attempt asked whether the
+        # *quote* looked token-shaped while the span test stayed a raw substring
+        # search, so the two did not compose and `"er"` -- inside `require`,
+        # `transfer`, `reserve` -- scored 0.953. Both sides are tokenised now,
+        # and a quote must be a contiguous run of the span's tokens.
+        #
+        # Contiguous rather than equal: a correct finding often cites one
+        # statement inside a record's function span, and demanding the whole
+        # span would reject true findings for citing precisely.
         return FailedCheck(
             check="citation_quote_is_not_substantive",
             kind=RejectionKind.CITATION,
-            detail=f"{quote.strip()[:40]!r} carries no identifier or keyword, so it "
-            "appears in most spans and establishes nothing about this one",
+            detail=f"{quote.strip()[:40]!r} is {len(quote_tokens)} token(s) and needs at "
+            f"least {_MINIMUM_QUOTE_TOKENS} including an identifier; a shorter quote names "
+            "something that appears in most spans rather than this one",
         )
-    if normalised in span:
+    if _quote_is_in_span(quote_tokens, _tokens(span)):
         return None
-    if normalised in normalise(source):
+    if _quote_is_in_span(quote_tokens, _tokens(normalise(source))):
         return FailedCheck(
             check="citation_quote_elsewhere_in_file",
             kind=RejectionKind.CITATION,

@@ -1308,14 +1308,56 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert only(report).predictions == 0
         assert "did not survive re-reading" in report.statement()
 
-    @pytest.mark.parametrize("quote", [";", "}", "{", "();", "  ;  ", "+"])
-    def test_a_punctuation_quote_establishes_nothing(self, quote: str) -> None:
-        # Measured at micro recall 0.972 across the corpus, at EXACT strength,
-        # from a single semicolon. The comparison is containment, so a quote
-        # appearing in nearly every span says nothing about this one.
+    @pytest.mark.parametrize(
+        "quote",
+        [
+            # Punctuation, the first forgery found.
+            ";",
+            "}",
+            "{",
+            "();",
+            "  ;  ",
+            "+",
+            # Short substrings of ordinary identifiers, the second. `"er"` is
+            # inside `require`, `transfer` and `reserve`, and it scored micro
+            # recall 0.938 with precision 0.953 over the whole published corpus
+            # while a test parametrized only the punctuation above -- so the
+            # suite locked in the strings and not the class, and 1141 tests
+            # passed with the hole open.
+            "er",
+            "re",
+            "to",
+            "ss",
+            "ab",
+            # A single token, however real: it names something that appears in
+            # most spans rather than this one.
+            "function",
+            "require",
+            "address",
+            "total",
+            # Two tokens, still below the floor.
+            "total =",
+            "function f",
+        ],
+    )
+    def test_a_quote_that_names_no_span_in_particular_establishes_nothing(self, quote: str) -> None:
         report = score([self.a_submitted_run(quote)], [a_record()], resolver())
-        assert report.refuted_citations == 1
+        assert report.refuted_citations == 1, f"{quote!r} established a citation"
         assert only(report).predictions == 0
+
+    def test_a_three_token_quote_at_the_right_lines_is_accepted(self) -> None:
+        # The other direction, and the floor is where it is because of this: a
+        # correct finding often cites one statement inside a record's function
+        # span, so the check must not demand the whole span.
+        report = score([self.a_submitted_run("total -= amount;", (6, 6))], [a_record()], resolver())
+        assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
+        assert only(report).predictions == 1
+
+    def test_a_quote_that_straddles_tokens_is_refused(self) -> None:
+        # `otal -= amoun` is a substring of the span and not a run of its
+        # tokens. Before both sides were tokenised, a substring was enough.
+        report = score([self.a_submitted_run("otal -= amoun", (6, 6))], [a_record()], resolver())
+        assert report.refuted_citations == 1
 
     def test_a_locator_naming_another_file_is_refuted(self) -> None:
         # Measured at recall 1.000 over the whole corpus: every run declared one
