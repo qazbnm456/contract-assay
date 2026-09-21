@@ -1755,8 +1755,11 @@ one, produces this:
 | unchecked_external_call | 4 | 6 | **neither** |
 | insecure_randomness | 1 | 0 | **neither** |
 
-Three classes lose their eligibility on one side or both, against a
-`MINIMUM_RECORDS_PER_CLASS` of ten. So the split would trade measurable class
+Two classes lose their eligibility, against a `MINIMUM_RECORDS_PER_CLASS` of
+ten: `reentrancy`, eligible at 20 today, keeps only 7 on the development side,
+and `unchecked_external_call`, eligible at exactly 10, falls below on both.
+`insecure_randomness` is listed for completeness -- it holds one record, so it
+is already below the minimum and had no eligibility to lose. So the split would trade measurable class
 coverage for a holdout that is **in git and therefore not secret** -- anybody
 can read which side a record is on. That is a cost paid for nothing.
 

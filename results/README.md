@@ -53,8 +53,8 @@ $ contract-assay results
 
 It groups results by **what they were measured against** and compares only
 within a group. Two results disagree about any of `engine_version`,
-`corpus_digest`, `strength_floor`, `weights` or `predictions_per_unit` and they
-are not two measurements of the same thing — the commonest reason two
+`corpus_digest`, `strength_floor`, `weights`, `predictions_per_unit` or
+`main_model` and they are not two measurements of the same thing — the commonest reason two
 leaderboards disagree is not a scoring change but a corpus that grew.
 
 A result whose document **refused** to compute a total is listed after the
@@ -64,6 +64,11 @@ and the usual cause is work the exercise owes — unadjudicated predictions, or 
 class the corpus does not cover — rather than anything the submission did.
 
 ## What a pointer may not do
+
+A deterministic submission is grouped apart from a model-backed one for the
+same reason, which is `main_model` being part of the basis: it was measured
+under different conditions, and that is not a worse result, it is a different
+question.
 
 - **Report a total the document did not.** A null total carries the document's
   own `unavailable` sentence, and a pointer with one and not the other is

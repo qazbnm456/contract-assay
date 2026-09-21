@@ -21,6 +21,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      # As `ci.yml` sets it. Without this the matrix cancels the surviving leg,
+      # so a failure on one interpreter hides whether the other would have
+      # passed.
+      fail-fast: false
       matrix:
         # The same matrix `ci.yml` uses. A release tested on fewer interpreters
         # than the commits it contains is a weaker claim than the commits made.
@@ -69,7 +73,14 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install "$(ls dist/*.whl)"
-          python -m pip install pytest pytest-cov ruff mypy
+          # The project's own pinned tool versions, not whatever resolves today.
+          # `ruff format --check` and new lint rules are version-sensitive, so
+          # unpinned tools mean the first ruff 0.17 turns every tagged release
+          # red under a check `ci.yml` never applied -- which is not "the same
+          # gate", whatever the step is called. A review measured the drift
+          # already: the release env resolved ruff 0.16.8 against the project's
+          # 0.16.7.
+          python -m pip install --group dev
 
       - name: The gate, against the installed wheel
         # `ruff`, `ruff format --check`, `mypy` and the offline suite with the

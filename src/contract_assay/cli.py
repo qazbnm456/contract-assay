@@ -423,7 +423,11 @@ def results_command(
                 f"  group {index} of {len(groups)} -- not comparable with the others "
                 f"(engine {first.engine_version}, corpus {first.corpus_digest[:12]}, "
                 f"floor {first.strength_floor}, cap {first.predictions_per_unit}, "
-                f"model {first.main_model or 'deterministic'})",
+                f"model {first.main_model or 'deterministic'}, "
+                # `weights` too, or two groups split only by weighting print
+                # byte-identical labels -- a label that exists to say why the
+                # groups differ, saying nothing that differs.
+                f"weights {json.dumps(first.weights, sort_keys=True)})",
                 fg=typer.colors.YELLOW,
             )
         for place, pointer in enumerate(group, start=1):

@@ -30,8 +30,8 @@ so a merged pointer cannot break the command for everybody else.
 
 **Comparison is refused more often than it is granted, and that is the useful
 part.** Two results computed against different corpus digests, engine versions,
-strength floors, weightings or prediction caps are not two measurements of the
-same thing, and `compare` says which of those differ instead of putting them in
+strength floors, weightings, prediction caps or main models are not two
+measurements of the same thing, and `compare` says which of those differ instead of putting them in
 one column. The commonest reason two leaderboards disagree is not a scoring
 change but a corpus that grew.
 """
