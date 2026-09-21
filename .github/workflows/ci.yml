@@ -51,3 +51,44 @@ jobs:
         # `contract-assay results` exit 1 for every user until somebody reverts
         # it. The gate is where that is caught, on the pull request that adds it.
         run: contract-assay results results
+
+  figures:
+    # The numbers the docstrings publish, checked against a real checkout.
+    #
+    # Eight review rounds found, every time, a figure re-measured on one side of
+    # a comparison and not the other -- a before/after drawn from two submission
+    # files, a table mixing two checkouts, an honest ceiling published three
+    # ways. The generator was structural: the figures lived in prose and nothing
+    # recomputed them. This job is the fix, so a figure that moves fails here
+    # instead of waiting for somebody to re-derive it by hand.
+    #
+    # Separate from `gate` because it needs the network: the checkout is fetched
+    # from the coordinates the corpus pins. The offline gate stays offline.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --group dev
+
+      - name: Fetch the pinned source
+        run: contract-assay fetch corpus/records --source-root ./checkout
+
+      - name: Verify the corpus against it
+        # Exits 1 on the shipped corpus: one record pins verified source for a
+        # deployed address, which no repository checkout can hold. The gate is
+        # that no *new* record joins it, so the count is asserted rather than
+        # the exit code.
+        run: |
+          contract-assay verify corpus/records --source-root ./checkout > verify.txt || true
+          cat verify.txt
+          grep -q "441 records admitted; 1 of 442" verify.txt
+
+      - name: Published figures
+        run: pytest -m checkout

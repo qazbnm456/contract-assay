@@ -140,4 +140,5 @@ markers = [
     "offline: runs with no model, no network, and no sandbox runtime",
     "live: requires a configured LM; excluded from the default CI gate",
     "solc: requires a resolvable solc toolchain",
+    "checkout: needs a source checkout built by `contract-assay fetch`",
 ]

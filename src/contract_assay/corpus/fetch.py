@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -103,6 +104,9 @@ class FetchReport:
     collisions: tuple[str, ...] = ()
     """Paths the corpus pins at more than one revision, so each got its own name."""
 
+    unwritable: tuple[str, ...] = ()
+    """Paths that are another pin's file on this filesystem, so were not written."""
+
     def by_state(self, state: str) -> list[FetchOutcome]:
         return [o for o in self.outcomes if o.state == state]
 
@@ -143,6 +147,14 @@ class FetchReport:
                 "most records pin, for a resolver that has not learned the names. Any "
                 "write that did land on another's bytes is in the mismatch line below, "
                 "which is read off the tree rather than off the writes."
+            )
+        if self.unwritable:
+            named = ", ".join(self.unwritable[:3])
+            parts.append(
+                f"{len(self.unwritable)} path(s) are another pin's file on this filesystem "
+                f"({named}) and were not written -- two spellings that differ only in case, or "
+                "in Unicode normal form, are one file here. Fetch those pins into their own "
+                "--source-root."
             )
         mismatched = self.by_state("mismatched")
         if mismatched:
@@ -375,6 +387,16 @@ def fetch_records(
                 detail="a deployed address's source of truth is a chain explorer, not a repository",
             )
         assert isinstance(pin, CommitPin)
+        shadowed = unwritable.get(pin.path)
+        if shadowed is not None:
+            return FetchOutcome(
+                source_id=source_id,
+                path=pin.path,
+                state="unavailable",
+                detail=f"{pin.path!r} and {shadowed!r} are one file on a case-insensitive or "
+                "Unicode-normalising filesystem, so only the first was written; fetch this "
+                "pin into its own --source-root",
+            )
         # One name per revision when the path is pinned at several, so that no
         # write clobbers another's bytes. Every pin of a colliding path is
         # renamed, not just the losers: leaving one of them at the plain path
@@ -421,7 +443,12 @@ def fetch_records(
             )
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        staging = target.with_suffix(target.suffix + f".{os.getpid()}.partial")
+        # The digest of the *name* in the suffix, not only the pid: two targets
+        # that are one file on a case-insensitive filesystem shared one staging
+        # name, and the second thread's `replace` raised `FileNotFoundError`
+        # after the first had already moved it.
+        stamp = hashlib.sha256(relative.encode("utf-8")).hexdigest()[:8]
+        staging = target.with_suffix(target.suffix + f".{os.getpid()}.{stamp}.partial")
         staging.write_bytes(body)
         staging.replace(target)
         return FetchOutcome(
@@ -433,11 +460,38 @@ def fetch_records(
         )
 
     entries = _pins(records)
-    digests: dict[str, set[str | None]] = {}
+
+    # Keyed on the path as a *filesystem* would see it, not as the record spells
+    # it. Two pins differing only in case, or in Unicode normal form, land on one
+    # file on the default macOS and Windows filesystems -- and the detector,
+    # keyed on the raw string, did not fire: one file existed and the loser was
+    # reported as a digest mismatch, which is the wrong cause for a name
+    # collision. `_Pin` refuses `a/./b` for being a second spelling of one file;
+    # these are the same class two spellings along.
+    def filesystem_key(path: str) -> str:
+        return unicodedata.normalize("NFC", path).casefold()
+
+    spellings: dict[str, set[str]] = {}
+    revisions: dict[str, set[str | None]] = {}
     for _, pin in entries:
         if isinstance(pin, CommitPin):
-            digests.setdefault(pin.path, set()).add(pin.sha256)
-    collisions = {path: True for path, seen in digests.items() if len(seen) > 1}
+            spellings.setdefault(filesystem_key(pin.path), set()).add(pin.path)
+            revisions.setdefault(pin.path, set()).add(pin.sha256)
+
+    # Two *kinds* of collision, and they have different answers. One path
+    # string pinned at several revisions is written once per revision, because
+    # both sets of bytes can exist under different names. Two path *strings*
+    # that are one file on this filesystem cannot both exist under any naming --
+    # a revision name preserves the case that made them collide -- so the second
+    # is reported unavailable, with that as its cause. It used to be reported as
+    # a digest mismatch, which sent the reader looking for moved source.
+    collisions = {path: True for path, seen in revisions.items() if len(seen) > 1}
+    unwritable: dict[str, str] = {}
+    for paths in spellings.values():
+        if len(paths) > 1:
+            first, *rest = sorted(paths)
+            for path in rest:
+                unwritable[path] = first
 
     with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
         report.outcomes = list(pool.map(one, entries))
@@ -467,4 +521,5 @@ def fetch_records(
     # sentence until two pins of one path made them different ones.
     report.outcomes = [_still_true(root, pin_of[o.source_id], o) for o in report.outcomes]
     report.collisions = tuple(sorted(collisions))
+    report.unwritable = tuple(sorted(unwritable))
     return report

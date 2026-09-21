@@ -22,10 +22,13 @@ proposing a record.
 ```console
 $ python -m pip install --upgrade pip      # `--group` needs pip >= 25.1
 $ pip install -e . --group dev
-$ ruff check . && ruff format --check . && mypy && pytest -q -m offline
+$ ruff check . && ruff format --check . && mypy
+$ pytest -m offline --cov=contract_assay --cov-fail-under=90
+$ contract-assay results results
 
 $ contract-assay fetch corpus/records --source-root ./checkout
 $ contract-assay verify corpus/records --source-root ./checkout
+$ pytest -m checkout        # the figures the docs publish, over that checkout
 ```
 
 `verify` **exits 1 on the shipped corpus** and that is not a failure you have

@@ -126,8 +126,9 @@ real measurement **of an honest submission** — which is what a development
 benchmark is for — and it is not evidence against a motivated one. A competitive
 ranking needs records whose locators are not published; that is what
 [`assay-arena`](../assay-arena) exists for. `docs/api.md` §1 has the numbers,
-including what a submission that opens no source file can still score: **0.43**
-over these records, and **0.07** over records it has not seen. The first figure
+including what a submission that opens no source file can still score: **0.24**
+over these records and **0.07** over records it has not seen — or 0.43 and 0.07,
+the same attack grouped to favour the first figure. The first figure
 is a measure of how hard somebody worked at this corpus; the second is what the
 same method gets on a corpus it has not read.
 

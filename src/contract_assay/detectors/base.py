@@ -553,7 +553,7 @@ Why a citation must name something outside it: the identifier test used to be
 `token[0].isalpha()`, which `return`, `false` and `unchecked` satisfy -- so
 `} } return false; }` was "substantive" at six tokens, and a review built a
 blind submission out of nothing but braces and keywords. Measured, this clause
-costs an honest submission 0.9931 -> 0.9908, which is two records whose whole
+costs an honest submission 0.9954 -> 0.9908, which is two records whose whole
 anchor line is language -- `receive() external payable {}` and
 `return (false, 0);` -- and a third record, `2024-12-plaza-finance-…-1e5ed5cb`,
 which has no citable quote for a different reason (its anchor line is blank, so
@@ -665,15 +665,15 @@ are also among the commonest variable names in Solidity. Listed as standalone
 words, a correct one-line citation of
 `keccak256(abi.encodePacked(sender, block.timestamp))` -- the canonical
 insecure-randomness line, where `sender` is a parameter -- had no name of its
-own left and was refused. A review measured 16 records losing their single-line
+own left and was refused. A review measured 15 records losing their single-line
 citation that way, 7 of them to `encodePacked` alone.
 
 So a member name counts as the language's only where the language puts it:
 immediately after a `.`. Bare, it is a name the file chose.
 
-**It recovers 8, and the population it recovers from is 15, not the 16 first
-published here** -- 16 counts a record the counters took, which belongs to
-`_IDIOMATIC_COUNTERS` and not to this set. What stays refused is 8 occurrences
+**It recovers 8 of the 15.** An earlier version of this note said 16, which
+counted a record the counters took -- that one belongs to
+`_IDIOMATIC_COUNTERS`, not here. What stays refused is 8 occurrences
 over 5 distinct lines across 7 records, and they are worth knowing because they
 are shapes a one-line finding takes: `abi.encodePacked(msg.sender)` in four
 dodo records (every token is the language's, the receiver included),
@@ -808,19 +808,23 @@ def cited_lines(
 
     | honest submission, quote unchanged | equality | now |
     | --- | --- | --- |
-    | locator exactly the quoted lines | 0.993 | 0.9908 |
+    | locator exactly the quoted lines | 0.9954 | 0.9908 |
     | locator one line wider below | **0.076** | **0.9908** |
     | locator five lines wider below | 0.005 | 0.9908 |
     | locator one line wider above | 0.409 | 0.9908 |
     | locator one line wider on both sides | 0.005 | 0.9908 |
     | locator five lines wider on both sides | 0.005 | 0.9908 |
-    | each record's whole span | 0.989 | **0.9954** |
+    | each record's whole span | 0.9977 | **0.9954** |
 
     Every row is over a checkout `contract-assay fetch` built and read through
-    `corpus.fetch.checkout_file`. An earlier version of this table published
-    0.9885 for the first six rows, which was the same submission over a
-    hand-assembled tree missing one revision of one file -- the row below it
-    already said "from a fresh fetch", so the table mixed two checkouts.
+    `corpus.fetch.checkout_file`, **both columns**. Two versions of this table
+    mixed checkouts: the first published 0.9885 for the six `now` rows, which
+    was a hand-assembled tree missing one revision of one file; the correction
+    of that left the `equality` column where it was, so the same table then held
+    a `0.993` measured on the old tree beside a `0.9908` measured on the new one
+    -- a one-record delta explained as a two-record cost. The figures are pinned
+    in `tests/checkout/test_published_figures.py` now, which is the only way
+    this stops recurring: they were prose, and prose does not get recomputed.
 
     Locator slop in *any* direction is free now. Two of those rows were not
     free under a line run alone: a span starting a line above a function
@@ -828,7 +832,7 @@ def cited_lines(
     Positioning (below) fixed them as a side effect -- the prediction is where
     its quote is, and its quote is inside the function.
 
-    The 0.993 -> 0.9908 is three records with no citable quote in their anchor
+    The 0.9954 -> 0.9908 is three records with no citable quote in their anchor
     window: `2025-05-dodo-…-94722659` (`receive() external payable {}`) and
     `2025-05-lend-…-ad76a9bd` (`return (false, 0);`), which
     `_LANGUAGES_OWN_WORDS` refuses, and `2024-12-plaza-finance-…-1e5ed5cb`,
@@ -909,10 +913,19 @@ def cited_lines(
     Every one of those numbers was published here as if it were a property of
     the rule, and each was beaten within a round.
 
-    The held-out figure has moved far less -- 0.0414, 0.0598, 0.0644, 0.0713 --
-    and it is the one a competitive ranking should be designed against. It is
-    also still moving, and a fifth of it arrived with the revert strings, so
-    treat 0.07 as this week's measurement and not as a limit.
+    The held-out figure has moved far less -- 0.0414, 0.0598, 0.0644, 0.0713,
+    i.e. 18 records to 31 -- and it is the one a competitive ranking should be
+    designed against.
+
+    **Read it as single digits, not as four decimals.** The generator is not in
+    this repository: it is a slot-ranking harness with a vocabulary, a grouping
+    and a window sweep, and each review has written its own. An eighth review
+    reconstructed one that reproduced the *in-sample* half to within a record
+    and could not exceed 0.0644 held out, and found that adding the words this
+    docstring had credited for the last step **lowered** its own held-out figure
+    in three configurations of four. So 0.07 is the highest anyone has reported,
+    nobody can currently re-derive it from what is committed, and the causal
+    story an earlier version of this paragraph told about it was wrong.
 
     The size of what is left is clearest from the other side: a submitter who
     could name **one real line** of each published span would score 0.9908. The

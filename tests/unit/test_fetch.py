@@ -247,6 +247,56 @@ class TestWhatItWillNotGuess:
         }
         assert "replaced after they were verified" in report.by_state("mismatched")[0].detail
 
+    def test_two_spellings_of_one_path_are_a_collision(self, tmp_path: Path) -> None:
+        # The detector keyed on the raw string, so two pins differing only in
+        # case -- one file on the default macOS and Windows filesystems -- did
+        # not register: one file existed and the loser was reported as a digest
+        # mismatch, which is the wrong cause for a name collision.
+        other = b"contract Vault { uint256 total; }\n"
+
+        def pin_at(path: str, digest: str) -> CommitPin:
+            return CommitPin(
+                repo_url="https://github.com/example/vault",
+                commit="a" * 40,
+                path=path,
+                sha256=digest,
+            )
+
+        records = [
+            a_record(
+                record_id="one",
+                pin=pin_at(PATH, DIGEST),
+                locator=Locator(
+                    file=PATH, contract="Vault", function="setOwner", start_line=1, end_line=1
+                ),
+            ),
+            a_record(
+                record_id="two",
+                pin=pin_at("src/vault.sol", hashlib.sha256(other).hexdigest()),
+                locator=Locator(
+                    file="src/vault.sol",
+                    contract="Vault",
+                    function="setOwner",
+                    start_line=1,
+                    end_line=1,
+                ),
+            ),
+        ]
+
+        def fetch(url: str) -> bytes:
+            return other if url.endswith("vault.sol") else BODY
+
+        report = fetch_records(records, tmp_path, fetch=fetch)
+        # Not a revision collision: two spellings of one file cannot both exist
+        # under any naming, so the second is unavailable with that as its cause
+        # -- it used to be reported as a digest mismatch, which sends a reader
+        # looking for source that moved.
+        assert report.collisions == ()
+        assert report.unwritable == ("src/vault.sol",)
+        assert sorted(o.state for o in report.outcomes) == ["unavailable", "verified"]
+        assert "one file on a case-insensitive" in report.by_state("unavailable")[0].detail
+        assert "are another pin's file on this filesystem" in report.statement()
+
     def test_a_digest_less_pin_does_not_read_a_planted_revision_file(self, tmp_path: Path) -> None:
         # The revision branch is skipped when there is no digest, and the
         # fallback used to return the revision file unconditionally -- so a
@@ -272,6 +322,41 @@ class TestWhatItWillNotGuess:
             repo_url="https://github.com/example/vault", commit="a" * 40, path="src/Vault.sol"
         )
         assert checkout_file(root, pin) is None
+
+    def test_a_checkout_reached_through_a_symlink_still_works(self, tmp_path: Path) -> None:
+        # The root is resolved before the comparison, so a checkout that is
+        # itself a link -- which is how a shared cache gets mounted -- is not
+        # mistaken for an escape from itself. Nothing pinned this.
+        real = tmp_path / "real"
+        (real / "src").mkdir(parents=True)
+        (real / "src" / "Vault.sol").write_text("contract Vault {}")
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        pin = CommitPin(
+            repo_url="https://github.com/example/vault", commit="a" * 40, path="src/Vault.sol"
+        )
+        got = checkout_file(link, pin)
+        assert got is not None
+        assert got.read_text() == "contract Vault {}"
+
+    def test_a_revision_file_that_escapes_is_not_the_unit(self, tmp_path: Path) -> None:
+        # Both branches that can return a revision-named file are contained,
+        # not just the plain one: with the digest matching, and with the plain
+        # path absent so the mismatch fallback fires.
+        outside = tmp_path / "outside.sol"
+        outside.write_text("contract Secret {}")
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / "src" / f"Vault@{'a' * 12}.sol").symlink_to(outside)
+        matching = CommitPin(
+            repo_url="https://github.com/example/vault",
+            commit="a" * 40,
+            path="src/Vault.sol",
+            sha256=hashlib.sha256(b"contract Secret {}").hexdigest(),
+        )
+        assert checkout_file(root, matching) is None
+        mismatching = matching.model_copy(update={"sha256": "0" * 64})
+        assert checkout_file(root, mismatching) is None
 
     def test_a_symlink_inside_the_checkout_still_resolves(self, tmp_path: Path) -> None:
         # Containment, not a ban on links: a checkout reached through one, or

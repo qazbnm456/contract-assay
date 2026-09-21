@@ -28,4 +28,7 @@ runs/
 .vscode/
 
 # A fetched source checkout. 134 files, reproducible from the pins.
-checkout/
+# Anchored: an unanchored `checkout/` also ignored `tests/checkout/`, which is
+# how the module that pins the published figures went missing from its own
+# commit.
+/checkout/

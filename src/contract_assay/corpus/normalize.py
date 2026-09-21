@@ -52,6 +52,7 @@ from contract_assay.corpus.records import (
     LocatorLabel,
     LocatorProvenance,
     Population,
+    check_unit_path,
     defect_key,
     fold_preference,
 )
@@ -687,6 +688,15 @@ def parsed_contract_of(source: str, line: int) -> tuple[str | None, str | None]:
     return host.contract, host.function
 
 
+def _can_be_a_path(candidate: str) -> bool:
+    """Whether this string could name a file inside a checkout."""
+    try:
+        check_unit_path(candidate)
+    except ValueError:
+        return False
+    return True
+
+
 def normalize(
     drafts: Iterable[DraftRecord],
     resolve: SourceResolver,
@@ -719,6 +729,20 @@ def normalize(
         # The pin is built before resolution rather than after, because
         # resolution is now asked for a pin: where bytes come from depends on
         # what kind of coordinates name them, and only the pin knows that.
+        usable = [
+            candidate
+            for candidate in (draft.path, *draft.alternative_paths)
+            if _can_be_a_path(candidate)
+        ]
+        if usable and usable[0] != draft.path:
+            # The primary is unusable and a candidate is not. Which file the
+            # adapter put in `path` is not load-bearing -- `_file_the_quote_names`
+            # says so, and every candidate is resolved and adjudicated by the
+            # quote -- so losing the draft over the primary's spelling made that
+            # invariant false whenever the spelling was the broken part.
+            draft = draft.model_copy(
+                update={"path": usable[0], "alternative_paths": tuple(usable[1:])}
+            )
         try:
             pin = CommitPin(
                 repo_url=draft.repo_url,
@@ -728,7 +752,14 @@ def normalize(
             )
         except ValidationError as refused:
             # Counted, not raised. See `NormalizeCause.UNUSABLE_PATH`.
-            lose(draft, NormalizeCause.UNUSABLE_PATH, str(refused).splitlines()[-1][:120])
+            # `errors()[0]["msg"]`, not `str(refused).splitlines()[-1]`: the last
+            # line of a pydantic `ValidationError` is its documentation URL, so
+            # every skip recorded "For further information visit
+            # https://errors.pydantic.dev/..." where the reason should be. A
+            # cause recorded wrongly points investigation away from the fix, and
+            # this file says so three times.
+            reason = refused.errors()[0]["msg"] if refused.errors() else str(refused)
+            lose(draft, NormalizeCause.UNUSABLE_PATH, f"{draft.path}: {reason}"[:200])
             continue
         if draft.alternative_paths:
             chosen = _file_the_quote_names(draft, resolve)

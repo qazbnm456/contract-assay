@@ -972,9 +972,11 @@ def recheck_citations(
     Every earlier version of this table published an in-sample number without
     saying so, and each was beaten inside a round: 0.1448, 0.2161, 0.2299,
     0.4069, 0.4299, all the same idea with better tooling. The held-out figure
-    has moved from 0.0414 to 0.0713 over four rounds, a fifth of the last step
-    arriving with the words of common revert strings, which `_TOKEN` tokenises
-    out of string literals. Read the first column as how
+    has moved from 0.0414 to 0.0713 over four rounds -- 18 records to 31 -- and
+    it is the one to read, as single digits rather than four decimals: the
+    harness that produces it is not committed, each review writes its own, and
+    an eighth could not exceed 0.0644 with a reconstruction that matched the
+    in-sample half. `quote_is_at` has that caveat in full. Read the first column as how
     hard the attacker worked and the second as what the method gets on records
     it has not seen.
 

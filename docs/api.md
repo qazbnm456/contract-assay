@@ -118,15 +118,17 @@ publishes: the record gives you the function's *name*, so `function {F}()
 external {` is the right text for a zero-argument function's declaration line.
 The strongest such submission measured — whole lines built from a fixed generic
 vocabulary, declared over windows derived from the published line numbers —
-scores **0.2414**, with **0.0713** held out — or 0.4299 in-sample and 0.0690
+scores **0.24** in-sample with **0.07** held out — or 0.43 in-sample and 0.07
 held out, the same attack grouped to favour the first figure.
 
 **Both halves of a pair have to come from one configuration.** An earlier
-version of this page put 0.4069 beside 0.0644, which were two different
-attacks. A blind attack is a list of guesses, and every list measured here was
+version of this page put 0.4069 beside 0.0644, which were two different attacks.
+And read these as single digits: the harness that produces them is not committed
+— each review writes its own — and an eighth reconstructed one that matched the
+in-sample half and could not exceed 0.064 held out. A blind attack is a list of guesses, and every list measured here was
 chosen by its yield over the same 435 records it was then scored on. Scored
 leave-one-out — every record under a guess order fitted on the other 434 — the
-family drops to 0.0713. Use the in-sample number to ask how much a *published*
+family drops to about 0.07. Use the in-sample number to ask how much a *published*
 corpus leaks to somebody willing to fit it; use the held-out one to ask what a
 submission gets on records it has not seen. A competition is the second
 question, and `assay-arena` answers it with records whose locators are not
@@ -136,7 +138,8 @@ Read the in-sample figure as a measure of how hard the attacker worked, not of
 the check: six reviews have raised it with better tooling and the same idea —
 0.14, 0.22, 0.23, 0.41, 0.43 — and each value was published here as a property
 of the rule and beaten within a round. The held-out figure has moved far less,
-0.041 → 0.060 → 0.064 → 0.071, and it is still moving.
+0.041 → 0.060 → 0.064 → 0.071 — eighteen records to thirty-one — and it is
+still moving.
 
 Read both as measurements and not as bounds. This check has been rewritten five
 times, the first three published as zeroes, and every one of them was exceeded

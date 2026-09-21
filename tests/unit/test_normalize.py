@@ -115,6 +115,34 @@ class TestADraftThatCannotBecomeARecordIsCounted:
         assert outcome.by_cause[NormalizeCause.UNUSABLE_PATH] == 1
         assert len(outcome.skipped) == 1
 
+    def test_an_unusable_primary_falls_through_to_a_usable_candidate(self) -> None:
+        # `_file_the_quote_names` says which file the adapter put in `path` is
+        # not load-bearing: every candidate is resolved and the quote decides.
+        # That was false whenever the *primary's spelling* was the broken part,
+        # because the pin was built from it before any candidate was tried.
+        draft = a_draft().model_construct(
+            **{
+                **a_draft().__dict__,
+                "path": "../../etc/passwd.sol",
+                "alternative_paths": ("src/Vault.sol",),
+            }
+        )
+        outcome = run(draft)
+        assert NormalizeCause.UNUSABLE_PATH not in outcome.by_cause
+        assert [record.pin.path for record in outcome.records] == ["src/Vault.sol"]
+
+    def test_the_recorded_reason_is_the_reason(self) -> None:
+        # `str(ValidationError).splitlines()[-1]` is pydantic's documentation
+        # URL, so every skip recorded "For further information visit
+        # https://errors.pydantic.dev/..." where the cause should be. This file
+        # says three times that a cause recorded wrongly points investigation
+        # away from the fix.
+        draft = a_draft().model_construct(**{**a_draft().__dict__, "path": "."})
+        [skip] = run(draft).skipped
+        assert skip.cause is NormalizeCause.UNUSABLE_PATH
+        assert "pydantic.dev" not in skip.detail
+        assert "path must name a file" in skip.detail
+
     def test_one_unusable_alternative_does_not_lose_the_draft(self) -> None:
         # The quote may still name one of the others, so an unusable candidate
         # is skipped rather than fatal.

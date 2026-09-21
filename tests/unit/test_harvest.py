@@ -402,6 +402,20 @@ class TestOneBadReportDoesNotLoseTheBatch:
 
 
 class TestADraftMustBeAbleToBecomeARecord:
+    def test_a_traversing_primary_path_is_refused(self) -> None:
+        # `normalize` builds a `CommitPin` from this at two sites with no `try`,
+        # so one malformed permalink aborted the whole corpus build. Refused
+        # here, where the adapter that built it is still identifiable.
+        with pytest.raises(ValidationError, match="path must"):
+            self._draft(path="../../etc/passwd.sol")
+
+    def test_a_traversing_alternative_path_is_refused(self) -> None:
+        # The unpinned arm: a review dropped `alternative_paths` from the loop
+        # and the whole suite passed. Those strings become a pin's `path` in
+        # `_file_the_quote_names` exactly as the primary does.
+        with pytest.raises(ValidationError, match="path must"):
+            self._draft(alternative_paths=("src/Vault.sol", "../../etc/passwd.sol"))
+
     def _draft(self, **over: object) -> DraftRecord:
         base: dict[str, object] = {
             "candidate_id": "H-01",

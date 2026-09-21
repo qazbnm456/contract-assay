@@ -1003,9 +1003,10 @@ contract Vault {
 
     def test_one_name_the_language_does_not_supply_is_enough(self) -> None:
         # The other side of it: a real statement names a variable, and that is
-        # all this asks for. The clause costs an honest submission 0.9931 ->
-        # 0.9885 over the whole corpus, which is two records whose natural quote
-        # is language only.
+        # all this asks for. The clause costs an honest submission 0.9954 ->
+        # 0.9908 over the whole corpus, which is two records whose natural quote
+        # is language only -- and `tests/checkout/test_published_figures.py`
+        # holds those numbers, so a comment cannot be the only place they live.
         assert self._check("total = total - amount;", 6, 6) is None
 
     @pytest.mark.parametrize(
@@ -1034,7 +1035,7 @@ contract Vault {
     def test_a_member_name_is_the_languages_only_after_a_dot(self, member: str) -> None:
         # Listing these context-free was a defect: they are members of `msg`,
         # `abi` and the elementary types, and they are also among the commonest
-        # variable names in Solidity. A review measured 16 records losing their
+        # variable names in Solidity. A review measured 15 records losing their
         # single-line citation to it, 7 of them to `encodePacked` in
         # `keccak256(abi.encodePacked(sender, block.timestamp))` -- the
         # canonical insecure-randomness line, where `sender` is a parameter.
