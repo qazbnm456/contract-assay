@@ -135,3 +135,15 @@ checks the result. `docs/api.md` §8 shows the two commands a consumer runs.
 
 A change that improves a figure by loosening what counts is the failure this
 project is most exposed to, because it looks like progress in every report.
+
+## The corpus is public, all of it
+
+Every record ships `split: public` and there is no withheld slice. A public
+benchmark has a public corpus -- contamination is answered by disclosure and by
+**growth**, and growth is what an adapter contribution is for. `docs/design.md`
+carries the measurement behind that decision, including what splitting this
+corpus would cost in class coverage.
+
+If you are running a competition rather than measuring a harness, you need a
+holdout and it is yours to curate: records from reports your entrants have not
+seen, in their own directory, marked `private_holdout`, never committed here.

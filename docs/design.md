@@ -1731,6 +1731,43 @@ annotation history even when it is absent from the data.
 | `private_holdout` | no | Ordinary annotation, withheld by decision |
 | `synthetic_variant` | never | A derivative work of the contract it came from |
 
+### Why this corpus is wholly public, and stays that way
+
+Every record ships `split: public`, and that is a decision rather than an
+unfinished state. It was reopened once and measured, so the measurement is here
+to stop it being reopened again.
+
+A public benchmark has a public corpus. SWE-bench, HumanEval and MMLU are all
+fully published; contamination is handled by **disclosure and growth** -- a
+submission says what it was built from, and the corpus keeps acquiring records
+-- rather than by secrecy. Growth is the part this project is built for: an
+adapter is a contribution, and a corpus that gains records faster than any one
+harness can be tuned to it is a better answer to overfitting than a corpus half
+of which nobody may read.
+
+The alternative was tried on paper. Holding a third of the units back, grouped
+by source file so a development record never sits in a file containing a held
+one, produces this:
+
+| class | holdout | public | ranked over |
+| --- | --- | --- | --- |
+| reentrancy | 13 | 7 | holdout only |
+| unchecked_external_call | 4 | 6 | **neither** |
+| insecure_randomness | 1 | 0 | **neither** |
+
+Three classes lose their eligibility on one side or both, against a
+`MINIMUM_RECORDS_PER_CLASS` of ten. So the split would trade measurable class
+coverage for a holdout that is **in git and therefore not secret** -- anybody
+can read which side a record is on. That is a cost paid for nothing.
+
+**A round that needs a holdout curates its own.** `CorpusSplit.PRIVATE_HOLDOUT`
+exists for exactly that and is the right mechanism: records an operator curates
+from reports the entrants have not seen, kept in their own directory, never
+committed here, and passed to `--records` like any other. A competition needs
+that because its entrants are ranked against each other under a deadline and can
+read anything published. A benchmark does not, because its purpose is that
+everybody can read everything and say what they did with it.
+
 Three values rather than two, because the third obeys distribution rules matching
 neither of the others. A held-out record could be published tomorrow by changing
 one field. A variant could not: structure-preserving mutation of a contract
