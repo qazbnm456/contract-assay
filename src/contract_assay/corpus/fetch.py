@@ -16,8 +16,10 @@ completes, the quotes mostly still match, and the recall figure is simply
 wrong.
 
 A pin with no digest is written and **reported apart**, never counted as
-verified. Absence of a check is not a passed check, and five of this corpus's
-records have no digest to check.
+verified. Absence of a check is not a passed check, and six of this corpus's
+records carry no digest -- over four pins, each of which also has a
+digest-bearing record, so `_pins` keeps the digest and nothing is taken on
+trust today.
 
 What it does not fetch
 ----------------------
@@ -50,6 +52,7 @@ __all__ = [
     "FetchOutcome",
     "FetchReport",
     "Fetcher",
+    "checkout_file",
     "fetch_records",
     "raw_url",
     "revisioned_name",
@@ -117,7 +120,10 @@ class FetchReport:
         if not self.outcomes:
             return "No pins to fetch."
         parts = [f"{self.usable} of {len(self.outcomes)} pinned file(s) available."]
-        checked = sum(1 for o in self.outcomes if o.digest_checked)
+        # `is_usable` as well: `mismatched` also compared a digest, so counting
+        # `digest_checked` alone put "2 matched their recorded digest" in the
+        # same paragraph as "1 did NOT match their digest".
+        checked = sum(1 for o in self.outcomes if o.digest_checked and o.is_usable)
         if checked:
             parts.append(f"{checked} matched their recorded digest.")
         # Read off `digest_checked`, never off the state name: a file just
@@ -133,9 +139,10 @@ class FetchReport:
             parts.append(
                 f"{len(self.collisions)} path(s) are pinned at more than one revision "
                 f"({named}). Each revision was written under its own name -- "
-                "`Pool@<commit>.sol` -- so nothing was clobbered, and the plain path holds "
-                "whichever revision the most records pin, for a resolver that has not "
-                "learned the names."
+                "`Pool@<commit>.sol` -- and the plain path holds whichever revision the "
+                "most records pin, for a resolver that has not learned the names. Any "
+                "write that did land on another's bytes is in the mismatch line below, "
+                "which is read off the tree rather than off the writes."
             )
         mismatched = self.by_state("mismatched")
         if mismatched:
@@ -238,7 +245,7 @@ def _still_true(root: Path, pin: SourcePin, outcome: FetchOutcome) -> FetchOutco
 def revisioned_name(pin: SourcePin) -> str | None:
     """Where a pin's bytes go when its path is pinned at more than one revision.
 
-    `Pool@14a962c5aa72.sol` beside `Pool.sol`, because `source_id` carries the
+    `Pool@14a962c52a8f.sol` beside `Pool.sol`, because `source_id` carries the
     commit and a filesystem path does not: the corpus pins
     `plaza-evm/src/Pool.sol` at two commits whose bytes differ, and a checkout
     keyed on `pin.path` alone wrote both to one file. The second write won, its
@@ -254,7 +261,56 @@ def revisioned_name(pin: SourcePin) -> str | None:
     if not isinstance(pin, CommitPin):
         return None
     path = PurePosixPath(pin.path)
+    if not path.name:
+        # `_Pin` refuses such a path, so this is the second line of defence and
+        # not the first. It is here because the first one did not exist: `"."`
+        # made `with_name` raise `ValueError` out of `_local_resolver`, so the
+        # gate that exists to refuse a bad record died on it, and so did the
+        # scorer. A resolver must have an answer for every pin it is handed.
+        return None
     return str(path.with_name(f"{path.stem}@{pin.commit[:12]}{path.suffix}"))
+
+
+def checkout_file(root: Path, pin: SourcePin) -> Path | None:
+    """The file under `root` holding this pin's bytes, or `None` if there is none.
+
+    One function because there were three joins, and two of them did not know
+    about the revision names this module writes: `harness.units_from` reported
+    the minority revision of a collided path as a **missing unit**, so no
+    submission driven by `contract-assay run` could see the file that
+    `contract-assay fetch` had just written for it, while `score` still counted
+    its record in the denominator.
+
+    The revision name is preferred **only when its bytes match the digest**. A
+    review planted 138 revision-named files into a checkout, and a resolver that
+    preferred the name unconditionally read every one of them: 425 of 435
+    records came back `unchecked`. Matching by digest makes a planted file
+    invisible instead.
+
+    The plain path is returned even when it mismatches, because `verify`
+    distinguishes `digest_mismatch` from `source_unresolvable`, and a resolver
+    that returned nothing for a mismatch would collapse the two -- a cause
+    recorded wrongly points investigation away from the fix.
+    """
+    if not pin.is_filesystem_path:
+        return None
+    revision = revisioned_name(pin)
+    if revision is not None and pin.sha256 is not None:
+        candidate = root / revision
+        try:
+            if candidate.is_file() and _digest(candidate.read_bytes()) == pin.sha256:
+                return candidate
+        except OSError:
+            pass
+    plain = root / pin.path
+    if plain.is_file():
+        return plain
+    if revision is not None and (root / revision).is_file():
+        # No digest to compare, or the plain path is absent: the revision file
+        # is all there is, and returning it is better than reporting a unit the
+        # checkout does have as missing.
+        return root / revision
+    return None
 
 
 def _digest(body: bytes) -> str:

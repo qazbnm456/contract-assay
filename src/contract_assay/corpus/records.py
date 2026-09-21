@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -340,6 +340,43 @@ class _Pin(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    @model_validator(mode="after")
+    def _path_is_a_key_and_not_a_traversal(self) -> _Pin:
+        """A path that names no file, or names one outside a checkout, is refused.
+
+        `path` is joined to a `--source-root` by every consumer that resolves a
+        pin, and it had no validator at all. Three failures, in order of how
+        badly they went: `"."` made `revisioned_name` raise
+        `ValueError: PurePosixPath('.') has an empty name` out of the resolver,
+        so the gate that exists to refuse a bad record died on it and took the
+        scorer with it; `"../../etc/passwd"` and `"/etc/passwd"` resolve outside
+        the root, in a read *and*, for `fetch`, in a write; and `"a/b/"` had its
+        trailing separator silently swallowed. Refused here rather than guarded
+        at each join, because there are five joins and a record with no file is
+        not a record.
+        """
+        raw = self.path
+        if (
+            not raw
+            or raw != raw.strip()
+            or raw.startswith("/")
+            or raw.endswith("/")
+            or "\\" in raw
+            or "//" in raw
+        ):
+            raise ValueError(f"path must be a relative key with no leading separator, got {raw!r}")
+        parts = PurePosixPath(raw).parts
+        if (
+            not parts
+            or PurePosixPath(raw).name in {"", ".", ".."}
+            or any(part in {".", ".."} for part in parts)
+        ):
+            raise ValueError(
+                f"path must name a file and stay inside a checkout, got {raw!r}; "
+                "'.', '..' and a trailing separator name no file"
+            )
+        return self
 
     path: str = Field(
         description=(

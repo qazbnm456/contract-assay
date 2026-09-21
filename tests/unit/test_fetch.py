@@ -159,6 +159,45 @@ class TestWhatItWillNotGuess:
         assert (tmp_path / PATH).read_bytes() in {BODY, other}
         assert "pinned at more than one revision" in report.statement()
 
+    def test_the_plain_path_gets_the_revision_the_most_records_pin(self, tmp_path: Path) -> None:
+        # The tie-break, which nothing pinned: a resolver that has not learned
+        # the revision names reads this file, so which revision lands here
+        # decides how many records it gets right. Two records pin `a`, one pins
+        # `b`.
+        other = b"contract Vault { uint256 total; }\n"
+
+        def pin_at(commit: str, digest: str) -> CommitPin:
+            return CommitPin(
+                repo_url="https://github.com/example/vault",
+                commit=commit,
+                path=PATH,
+                sha256=digest,
+            )
+
+        minority = hashlib.sha256(other).hexdigest()
+        records = [
+            a_record(record_id="one", pin=pin_at("a" * 40, DIGEST)),
+            a_record(record_id="two", pin=pin_at("a" * 40, DIGEST)),
+            a_record(record_id="three", pin=pin_at("b" * 40, minority)),
+        ]
+
+        def fetch(url: str) -> bytes:
+            return other if "bbbb" in url else BODY
+
+        report = fetch_records(records, tmp_path, fetch=fetch)
+        assert report.collisions == (PATH,)
+        assert (tmp_path / PATH).read_bytes() == BODY
+
+    def test_a_digest_less_outcome_is_not_counted_as_a_match(self, tmp_path: Path) -> None:
+        # `mismatched` also compared a digest, so counting `digest_checked`
+        # alone put "2 matched their recorded digest" in the same paragraph as
+        # "1 did NOT match their digest".
+        (tmp_path / "src").mkdir()
+        (tmp_path / PATH).write_bytes(b"a local edit\n")
+        report = fetch_records([a_record()], tmp_path, fetch=a_fetcher())
+        assert [o.state for o in report.outcomes] == ["mismatched"]
+        assert "matched their recorded digest" not in report.statement()
+
     def test_the_statement_is_true_of_the_tree_and_not_of_the_writes(self, tmp_path: Path) -> None:
         # Each outcome is true of the moment it was produced, and the statement
         # is read as a claim about the checkout afterwards. Those were the same

@@ -438,7 +438,6 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "gwei",
         "hex",
         "hours",
-        "i",
         "if",
         "immutable",
         "implements",
@@ -451,8 +450,6 @@ _LANGUAGES_OWN_WORDS = frozenset(
         "internal",
         "is",
         "iszero",
-        "j",
-        "k",
         "keccak256",
         "layout",
         "let",
@@ -594,6 +591,23 @@ somebody else maintains; "common" is not.
 """
 
 
+_IDIOMATIC_COUNTERS = frozenset(["i", "j", "k"])
+"""The loop counters the language's *idiom* supplies, rather than its grammar.
+
+Their own set, because the neighbouring docstring declines the axis they sit on
+-- "a list of names projects use has no definition to maintain it against" --
+and three of them were in `_LANGUAGES_OWN_WORDS` anyway, which made that
+sentence false of the set it was written above. Enumerated here, the exception
+is three names long and visible.
+
+What they buy, measured: the brace-and-keyword blind family goes to 0 and the
+donor-unit family from 0.0161 to 0.0069. What they cost: one record,
+`alchemix-v2-dao-...-ab3d30ba`, whose anchor line
+`for (uint256 i = 0; i < 50; i++) {` has no other name in it, and which is
+citable by widening a line. Nothing else in the corpus loses a citation to them.
+"""
+
+
 _LANGUAGES_OWN_MEMBERS = frozenset(
     [
         "balance",
@@ -656,6 +670,14 @@ citation that way, 7 of them to `encodePacked` alone.
 
 So a member name counts as the language's only where the language puts it:
 immediately after a `.`. Bare, it is a name the file chose.
+
+**It recovers 8 of those 16, not all of them**, and the ten lines still refused
+are worth knowing because they are the shapes a one-line finding takes:
+`abi.encodePacked(msg.sender)` (four dodo records -- every token is the
+language's, receiver included), `type(uint128).max,`,
+`for (uint256 i = 0; i < 50; i++) {` and `... i < 255; i++) {`,
+`return (true, i);` and `if (k == 0) {`. Each is citable by widening a line, and
+`_IDIOMATIC_COUNTERS` says what the counters in them cost.
 """
 
 
@@ -665,7 +687,7 @@ def _is_the_languages_own(token: str, *, after_dot: bool = False) -> bool:
     `after_dot` says the token is a member access, which is the only position
     where `sender`, `encodePacked` or `max` are the language's.
     """
-    if token in _LANGUAGES_OWN_WORDS:
+    if token in _LANGUAGES_OWN_WORDS or token in _IDIOMATIC_COUNTERS:
         return True
     if after_dot and token in _LANGUAGES_OWN_MEMBERS:
         return True
@@ -785,13 +807,19 @@ def cited_lines(
 
     | honest submission, quote unchanged | equality | now |
     | --- | --- | --- |
-    | locator exactly the quoted lines | 0.993 | 0.9885 |
-    | locator one line wider below | **0.076** | **0.9885** |
-    | locator five lines wider below | 0.005 | 0.9885 |
-    | locator one line wider above | 0.409 | 0.9885 |
-    | locator one line wider on both sides | 0.005 | 0.9885 |
-    | locator five lines wider on both sides | 0.005 | 0.9885 |
-    | each record's whole span, from a fresh `fetch` | 0.989 | **0.9954** |
+    | locator exactly the quoted lines | 0.993 | 0.9908 |
+    | locator one line wider below | **0.076** | **0.9908** |
+    | locator five lines wider below | 0.005 | 0.9908 |
+    | locator one line wider above | 0.409 | 0.9908 |
+    | locator one line wider on both sides | 0.005 | 0.9908 |
+    | locator five lines wider on both sides | 0.005 | 0.9908 |
+    | each record's whole span | 0.989 | **0.9954** |
+
+    Every row is over a checkout `contract-assay fetch` built and read through
+    `corpus.fetch.checkout_file`. An earlier version of this table published
+    0.9885 for the first six rows, which was the same submission over a
+    hand-assembled tree missing one revision of one file -- the row below it
+    already said "from a fresh fetch", so the table mixed two checkouts.
 
     Locator slop in *any* direction is free now. Two of those rows were not
     free under a line run alone: a span starting a line above a function
@@ -806,11 +834,12 @@ def cited_lines(
     whose anchor line is blank and which the token floor refuses either way.
 
     **The figure depends on a submission shape neither number states, so both
-    are here.** A submitter that may widen its quote by a line scores 0.9885. A
-    submitter confined to quoting its anchor line alone scores **0.7126** --
-    124 records have no citable single line at their anchor, and 121 of those
-    are the six-token floor rather than the naming clause. The floor's cost is
-    the dominant one in that shape and it was never published.
+    are here.** A submitter that may widen its quote by a line scores 0.9908. A
+    submitter confined to quoting its anchor line alone scores **0.7149** --
+    124 records have no citable single line at their anchor, of which **120 are
+    the six-token floor**, three the naming clause and one a blank anchor line.
+    The floor's cost is the dominant one in that shape and it was never
+    published.
 
     Accepting part of a span has a price, and it was published wrong twice. A
     donor-unit forgery -- real text out of one file, every locator pointing at
@@ -845,25 +874,31 @@ def cited_lines(
     identifier names every project writes (`i`, `amount`, `token`, `owner`,
     `IERC20`, `nonReentrant`), and the two names the record publishes -- and
     declares each over a window derived from the published line numbers. It
-    scores **0.2115 in-sample and 0.0598 held out**. Widening the window
+    scores **0.4069 in-sample and 0.0644 held out**. Widening the window
     *upward* is worth more than downward, because it pulls the function's own
     declaration line and its top-of-body guards into the pool while every match
     still scores `function`.
 
-    The held-out figure is leave-one-out over the 435 records: every record
-    scored under a guess order fitted on the other 434. Two-fold cross-fitting
-    reads 0.0460, and it *understates* -- an attacker has the whole public
-    corpus, not half of it -- so leave-one-out is the estimator quoted.
-    Both numbers move by about two records with the tie-break order of the
-    greedy that produces them, so read them as 0.21 and 0.06.
+    The held-out figure is leave-one-out: every record scored under a guess
+    order fitted on the other 434. Two-fold cross-fitting reads 0.046 and
+    *understates*, because an attacker has the whole public corpus and not half
+    of it, so leave-one-out is the estimator quoted. It moves about two records
+    with the tie-break order of the greedy that produces it.
 
-    This is the fifth version of this check and each of the first four was
-    exceeded by the next review -- 0.938, 0.913, 0.1448, 0.2115 in-sample. So
-    the number here is a measurement of the best attack anybody has run, not a
-    floor, and the next reviewer should expect to beat it. The size of what is
-    left is clearest from the other side: a submitter who could name **one real
-    line** of each published span would score 0.9885. The defence is entirely
-    that it cannot name one, and each review names a few more.
+    **Read the in-sample column as a measure of the attacker's effort, not of
+    this check.** Five reviews have each raised it with better tooling and the
+    same idea -- 0.1448, then 0.2161, then 0.2299, then 0.4069, the last from
+    adding the language's member names to the guess vocabulary and conditioning
+    the guess order on the published span width. Every one of those numbers was
+    published here as if it were a property of the rule, and each was beaten
+    within a round. The held-out figure has moved far less: 0.0414, 0.0598,
+    0.0644 across three independent estimators, which is why it is the one a
+    competitive ranking should be designed against.
+
+    The size of what is left is clearest from the other side: a submitter who
+    could name **one real line** of each published span would score 0.9885. The
+    defence is entirely that it cannot name one, and each review names a few
+    more.
 
     Two further rules were measured and **declined**, recorded here so the next
     reviewer does not have to rediscover them:

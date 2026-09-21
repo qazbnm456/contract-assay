@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from contract_assay.corpus.fetch import checkout_file
 from contract_assay.corpus.records import CorpusRecord
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, SubmissionLimits
 from contract_assay.detectors.loading import SubmissionFault, call_evidence, call_plan
@@ -120,8 +121,8 @@ def units_from(
             # the unswept third site.
             missing.append(pin.source_id)
             continue
-        path = source_root / pin.path
-        if not path.is_file():
+        path = checkout_file(source_root, pin)
+        if path is None:
             missing.append(pin.source_id)
             continue
         try:

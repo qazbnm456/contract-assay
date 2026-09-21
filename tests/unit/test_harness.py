@@ -10,6 +10,7 @@ called static analysis this benchmark's own control group.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -384,6 +385,10 @@ class TestTheLoop:
         assert len(run.findings) >= 2
 
 
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 class TestReadingTheCorpus:
     def a_record(self, path: str, record_id: str) -> CorpusRecord:
         return CorpusRecord.model_validate(
@@ -412,6 +417,23 @@ class TestReadingTheCorpus:
         units, missing = units_from(records, tmp_path)
         assert len(units) == 1
         assert missing == []
+
+    def test_a_revision_named_file_is_the_unit_it_holds(self, tmp_path: Path) -> None:
+        # `contract-assay fetch` writes each revision of a collided path as
+        # `Vault@<commit>.sol`. This joined `pin.path` and reported the
+        # minority revision as a **missing unit**, so no submission driven by
+        # `contract-assay run` could see a file `fetch` had just written for it
+        # -- while `score` still counted its record in the denominator.
+        (tmp_path / "src").mkdir()
+        record = self.a_record(PATH, "vault-access-control-1")
+        pinned = record.model_copy(
+            update={"pin": record.pin.model_copy(update={"sha256": _sha256(VAULT)})}
+        )
+        (tmp_path / "src" / f"Vault@{'a' * 12}.sol").write_text(VAULT, encoding="utf-8")
+        units, missing = units_from([pinned], tmp_path)
+        assert missing == []
+        assert [unit.path for unit in units] == [PATH]
+        assert units[0].source == VAULT
 
     def test_a_unit_absent_from_the_checkout_is_returned_not_logged(self, tmp_path: Path) -> None:
         # It scores as a submission that missed it, so a caller that ignores

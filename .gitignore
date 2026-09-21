@@ -26,3 +26,6 @@ runs/
 .DS_Store
 .idea/
 .vscode/
+
+# A fetched source checkout. 132 files, reproducible from the pins.
+checkout/

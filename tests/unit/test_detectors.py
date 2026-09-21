@@ -17,6 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.detectors.base import (
+    _IDIOMATIC_COUNTERS,
     _LANGUAGES_OWN_MEMBERS,
     _LANGUAGES_OWN_WORDS,
     _MINIMUM_QUOTE_TOKENS,
@@ -1008,7 +1009,27 @@ contract Vault {
         assert self._check("total = total - amount;", 6, 6) is None
 
     @pytest.mark.parametrize(
-        "member", ["sender", "value", "data", "length", "name", "min", "max", "encodePacked"]
+        "member",
+        [
+            "sender",
+            "value",
+            "data",
+            "length",
+            "name",
+            "min",
+            "max",
+            "encodePacked",
+            "timestamp",
+            "selector",
+            "balance",
+            "transfer",
+            "origin",
+            "interfaceId",
+            "creationCode",
+            "blobbasefee",
+            "callcode",
+            "concat",
+        ],
     )
     def test_a_member_name_is_the_languages_only_after_a_dot(self, member: str) -> None:
         # Listing these context-free was a defect: they are members of `msg`,
@@ -1024,14 +1045,76 @@ contract Vault {
         assert _names_something_of_its_own([member, "=", "1", ";"])
         assert not _names_something_of_its_own(["msg", ".", member, ";"])
 
+    def test_a_quote_ending_in_a_dot_does_not_read_its_first_token_as_a_member(self) -> None:
+        # The `index > 0` guard. Without it `tokens[-1]` is consulted for token
+        # 0, so a quote *ending* in `.` has its first token read as a member --
+        # which can only refuse a true citation, and silently.
+        assert _names_something_of_its_own(["sender", "=", "1", ";", "x", "."])
+
+    def test_an_underscore_leading_name_is_a_name(self) -> None:
+        # `_status`, `_mint`, `_owner`: the convention half this corpus uses.
+        assert _names_something_of_its_own(_tokens("_status = 1;"))
+
     def test_the_canonical_randomness_line_is_citable(self) -> None:
         # End to end for the same defect: every other token is the language's.
         assert _names_something_of_its_own(
             _tokens("keccak256(abi.encodePacked(sender, block.timestamp))")
         )
 
+    @pytest.mark.parametrize("counter", ["i", "j", "k"])
+    def test_the_counters_are_their_own_set_and_not_the_grammar(self, counter: str) -> None:
+        # The docstring above `_LANGUAGES_OWN_WORDS` declines the axis these sit
+        # on, and three of them were in that set anyway, which made the sentence
+        # false of the set it was written above.
+        assert counter in _IDIOMATIC_COUNTERS
+        assert counter not in _LANGUAGES_OWN_WORDS
+        assert len(_IDIOMATIC_COUNTERS) == 3
+
     @pytest.mark.parametrize(
-        "word", ["hours", "transient", "layout", "fixed", "blobhash", "iszero", "mstore", "sha3"]
+        "word",
+        [
+            # A sample, and one per family a review had to find by attack:
+            # a missing time unit, two 0.8.28/0.8.29 keywords, a reserved type,
+            # a global, four `abi.`/`type()` members' neighbours, Yul builtins,
+            # and the arithmetic names that are also SafeMath's method names.
+            "hours",
+            "transient",
+            "layout",
+            "fixed",
+            "ufixed",
+            "blobhash",
+            "gasleft",
+            "addmod",
+            "mulmod",
+            "ripemd160",
+            "keccak256",
+            "szabo",
+            "finney",
+            "iszero",
+            "mstore",
+            "mload",
+            "sstore",
+            "caller",
+            "callvalue",
+            "returndatasize",
+            "sar",
+            "exp",
+            "add",
+            "sub",
+            "mul",
+            "div",
+            "not",
+            "and",
+            "or",
+            "xor",
+            "eq",
+            "lt",
+            "gt",
+            "in",
+            "supports",
+            "global",
+            "sha3",
+        ],
     )
     def test_the_grammar_words_a_review_found_missing_are_in_the_set(self, word: str) -> None:
         # A sample, and it is a sample on purpose: there is no machine-readable

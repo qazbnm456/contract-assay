@@ -916,8 +916,9 @@ def recheck_citations(
     published field. A review demonstrated the consequence: quoting the *real*
     span at each published locator scores **micro recall 0.9954** over a
     checkout `contract-assay fetch` builds, with precision 0.9815 in access
-    control and 1.0 everywhere else. Three earlier versions of this sentence
-    were each wrong: "0.9977 with every counter at zero" (cannot hold: one
+    control and 1.0 everywhere else; quoting one real statement at each locator
+    scores 0.9908. Three earlier versions of this sentence were each wrong:
+    "0.9977 with every counter at zero" (cannot hold: one
     positive record's source resolves from no public coordinates); its
     correction "434 of 435 is the ceiling ... = 0.9908" (two errors in one
     clause, since 434/435 is 0.9977 and 0.9908 is 431/435); and "0.9931,
@@ -952,20 +953,24 @@ def recheck_citations(
     | brace-and-keyword lines, over widened spans | 0.0138 | **0** |
     | one donor unit, every locator elsewhere | 1.000 | 0.0069 |
     | a submitter's own `--source-root` | 0.922 | 0 |
-    | **a generic vocabulary over widened windows, in-sample** | -- | **0.2115** |
-    | **the same, held out (leave-one-out)** | -- | **0.0598** |
+    | **a generic vocabulary over widened windows, in-sample** | -- | **0.4069** |
+    | **the same, held out (leave-one-out)** | -- | **0.0644** |
 
     **The last two rows are the same attack, and the difference between them is
     the most important number here.** A blind attack is a list of guesses, and
     every list in this table was chosen by its yield over the same 435 published
     records it was then scored on. Cross-fitted -- rank the guesses on half the
     corpus, score the other half, so every record is measured under an order
-    that never saw it -- the strongest family falls from **0.2115 to 0.0598**.
+    that never saw it -- the strongest family falls from **0.4069 to 0.0644**.
     In-sample says how much a published corpus leaks to somebody willing to fit
     it; cross-fitted says what the same method gets on records it has not seen,
     and that is the figure a competitive ranking has to be designed against.
     Every earlier version of this table published an in-sample number without
-    saying so.
+    saying so, and each was beaten inside a round: 0.1448, 0.2161, 0.2299,
+    0.4069, all the same idea with better tooling. The held-out figure has moved
+    from 0.0414 to 0.0644 over three estimators. Read the first column as how
+    hard the attacker worked and the second as what the method gets on records
+    it has not seen.
 
     What the rule itself closes is every dictionary family above: a citation
     must be whole lines of the span its locator declares, six tokens or more,
@@ -975,7 +980,7 @@ def recheck_citations(
     carries that argument with the rest of the numbers.
 
     Positioning each prediction at the lines its quote matched is why the
-    in-sample figure is 0.2115 rather than higher again: the declared span is
+    in-sample figure is 0.4069 rather than higher again: the declared span is
     the submitter's own field, `_strength` takes the containing function from
     `start_line` alone, and a window hundreds of lines long used to keep `exact`
     strength while the attack reduced to "name one line of this function". That

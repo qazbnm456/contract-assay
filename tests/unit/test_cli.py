@@ -8,6 +8,7 @@ codes -- an exit code tells an author that something is wrong, and nothing else.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -310,12 +311,50 @@ class TestResolvingAnAddressPin:
 class TestTheResolverReadsARevisionedCheckout:
     """`fetch` writes one name per revision, so the resolver looks for it."""
 
-    def test_the_revisioned_name_is_preferred(self, tmp_path: Path) -> None:
-        pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
+    def test_the_revisioned_name_is_preferred_when_its_digest_matches(self, tmp_path: Path) -> None:
+        mine = "this revision"
+        pin = CommitPin(
+            repo_url="https://github.com/x/y",
+            commit="a" * 40,
+            path="src/Vault.sol",
+            sha256=hashlib.sha256(mine.encode()).hexdigest(),
+        )
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "Vault.sol").write_text("the other revision")
-        (tmp_path / "src" / f"Vault@{'a' * 12}.sol").write_text("this revision")
-        assert _local_resolver(tmp_path)(pin) == "this revision"
+        (tmp_path / "src" / f"Vault@{'a' * 12}.sol").write_text(mine)
+        assert _local_resolver(tmp_path)(pin) == mine
+
+    def test_a_planted_revision_file_does_not_shadow_the_real_one(self, tmp_path: Path) -> None:
+        # A review dropped 138 revision-named files into a checkout: a resolver
+        # preferring the name unconditionally read every one of them and 425 of
+        # 435 records came back `unchecked`. Containment held -- the digest gate
+        # turns it into a denial, never a forgery -- and the resolver should not
+        # need the gate to save it.
+        real = "contract Vault {}"
+        pin = CommitPin(
+            repo_url="https://github.com/x/y",
+            commit="a" * 40,
+            path="src/Vault.sol",
+            sha256=hashlib.sha256(real.encode()).hexdigest(),
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Vault.sol").write_text(real)
+        (tmp_path / "src" / f"Vault@{'a' * 12}.sol").write_text("planted")
+        assert _local_resolver(tmp_path)(pin) == real
+
+    def test_a_mismatch_still_resolves_so_verify_can_name_it(self, tmp_path: Path) -> None:
+        # `verify` distinguishes `digest_mismatch` from `source_unresolvable`,
+        # and a resolver that returned nothing for a mismatch would collapse
+        # the two.
+        pin = CommitPin(
+            repo_url="https://github.com/x/y",
+            commit="a" * 40,
+            path="src/Vault.sol",
+            sha256="0" * 64,
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Vault.sol").write_text("whatever is here")
+        assert _local_resolver(tmp_path)(pin) == "whatever is here"
 
     def test_the_plain_path_still_resolves(self, tmp_path: Path) -> None:
         # Every checkout that is not this corpus's one colliding path, and every

@@ -5,7 +5,7 @@ This directory holds **pointers** to results, not results, and no ranking.
 **Every number here is self-reported, and the corpus it is over is public.**
 Each record publishes its full locator, so a script that quotes the real span at
 each one scores micro recall 0.9954 having found nothing, and a submission that
-opens no source file at all can reach 0.21 over these records (0.06 over records
+opens no source file at all can reach 0.41 over these records (0.06 over records
 it has not seen). What a pointer establishes is that somebody published a
 document and stood behind it; what it does not establish is that the figure came
 from an analysis. Read a row as a claim by its author, ranked against nobody.

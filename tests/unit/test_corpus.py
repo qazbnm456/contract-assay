@@ -126,6 +126,26 @@ class TestSourcePin:
         with pytest.raises(ValidationError, match="40-character"):
             a_pin(commit=bad)
 
+    @pytest.mark.parametrize(
+        "bad", [".", "..", "", "/etc/passwd", "../../etc/passwd", "a/../b", "a/b/", " a/b", "a\\b"]
+    )
+    def test_rejects_a_path_that_names_no_file_or_leaves_the_checkout(self, bad: str) -> None:
+        # `path` is joined to a `--source-root` by five consumers and had no
+        # validator. `"."` made the revision-name helper raise out of the
+        # resolver, so the gate that exists to refuse a bad record died on it
+        # and took the scorer with it; the traversals resolve outside the root
+        # in a read and, for `fetch`, in a write.
+        with pytest.raises(ValidationError, match="path must"):
+            a_pin(path=bad)
+
+    def test_an_import_specifier_is_still_a_valid_key(self) -> None:
+        # Verified source arrives keyed by import specifier, which is not a
+        # filesystem path and must not be refused for looking unusual.
+        assert (
+            a_pin(path="@openzeppelin/contracts/token/ERC20/ERC20.sol").path
+            == "@openzeppelin/contracts/token/ERC20/ERC20.sol"
+        )
+
     def test_source_id_leads_with_the_pins_kind(self) -> None:
         # Readable, and never parsed. It leads with the kind so a consumer that
         # assumed one shape fails visibly on another instead of mis-reading it.
