@@ -297,6 +297,50 @@ class TestWhatItWillNotGuess:
         assert "one file on a case-insensitive" in report.by_state("unavailable")[0].detail
         assert "are another pin's file on this filesystem" in report.statement()
 
+    def test_a_write_that_would_land_outside_the_root_is_refused(self, tmp_path: Path) -> None:
+        # `check_unit_path` refuses a traversing string; this refuses a
+        # traversing tree. Measured: a directory component that is a
+        # pre-existing symlink out of the root let `mkdir(exist_ok=True)`
+        # succeed, the write land outside, and the outcome say `written`.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "src").symlink_to(outside)
+        report = fetch_records([a_record()], root, fetch=a_fetcher())
+        assert [o.state for o in report.outcomes] == ["unavailable"]
+        assert "resolves outside --source-root" in report.outcomes[0].detail
+        assert not (outside / "Vault.sol").exists()
+
+    def test_the_plain_path_copy_does_not_write_through_a_link(self, tmp_path: Path) -> None:
+        # `write_bytes` follows an existing symlink, which is how the copy for a
+        # collided path clobbered a file outside the root.
+        victim = tmp_path / "victim.sol"
+        victim.write_text("do not touch")
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / PATH).symlink_to(victim)
+        other = b"contract Vault { uint256 total; }\n"
+
+        def pin_at(commit: str, digest: str) -> CommitPin:
+            return CommitPin(
+                repo_url="https://github.com/example/vault",
+                commit=commit,
+                path=PATH,
+                sha256=digest,
+            )
+
+        records = [
+            a_record(record_id="one", pin=pin_at("a" * 40, DIGEST)),
+            a_record(record_id="two", pin=pin_at("b" * 40, hashlib.sha256(other).hexdigest())),
+        ]
+
+        def fetch(url: str) -> bytes:
+            return other if "bbbb" in url else BODY
+
+        fetch_records(records, root, fetch=fetch)
+        assert victim.read_text() == "do not touch"
+
     def test_a_digest_less_pin_does_not_read_a_planted_revision_file(self, tmp_path: Path) -> None:
         # The revision branch is skipped when there is no digest, and the
         # fallback used to return the revision file unconditionally -- so a

@@ -243,6 +243,7 @@ def score_document(
         "citations": {
             "refuted": report.refuted_citations,
             "unchecked": report.unchecked_citations,
+            "stale": report.stale_citations,
             # Where the scorer moved a prediction to the lines its quote
             # matched, and how often that was a different callable than the
             # declared locator names. Same reason the two above are here: a

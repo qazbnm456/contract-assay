@@ -18,8 +18,8 @@ wrong.
 A pin with no digest is written and **reported apart**, never counted as
 verified. Absence of a check is not a passed check, and six of this corpus's
 records carry no digest -- over four pins, each of which also has a
-digest-bearing record, so `_pins` keeps the digest and nothing is taken on
-trust today.
+digest-bearing record, and `_pins` prefers the digest-bearing one whatever
+order it arrives in, so nothing is taken on trust.
 
 What it does not fetch
 ----------------------
@@ -230,7 +230,20 @@ def _pins(records: Iterable[CorpusRecord]) -> list[tuple[str, SourcePin]]:
     """
     seen: dict[str, SourcePin] = {}
     for record in records:
-        seen.setdefault(record.pin.source_id, record.pin)
+        held = seen.get(record.pin.source_id)
+        # A pin carrying a digest wins, whatever position it arrives in.
+        # `setdefault` took the first in load order, so a digest-less record
+        # named earlier than its digest-bearing sibling turned the digest check
+        # off for that file: `fetch` then wrote whatever the mirror served,
+        # reported it "available ... taken on trust", and `run` handed those
+        # bytes to the detectors. Measured: 0 taken on trust in load order, 4
+        # under `reversed(records)` -- so the property this module claimed held
+        # only because `load_records` sorts by filename and
+        # `alchemix-v2-dao-*.json` happens to sort before the four
+        # `*-adjudicated-*` files. `recheck_citations` has had this rule since
+        # the forged `--source-root` review; the other two sites kept their own.
+        if held is None or (held.sha256 is None and record.pin.sha256 is not None):
+            seen[record.pin.source_id] = record.pin
     return sorted(seen.items())
 
 
@@ -283,6 +296,48 @@ def revisioned_name(pin: SourcePin) -> str | None:
     return str(path.with_name(f"{path.stem}@{pin.commit[:12]}{path.suffix}"))
 
 
+def _writable_inside(root: Path, target: Path) -> bool:
+    """Whether writing `target` writes inside `root`.
+
+    `check_unit_path` refuses a traversing *string*; this refuses a traversing
+    *tree*. Measured, both against a checkout the caller had write access to: a
+    directory component that is a pre-existing symlink out of the root let
+    `mkdir(exist_ok=True)` succeed and the write land outside, reported
+    `written`; and the plain-path copy's `write_bytes` followed an existing
+    symlink and clobbered a file outside the root. The read side has had this
+    check since the symlink review; the write side never had one.
+
+    The deepest existing ancestor is resolved, because the target and its
+    parents may not exist yet -- which is the normal case on a first fetch, and
+    why `fetch_records` creates the root before any worker runs: without it the
+    walk climbs past the root to a directory that is legitimately outside it and
+    refuses every write.
+    """
+    try:
+        resolved_root = root.resolve(strict=True)
+    except OSError:
+        return False
+    probe = target.parent
+    while True:
+        try:
+            if probe.exists():
+                if not probe.resolve().is_relative_to(resolved_root):
+                    return False
+                break
+        except OSError:
+            return False
+        if probe == probe.parent:
+            return False
+        probe = probe.parent
+    try:
+        # And the target itself, if it is already a link out.
+        if target.is_symlink() and not target.resolve().is_relative_to(resolved_root):
+            return False
+    except OSError:
+        return False
+    return True
+
+
 def checkout_file(root: Path, pin: SourcePin) -> Path | None:
     """The file under `root` holding this pin's bytes, or `None` if there is none.
 
@@ -312,10 +367,16 @@ def checkout_file(root: Path, pin: SourcePin) -> Path | None:
 
         `is_file()` follows symlinks, so a link inside a checkout reads whatever
         it points at -- and a checkout is built from paths third-party reports
-        supplied. `_Pin` refuses a traversing path; a link is the same escape
-        one indirection along, and the validator's docstring claims to refuse
-        both. The root is resolved too, so a checkout that is *itself* reached
-        through a link still works.
+        supplied. `_Pin` refuses a traversing path; a symlink is the same escape
+        one indirection along. The root is resolved too, so a checkout that is
+        *itself* reached through a link still works.
+
+        **A hardlink is not covered and cannot be**: it has no target to
+        resolve, so a hardlink inside the checkout to a file outside it reads
+        as the file itself -- measured. What covers that case is the digest,
+        which is taken on the bytes actually read (`VerifiedSource`), so the
+        worst it buys is a refusal. Saying "a link is the same escape" without
+        the distinction was an overclaim.
         """
         try:
             if not candidate.is_file():
@@ -374,6 +435,7 @@ def fetch_records(
     than telling them about it.
     """
     get = fetch or urllib_fetcher()
+    root.mkdir(parents=True, exist_ok=True)
     report = FetchReport()
     pin_of = {record.pin.source_id: record.pin for record in records}
 
@@ -442,6 +504,14 @@ def fetch_records(
                 detail=f"fetched {_digest(body)[:12]}, pinned {expected[:12]}",
             )
 
+        if not _writable_inside(root, target):
+            return FetchOutcome(
+                source_id,
+                relative,
+                "unavailable",
+                detail="this path resolves outside --source-root, or through a link that "
+                "does; nothing was written",
+            )
         target.parent.mkdir(parents=True, exist_ok=True)
         # The digest of the *name* in the suffix, not only the pid: two targets
         # that are one file on a case-insensitive filesystem shared one staging
@@ -512,8 +582,13 @@ def fetch_records(
                 if isinstance(pin, CommitPin) and pin.path == path and pin.commit == commit:
                     name = revisioned_name(pin)
                     written = root / name if name else None
-                    if written is not None and written.is_file():
-                        (root / path).write_bytes(written.read_bytes())
+                    plain = root / path
+                    if written is not None and written.is_file() and _writable_inside(root, plain):
+                        # `unlink` first: `write_bytes` follows an existing
+                        # symlink, which is how the copy clobbered a file
+                        # outside the root.
+                        plain.unlink(missing_ok=True)
+                        plain.write_bytes(written.read_bytes())
 
     # **Verified against the tree, not against the writes.** Each outcome above
     # is true of the moment it was produced, and the statement is read as a

@@ -7,6 +7,7 @@ looks exactly like a figure that does not have the problem.
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -121,6 +122,14 @@ contract Vault {
     function filler45() external { total = total + 45; }
 }
 """
+
+
+PLANT = (
+    "contract Plant {\n"
+    + "\n".join(f"    function everything{n}() external {{ }}" for n in range(60))
+    + "\n}\n"
+)
+"""One contract whose functions are not the record's, for the two-read attack."""
 
 
 def _at(start: int, end: int, source: str = SOURCE) -> str:
@@ -1491,7 +1500,7 @@ class TestTheScorerTakesNobodysWordForACitation:
         # problem to naming one line of a large window. Measured, that took a
         # blind submission from 0.041 to 0.145, and 0.092 of it needed nothing
         # but braces and keywords.
-        runs, refuted, unchecked, moved, elsewhere = recheck_citations(
+        runs, refuted, unchecked, _stale, moved, elsewhere = recheck_citations(
             [self.a_submitted_run(_at(6, 6), (4, 50))], [a_record()], resolver()
         )
         assert (refuted, unchecked) == (0, 0)
@@ -1508,7 +1517,7 @@ class TestTheScorerTakesNobodysWordForACitation:
         # that reports every verified citation as repositioned passes every
         # other test here, and the honest-exact submission would read 429
         # instead of 2.
-        runs, refuted, unchecked, moved, elsewhere = recheck_citations(
+        runs, refuted, unchecked, _stale, moved, elsewhere = recheck_citations(
             [self.a_submitted_run(_at(5, 6), (5, 6))], [a_record()], resolver()
         )
         assert (refuted, unchecked) == (0, 0)
@@ -1532,6 +1541,43 @@ class TestTheScorerTakesNobodysWordForACitation:
             1,
         )
         assert "in a callable other than the one the declared locator names" in report.statement()
+
+    def test_the_unit_is_read_once_and_the_gate_covers_that_read(self) -> None:
+        # The scorer read each unit twice and gated one read. `parsed_for`
+        # resolved the unit again, ungated, and its parse decided match
+        # strength -- so the bytes that settled recall were not the bytes the
+        # citation gate had covered. Measured over the whole corpus, one
+        # submission differing only in when the bytes change: 0.0000 when both
+        # reads saw the plant, 0.9402 when it arrived after the gate.
+        reads: list[str] = []
+        digest = hashlib.sha256(SOURCE.encode("utf-8")).hexdigest()
+        record = a_record()
+        pinned = record.model_copy(update={"pin": record.pin.model_copy(update={"sha256": digest})})
+
+        def resolve(pin: SourcePin) -> str | None:
+            reads.append(pin.source_id)
+            # Honest on the first read, a plant on every one after it.
+            return SOURCE if len(reads) == 1 else PLANT
+
+        report = score([a_run([(5, 6)])], [pinned], resolve)
+        assert reads == [pinned.pin.source_id]
+        [match] = report.matches
+        assert match.strength is MatchStrength.EXACT
+
+    def test_a_digest_mismatch_says_so_instead_of_naming_the_flag(self) -> None:
+        # Both reasons printed "no source was available for this unit ... run
+        # with --source-root", which is two false clauses for a mismatch: a
+        # source was available and the flag was passed. Measured, an honest
+        # submission reads 0.9931 on a clean checkout and 0.9356 with one stale
+        # file, and the sentence sent the reader to check a flag they had given.
+        record = a_record()
+        pinned = record.model_copy(
+            update={"pin": record.pin.model_copy(update={"sha256": "0" * 64})}
+        )
+        report = score([a_run([(5, 6)])], [pinned], resolver())
+        assert report.unchecked_citations == 1
+        assert "does not match this unit's recorded digest" in report.statement()
+        assert "run with --source-root" not in report.statement()
 
     def test_a_quote_that_starts_mid_line_is_refused(self) -> None:
         # The forgery a whole-line rule closes and a token-run rule does not:

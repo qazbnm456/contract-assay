@@ -176,6 +176,38 @@ def _submission(  # type: ignore[no-untyped-def]
     return _runs(found), skipped
 
 
+class TestTheDigestMeansOneThing:
+    """`fetch` compares bytes; the gates compare the text the resolver returned.
+
+    Two domains for "the digest of this file", and they agree on this corpus by
+    measurement rather than by construction: the text digest is over a lenient
+    decode, which is not injective over bytes, so a file carrying an invalid
+    UTF-8 sequence would be `verified` by `fetch` and rejected by `verify`. The
+    text domain is the definition -- it identifies the text the scorer analyses,
+    which is what the locators index -- and this asserts the two have not
+    diverged.
+    """
+
+    def test_the_byte_digest_and_the_text_digest_agree(self, records) -> None:  # type: ignore[no-untyped-def]
+        import hashlib
+
+        from contract_assay.corpus.fetch import checkout_file
+
+        checked = 0
+        for record in records:
+            found = checkout_file(CHECKOUT, record.pin)
+            if found is None or record.pin.sha256 is None:
+                continue
+            raw = found.read_bytes()
+            text = raw.decode("utf-8", errors="replace")
+            assert hashlib.sha256(raw).hexdigest() == record.pin.sha256, record.record_id
+            assert hashlib.sha256(text.encode("utf-8")).hexdigest() == record.pin.sha256, (
+                record.record_id
+            )
+            checked += 1
+        assert checked >= 140
+
+
 class TestTheHonestCeiling:
     """`report.scoring.recheck_citations`, `docs/api.md` §1, `README.md`."""
 

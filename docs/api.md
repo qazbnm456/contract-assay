@@ -309,6 +309,16 @@ outcomes from how they happened to format a string:
   not matter; a line of *code* between them does.
 - A quote that is blank once normalised is a failure, not a pass.
 
+**What a `--source-root` is trusted for.** One property: the bytes under it are
+the bytes the pins name. Every consumer that draws a conclusion from them
+establishes that property itself, on the bytes it actually read — there is one
+verified read of a unit per invocation, and the citation check, the strength
+comparison and `verify` all use it. A checkout that is not what it claims
+therefore produces a *refusal*, not a number: a submission that plants forged
+source for every unit scores 0.0000 with 434 citations reported unchecked, and a
+checkout that has gone stale says so in its own words rather than reading as a
+weak submission.
+
 Five failures are distinguished, because they say different things about a
 detector: `citation_span_out_of_range`, `citation_quote_is_not_substantive`
 (below the floor), `citation_quote_is_not_whole_lines` (real text at the right

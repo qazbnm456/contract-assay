@@ -105,6 +105,7 @@ class TestEveryDisagreementReachesAJsonReader:
             by_class=a_report().by_class,
             refuted_citations=7,
             unchecked_citations=5,
+            stale_citations=2,
             repositioned_predictions=3,
             repositioned_into_another_function=2,
         )
@@ -112,6 +113,7 @@ class TestEveryDisagreementReachesAJsonReader:
         assert document["citations"] == {
             "refuted": 7,
             "unchecked": 5,
+            "stale": 2,
             "repositioned": 3,
             "repositioned_into_another_function": 2,
         }

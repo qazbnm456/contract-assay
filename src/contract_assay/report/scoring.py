@@ -418,6 +418,16 @@ class ScoreReport:
     submission's claim, it replaced it. Zero for a submission whose locators sit
     where its quotes do."""
 
+    stale_citations: int = 0
+    """Of those, the ones whose source was there and did not match its pin.
+
+    Its own number because the two have different fixes and the message used to
+    give the wrong one: "no source was available for this unit ... run with
+    --source-root" is two false clauses for a checkout that has the file and has
+    the wrong bytes. Measured, an honest submission reads 0.9931 on a clean
+    checkout, 0.9356 with one stale file and 0.8483 with three -- as a weak
+    submission, with nothing in the document saying the checkout was stale."""
+
     unchecked_citations: int = 0
     """Verified findings whose source the scorer could not obtain.
 
@@ -610,11 +620,24 @@ class ScoreReport:
                 )
             )
         if self.unchecked_citations:
-            parts.append(
-                f"{_plural(self.unchecked_citations, 'finding')} could not be re-read because "
-                "no source was available for its unit, and were demoted rather than accepted -- "
-                "an unchecked citation is not a passed one. Run with --source-root."
+            absent = self.unchecked_citations - self.stale_citations
+            said = (
+                f"{_plural(self.unchecked_citations, 'finding')} could not be re-read and were "
+                "demoted rather than accepted -- an unchecked citation is not a passed one."
             )
+            if self.stale_citations:
+                said += (
+                    f" {_plural(self.stale_citations, 'finding')} sat on source that "
+                    "does not match this unit's recorded digest: the record's locators index "
+                    "lines in other bytes, so re-run `contract-assay fetch` to rebuild the "
+                    "checkout from the pins."
+                )
+            if absent:
+                said += (
+                    f" {_plural(absent, 'finding')} had no source available for its unit at "
+                    "all; run with --source-root."
+                )
+            parts.append(said)
 
         unscoreable = sum(self.unscoreable_claims.values())
         if unscoreable:
@@ -897,9 +920,126 @@ def _repository_of(record: CorpusRecord) -> str:
     return f"chain {pin.chain_id}:{pin.address[:10]}"
 
 
+def _why_unchecked(why: str) -> str:
+    """The detail a demoted citation carries, naming which read failed.
+
+    Both reasons used to print "no source was available for this unit ... run
+    with --source-root", which is two false clauses for a digest mismatch: a
+    source *was* available and the flag *was* passed. Measured, an honest
+    submission reads 0.9931 with a clean checkout and 0.9356 with one stale
+    file, and the sentence sent the reader to check a flag they had given. This
+    file says five times that a cause recorded wrongly points investigation away
+    from the fix.
+    """
+    if why == "digest_mismatch":
+        return (
+            "the source under --source-root does not match this unit's recorded digest, so "
+            "the quote was not re-read: the record's locators index lines in other bytes. "
+            "Re-run `contract-assay fetch` to rebuild the checkout from the pins"
+        )
+    return (
+        "no source was available for this unit, so the quote could not be re-read; "
+        "run with --source-root"
+    )
+
+
+class VerifiedSource:
+    """One verified read of a unit per invocation, shared by every consumer.
+
+    **The scorer read each unit twice and gated one of the reads.**
+    `recheck_citations` resolved a unit, compared its digest, and accepted or
+    refused citations on it; `score`'s `parsed_for` then resolved the *same
+    unit again* with no digest, and that parse decided `_strength`'s verdict --
+    equal signatures are a `function` match, an unavailable parse is a `file`
+    one. So the bytes that settled recall were not the bytes the gate covered.
+
+    Measured, one submission over one checkout, differing only in when the
+    bytes change: **0.0000** when both reads see the plant, **0.9402** when the
+    plant arrives after the gate has run. The plant is one contract with one
+    function spanning every line, so every locator in it shares a signature and
+    `_strength` can no longer tell a prediction in the record's function from
+    one anywhere else in the file. Its quotes are real lines of the real file,
+    so the gated citation check passes on all 409.
+
+    It also happens with no attacker: a path pinned at two revisions where one
+    record carries no digest resolves to the digest-bearing revision through
+    the gate and to the plain path -- the other revision -- through the parse,
+    because `checkout_file` will not prefer a revision name it cannot verify.
+    Not live on this corpus; one curated holdout record away, and a holdout is
+    exactly a third-party record set.
+
+    So there is one read, memoised per unit, and it returns `None` for bytes it
+    cannot verify. `why` says which of the two reasons applies, because "no
+    source was available -- run with --source-root" is a false sentence for a
+    digest mismatch and the flag it recommends was already passed.
+    """
+
+    def __init__(self, records: Sequence[CorpusRecord], resolve: SourceResolver | None) -> None:
+        # A pin carrying a digest wins. `source_id` is
+        # `commit:<repo>@<commit>:<path>` and excludes `sha256`, so several
+        # records collapse to one key -- and a last-write-wins dict let one
+        # digest-less record disable the digest gate for every other record
+        # pinning the same unit. Measured: four units in the shipped corpus
+        # pair a digest-bearing record with a later `*-adjudicated-*` record
+        # that has none, and the forged `--source-root` forgery leaked exactly
+        # those four.
+        self._pins: dict[str, SourcePin] = {}
+        for record in records:
+            held = self._pins.get(record.pin.source_id)
+            if held is None or (held.sha256 is None and record.pin.sha256 is not None):
+                self._pins[record.pin.source_id] = record.pin
+        self._resolve = resolve
+        self._read: dict[str, tuple[str | None, str]] = {}
+
+    def pin_for(self, source_id: str) -> SourcePin | None:
+        return self._pins.get(source_id)
+
+    def of(self, source_id: str) -> str | None:
+        """The unit's verified source, or `None` with `why` saying which reason."""
+        return self._verified(source_id)[0]
+
+    def why(self, source_id: str) -> str:
+        """`""` when verified, `"unresolvable"`, or `"digest_mismatch"`."""
+        return self._verified(source_id)[1]
+
+    def _verified(self, source_id: str) -> tuple[str | None, str]:
+        if source_id not in self._read:
+            pin = self._pins.get(source_id)
+            source = None if (pin is None or self._resolve is None) else self._resolve(pin)
+            if source is None:
+                self._read[source_id] = (None, "unresolvable")
+            elif (
+                pin is not None
+                and pin.sha256 is not None
+                and hashlib.sha256(source.encode("utf-8")).hexdigest() != pin.sha256
+            ):
+                # The bytes must be the bytes the record was authored against,
+                # or the locators index lines that have moved. `--source-root`
+                # is the submitter's in the documented publishing workflow, so
+                # without this the scorer verified a submission against the
+                # submission: a review built synthetic `.sol` files whose
+                # declarations sit at the records' locator lines and scored
+                # access control at recall 0.982 with precision 1.0, quoting
+                # text that exists nowhere in the real source.
+                #
+                # The digest is over the *text* the resolver returned, which is
+                # what the locators index and what a quote is compared against.
+                # `fetch` compares the bytes it downloaded, which is stricter;
+                # `tests/checkout/test_published_figures.py` asserts the two
+                # agree over every file of the shipped corpus.
+                self._read[source_id] = (None, "digest_mismatch")
+            else:
+                self._read[source_id] = (source, "")
+        return self._read[source_id]
+
+
 def recheck_citations(
-    runs: Sequence[DetectorRun], records: Sequence[CorpusRecord], resolve: SourceResolver | None
-) -> tuple[list[DetectorRun], int, int, int, int]:
+    runs: Sequence[DetectorRun],
+    records: Sequence[CorpusRecord],
+    resolve: SourceResolver | None,
+    *,
+    verified: VerifiedSource | None = None,
+) -> tuple[list[DetectorRun], int, int, int, int, int]:
     """Re-read every verified quote against the scorer's own copy of the source.
 
     **What this establishes, and what it cannot.** It rules out an *incoherent*
@@ -1023,18 +1163,9 @@ def recheck_citations(
     # unit. Measured: four units in the shipped corpus pair a digest-bearing
     # record with a later `*-adjudicated-*` record that has none, and the forged
     # `--source-root` forgery leaked exactly those four.
-    by_source: dict[str, SourcePin] = {}
-    for record in records:
-        held = by_source.get(record.pin.source_id)
-        if held is None or (held.sha256 is None and record.pin.sha256 is not None):
-            by_source[record.pin.source_id] = record.pin
-    cache: dict[str, str | None] = {}
-
-    def source_of(source_id: str) -> str | None:
-        if source_id not in cache:
-            found = by_source.get(source_id)
-            cache[source_id] = None if (found is None or resolve is None) else resolve(found)
-        return cache[source_id]
+    # `score` passes its own, so that the read this gates is the same read
+    # `parsed_for` uses. Constructed here when called standalone.
+    source_of_unit = verified if verified is not None else VerifiedSource(records, resolve)
 
     def _demoted(finding: VerifiedFinding, why: FailedCheck) -> VerifiedFinding:
         """One shape for both demotions, so the two cannot drift apart."""
@@ -1054,24 +1185,10 @@ def recheck_citations(
         return parsed_cache[source_id]
 
     out: list[DetectorRun] = []
-    refuted = unchecked = moved = moved_elsewhere = 0
+    refuted = unchecked = stale = moved = moved_elsewhere = 0
     for run in runs:
-        pin = by_source.get(run.source_id)
-        source = source_of(run.source_id)
-        # The bytes must be the bytes the record was authored against, or the
-        # locators index lines that have moved. `--source-root` is the
-        # submitter's in the documented publishing workflow, so without this the
-        # scorer verified a submission against the submission: a review built
-        # synthetic `.sol` files whose declarations sit at the records' locator
-        # lines and scored access control at recall 0.982 with precision 1.0,
-        # quoting text that exists nowhere in the real source.
-        if (
-            source is not None
-            and pin is not None
-            and pin.sha256 is not None
-            and hashlib.sha256(source.encode("utf-8")).hexdigest() != pin.sha256
-        ):
-            source = None
+        pin = source_of_unit.pin_for(run.source_id)
+        source = source_of_unit.of(run.source_id)
         rechecked: list[VerifiedFinding] = []
         changed = False
         for finding in run.findings:
@@ -1082,6 +1199,8 @@ def recheck_citations(
                 continue
             if source is None:
                 unchecked += 1
+                if source_of_unit.why(run.source_id) == "digest_mismatch":
+                    stale += 1
                 changed = True
                 rechecked.append(
                     finding.model_copy(
@@ -1092,8 +1211,7 @@ def recheck_citations(
                                 FailedCheck(
                                     check="citation_unchecked",
                                     kind=RejectionKind.CITATION,
-                                    detail="no source was available for this unit, so the "
-                                    "quote could not be re-read; run with --source-root",
+                                    detail=_why_unchecked(source_of_unit.why(run.source_id)),
                                 ),
                             ],
                         }
@@ -1185,7 +1303,7 @@ def recheck_citations(
             update["outcome"] = Outcome.INVALID
             update["invalid_reason"] = InvalidReason.CITATION_UNVERIFIED
         out.append(run.model_copy(update=update))
-    return out, refuted, unchecked, moved, moved_elsewhere
+    return out, refuted, unchecked, stale, moved, moved_elsewhere
 
 
 def score(
@@ -1248,13 +1366,17 @@ def score(
     # Before anything is counted. See `recheck_citations`: a submitted run
     # arrives with its own `status: verified`, and until this ran a hand-written
     # file could top the board with fabricated quotes at published locators.
+    # One reader for the whole invocation, so the bytes the citation gate
+    # covered are the bytes `parsed_for` parses. See `VerifiedSource`.
+    verified = VerifiedSource(records, resolve)
     (
         runs,
         refuted_citations,
         unchecked_citations,
+        stale_citations,
         repositioned,
         repositioned_elsewhere,
-    ) = recheck_citations(runs, records, resolve)
+    ) = recheck_citations(runs, records, resolve, verified=verified)
     truths = [r for r in records if r.is_positive and r.locator is not None]
 
     # Which files a negative record says hold no instance of a class. The only
@@ -1303,11 +1425,15 @@ def score(
     parsed_cache: dict[str, Syntax | None] = {}
 
     def parsed_for(record: CorpusRecord) -> Syntax | None:
-        if resolve is None:
-            return None
+        """The unit's syntax, from the **verified** read and no other.
+
+        This used to call `resolve` again. Two reads of one unit, one gate,
+        and the ungated one decided match strength: measured at 0.9402 for a
+        submission whose plant arrived between them.
+        """
         key = record.pin.source_id
         if key not in parsed_cache:
-            source = resolve(record.pin)
+            source = verified.of(key)
             parsed_cache[key] = Syntax.of(source) if source else None
         return parsed_cache[key]
 
@@ -1531,6 +1657,7 @@ def score(
         ),
         deterministic_runs=deterministic_runs,
         refuted_citations=refuted_citations,
+        stale_citations=stale_citations,
         repositioned_predictions=repositioned,
         repositioned_into_another_function=repositioned_elsewhere,
         unchecked_citations=unchecked_citations,

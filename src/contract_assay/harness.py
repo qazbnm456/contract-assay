@@ -109,7 +109,14 @@ def units_from(
     """
     found: dict[str, SourceUnit] = {}
     missing: list[str] = []
-    for record in sorted(records, key=lambda r: r.record_id):
+    # A pin carrying a digest first, then by `record_id`. Sorting by id alone
+    # meant a digest-less record named earlier than its digest-bearing sibling
+    # decided the unit -- and a pin with no digest is a unit read without a
+    # check. `recheck_citations` and `_pins` apply the same rule; three
+    # different answers to "which pin represents this unit" is how one of them
+    # ends up wrong.
+    ordered = sorted(records, key=lambda r: (r.pin.sha256 is None, r.record_id))
+    for record in ordered:
         pin = record.pin
         if pin.source_id in found or pin.source_id in missing:
             continue
