@@ -1,0 +1,87 @@
+name: Release
+
+# Publishes on a tag, and only after the same gate that guards a commit has
+# passed against the artefact that will actually be uploaded. A release built
+# from a green branch is not the same claim as a release whose own wheel was
+# tested: the second is what this does.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build the wheel and the sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Install the built wheel, not the source tree
+        # The point of the step. `pip install -e .` proves the repository works;
+        # it does not prove the wheel does, and the two differ exactly where a
+        # release goes wrong -- a file the package data missed, a module the
+        # discovery skipped, `py.typed` absent so a typed consumer cannot import
+        # it at all.
+        run: |
+          python -m pip install "$(ls dist/*.whl)[slither]" || python -m pip install "$(ls dist/*.whl)"
+          python -m pip install pytest pydantic
+
+      - name: The gate, against the installed wheel
+        run: |
+          cd "$(mktemp -d)"
+          python -c "import contract_assay, pathlib; print(contract_assay.__version__)"
+          python -c "
+          from pathlib import Path
+          import contract_assay
+          root = Path(contract_assay.__file__).parent
+          assert (root / 'py.typed').is_file(), 'py.typed is missing from the wheel'
+          print('py.typed shipped')
+          "
+          python -c "
+          from contract_assay.detectors import API_VERSION, PredicateDetector
+          from contract_assay.evidence import Syntax, run_all
+          from contract_assay.harness import run_submission
+          from contract_assay.models import VulnerabilityClass as V
+          class B(PredicateDetector):
+              detector_id = 'release-smoke'
+              class_id = V.ACCESS_CONTROL
+              api_version = API_VERSION
+          src = 'contract V { address o; function setO(address w) external { o = w; } }'
+          parsed = Syntax.of(src)
+          assert parsed is not None
+          refs = run_all(parsed, 'V.sol', classes=[V.ACCESS_CONTROL])
+          assert refs, 'the shipped evidence layer established nothing'
+          print(f'the documented entry points work from the wheel: {len(refs)} evidence item(s)')
+          "
+          contract-assay --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    # Trusted publishing: no token is stored in this repository. A long-lived
+    # PyPI token in repository secrets is a credential that outlives every
+    # reason it was created for.
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

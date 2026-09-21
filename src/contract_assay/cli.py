@@ -30,6 +30,7 @@ from contract_assay.models import DetectorRun, DifficultyLevel, VulnerabilityCla
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import score
 from contract_assay.report.wire import leaderboard_document, score_document
+from contract_assay.results import compare, load_pointers
 
 app = typer.Typer(
     name="contract-assay",
@@ -376,6 +377,48 @@ def run_command(
         f"  contract-assay score {out} --records {records} --source-root {source_root} "
         "--submission-id <id> --out score.json"
     )
+
+
+@app.command("results")
+def results_command(
+    directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, help="Directory of result pointers."),
+    ] = Path("results"),
+) -> None:
+    """Compare published results, and refuse the comparisons that are not one.
+
+    This repository publishes no ranking of its own. A result lives wherever its
+    author put it and what lands here is a pointer to it -- because a leaderboard
+    in a benchmark's own repository makes its maintainers the adjudicators of
+    their own instrument, which is the thing this project already refuses one
+    level down: a detector's author cannot adjudicate its own predictions.
+
+    Results measured against different corpus digests, engine versions, floors,
+    weightings or caps are grouped apart rather than put in one column.
+    """
+    try:
+        pointers = load_pointers(directory)
+    except ValueError as invalid:
+        typer.secho(str(invalid), fg=typer.colors.RED)
+        raise typer.Exit(1) from invalid
+
+    comparison = compare(pointers)
+    for group in comparison.comparable:
+        typer.echo("")
+        for place, pointer in enumerate(group, start=1):
+            if pointer.total is None:
+                typer.echo(
+                    f"  --  {pointer.submission_id:<28} {pointer.published_by:<20} "
+                    f"no total: {pointer.unavailable}"
+                )
+            else:
+                typer.echo(
+                    f"  {place:>2}. {pointer.submission_id:<28} {pointer.published_by:<20} "
+                    f"{pointer.total:.4f}  {pointer.main_model or 'deterministic'}"
+                )
+    typer.echo("")
+    typer.echo(comparison.statement())
 
 
 @app.command("score")

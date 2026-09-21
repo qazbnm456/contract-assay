@@ -15,7 +15,7 @@ from contract_assay.models import (
     VerifiedFinding,
 )
 
-__version__ = "0.1.0.dev3"
+__version__ = "0.1.0"
 
 __all__ = [
     "CitationStatus",

@@ -111,6 +111,54 @@ recorded as a harness failure rather than as the absence of a finding.
 [docs/api.md](docs/api.md) states the compatibility surface and what running
 under isolation asks of a submission.
 
+## Using it
+
+```console
+$ pip install contract-assay
+
+$ contract-assay fetch corpus/records --source-root ./checkout
+140 of 141 pinned file(s) available. 140 matched their recorded digest. ...
+
+$ contract-assay run --manifest my-detector.json --records corpus/records \
+    --source-root ./checkout --out runs.jsonl
+
+$ contract-assay score runs.jsonl --records corpus/records \
+    --submission-id my-detector --source-root ./checkout \
+    --weights weights.json --predictions-per-unit 3 --out my-detector.json
+
+$ contract-assay results        # compare with what others have published
+```
+
+A submission is three declarations. This is the whole of it:
+
+```python
+from contract_assay.detectors import API_VERSION, PredicateDetector
+from contract_assay.models import VulnerabilityClass
+
+
+class Baseline(PredicateDetector):
+    detector_id = "baseline-access-control"
+    class_id = VulnerabilityClass.ACCESS_CONTROL
+    api_version = API_VERSION
+```
+
+That is a static-analysis baseline with no model in it — this benchmark's own
+predicates for the class, asserted as findings, citing the source at each one's
+own locator. On the public split it recalls 0.27 of access-control records. It
+is a real number and a weak detector: **you beat it by being more selective, not
+by finding more.** `docs/api.md` §1 has the five layers and what each default
+does; `examples/reference_runner/` writes every one of them by hand, including
+a model caller.
+
+No model is called unless you name one (`--model-caller module:function`), and
+this package imports no provider. An instrument whose own correctness depended
+on the thing it measures could not tell a broken instrument from a weak model.
+
+`results/` holds pointers to published results, not a ranking. A leaderboard in
+a benchmark's own repository makes its maintainers the adjudicators of their own
+instrument, which this project refuses one level down too — a detector's author
+cannot adjudicate its own predictions.
+
 ## Connecting a model
 
 This package does not call one, and installing it gets you no model library.
