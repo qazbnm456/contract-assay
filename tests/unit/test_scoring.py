@@ -1491,10 +1491,14 @@ class TestTheScorerTakesNobodysWordForACitation:
         # problem to naming one line of a large window. Measured, that took a
         # blind submission from 0.041 to 0.145, and 0.092 of it needed nothing
         # but braces and keywords.
-        runs, refuted, unchecked = recheck_citations(
+        runs, refuted, unchecked, moved, elsewhere = recheck_citations(
             [self.a_submitted_run(_at(6, 6), (4, 50))], [a_record()], resolver()
         )
         assert (refuted, unchecked) == (0, 0)
+        # And it is reported: an unreported disagreement is the shape of defect
+        # this file keeps finding. Here the move stays inside the function the
+        # declared locator names, so only the weaker counter rises.
+        assert (moved, elsewhere) == (1, 0)
         [finding] = runs[0].findings
         assert finding.status is CitationStatus.VERIFIED
         assert (finding.finding.locator.start_line, finding.finding.locator.end_line) == (6, 6)
@@ -1507,6 +1511,15 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert report.refuted_citations == 0
         [match] = report.matches
         assert match.strength is MatchStrength.FILE
+        # And the report says the scorer replaced the claim rather than
+        # tightening it: the declared locator names `withdraw`, the quote is in
+        # `unrelated`. Measured on an honest submission five lines wide on both
+        # sides, 283 of 431 predictions land in another callable this way.
+        assert (report.repositioned_predictions, report.repositioned_into_another_function) == (
+            1,
+            1,
+        )
+        assert "in a callable other than the one the declared locator names" in report.statement()
 
     def test_a_quote_that_starts_mid_line_is_refused(self) -> None:
         # The forgery a whole-line rule closes and a token-run rule does not:
@@ -1568,7 +1581,7 @@ class TestTheScorerTakesNobodysWordForACitation:
                 ]
             }
         )
-        rechecked, refuted, _ = recheck_citations([moved], [a_record()], resolver())
+        rechecked, refuted, *_ = recheck_citations([moved], [a_record()], resolver())
         assert refuted == 1
         names = [c.check for f in rechecked[0].findings for c in f.failed_checks]
         assert "citation_file_is_not_the_units_file" in names

@@ -315,8 +315,15 @@ def run_command(
     max_calls: Annotated[int, typer.Option("--max-calls", min=0)] = 4,
     max_tokens: Annotated[int, typer.Option("--max-tokens", min=0)] = 20_000,
     predictions_per_unit: Annotated[
-        int | None, typer.Option("--predictions-per-unit", min=1)
-    ] = None,
+        int,
+        typer.Option(
+            "--predictions-per-unit",
+            min=1,
+            help="Hand the benchmark at most this many model findings per unit per class, "
+            "in the order your detectors returned them. The default is what `score` will "
+            "count, so what you submit is what gets scored.",
+        ),
+    ] = DEFAULT_PREDICTIONS_PER_UNIT,
 ) -> None:
     """Run one or more detectors over the corpus and write the runs.
 

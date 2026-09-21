@@ -112,26 +112,40 @@ disagrees with the record's pin.
 How far that goes, measured over the whole corpus rather than argued. Every
 dictionary family is at zero: a 181-entry dictionary of generic Solidity idioms
 sprayed at every published locator (once **0.913**), generic mid-line runs of
-six or more tokens (once **0.126**), generic whole-line statements at every
-published span. What is **not** at zero is an attack built on what the corpus
+six or more tokens (once **0.126**), lines of nothing but braces and keywords
+(once 0.0138). What is **not** at zero is an attack built on what the corpus
 publishes: the record gives you the function's *name*, so `function {F}()
 external {` is the right text for a zero-argument function's declaration line.
-Nine such slots score **0.0276**, and **0.0621** when they are declared over
-spans widened past the published end line.
+The strongest such submission measured — whole lines built from a fixed generic
+vocabulary, declared over windows derived from the published line numbers —
+scores **0.2161**.
 
-Read that as a measurement and not as a bound. This check has been rewritten
-five times, the first three published as zeroes, and every one of them was
-exceeded by the next review. The size of what is left is clearest from the other
-side: a submitter who could name **one real line** of each published span would
-score 0.9885. The whole defence is that it cannot name one.
+**That 0.2161 is in-sample, and the held-out figure for the same method is
+0.0414.** A blind attack is a list of guesses, and every list measured here was
+chosen by its yield over the same 435 records it was then scored on.
+Cross-fitted — rank the guesses on half the corpus, score the other half — the
+family drops to 0.0414. Use the in-sample number to ask how much a *published*
+corpus leaks to somebody willing to fit it; use the held-out one to ask what a
+submission gets on records it has not seen. A competition is the second
+question, and `assay-arena` answers it with records whose locators are not
+published.
+
+Read both as measurements and not as bounds. This check has been rewritten five
+times, the first three published as zeroes, and every one of them was exceeded
+by the next review. The size of what is left is clearest from the other side: a
+submitter who could name **one real line** of each published span would score
+0.9885. The whole defence is that it cannot name one.
 
 What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
 builds the scorer's checkout from the same public coordinates you have. So a
 script that quotes the real span at each published locator scores **micro recall
-0.9908, precision 1.0 in every class it scores**. Measured, not hypothesised.
-(434 of 435 is the ceiling: one record's source resolves from no public
-coordinates, so any submission reaching it reports one unchecked citation.)
+0.9931**, with precision 0.9815 in access control, 0.9947 in denial of service
+and 1.0 in the rest. Measured, not hypothesised. (Not 1.0 anywhere near
+everywhere, and no submission gets a clean sheet of counters: one positive
+record's source resolves from no public coordinates and one more resolves to
+bytes whose digest disagrees with its pin, so the best possible submission still
+reports an unchecked citation.)
 
 That is a property of publishing the answer, not a defect in the checking. It
 means:
@@ -268,11 +282,16 @@ outcomes from how they happened to format a string:
   function or type name of your file's own is enough. Quote the neighbouring
   line as well when your statement is short.
 - **Your prediction is scored at the lines your quote matched**, not at the span
-  you declared, so declaring a wide span buys nothing: a quote matched in
-  another function is a file match, not a function one. The flip side is that
-  locator slop is free in every direction — measured over the whole corpus, an
-  honest submission scores the same 0.9885 with its locator exact, one line
-  wider, five lines wider, wider above, or wider on both sides.
+  you declared. So locator slop is free in every direction — measured over the
+  whole corpus, an honest submission scores the same 0.9862 with its locator
+  exact, one line wider, five wider, wider above, or wider on both sides — and
+  a wide span does not launder a quote into a function it is not in: a quote
+  matched in another function is a file match, not a function one. It is not
+  *nothing*, either, and an earlier version of this page claimed it was: a blind
+  submission gains about 0.05 in-sample from widening, most of it upward,
+  because widening upward pulls the function's own declaration line into the
+  pool. The report counts how many of your predictions were moved, and how many
+  landed in a callable your locator did not name.
 - The lines have to be in the file's own order, and contiguous in it. Blank
   lines are dropped on both sides, so a blank line between two quoted lines does
   not matter; a line of *code* between them does.
@@ -286,6 +305,16 @@ code, wrong place) and `citation_quote_absent_from_source`. The scorer adds two
 of its own: `citation_file_is_not_the_units_file` and `citation_unchecked`, the
 second meaning it had no source it could trust and therefore established
 nothing.
+
+**Shapes this refuses, with what they cost.** A quote assembled from
+non-adjacent lines — a model reporting a function by its three interesting lines
+— is refused outright, and **416 of 435** records could take that shape, so a
+submission built that way scores zero rather than less. Dropping an interior
+comment line and quoting the code around it is the same refusal, and **196 of
+434** spans contain an interior comment. Blank lines are the exception: they are
+dropped on both sides, so a blank line inside your quote is fine. Quote
+contiguous lines, comments included, or narrow the locator to a run that has
+none.
 
 **The cheapest way to satisfy all of this** is to build the quote by slicing the
 source at the locator you are about to report, which is what the bundled

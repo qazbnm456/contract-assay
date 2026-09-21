@@ -394,6 +394,30 @@ class ScoreReport:
     about its own evidence, and the runs were demoted before any figure was
     computed."""
 
+    repositioned_predictions: int = 0
+    """Predictions the scorer moved to the lines their quote actually matched.
+
+    Published because it is a disagreement, and an unreported disagreement is
+    the shape of defect this file keeps finding. The citation rule accepts a
+    quote that is whole lines *inside* the declared span, so a locator wider
+    than its quote is fine -- and the prediction is then scored at the quote,
+    not at the declaration. A submitter that thought it was reporting a function
+    and is scored at two lines of it should be able to see that from the report.
+
+    Measured on an honest submission whose locator is five lines wide on both
+    sides: every prediction moves, and `repositioned_into_another_function`
+    counts how many landed in a callable other than the one the declared locator
+    resolves to -- 283 of 431 in that case. The figures are unchanged by it
+    (0.9885 either way), which is the point: the mechanism is favourable and it
+    was silent."""
+
+    repositioned_into_another_function: int = 0
+    """Of those, the ones whose declared locator named a different callable.
+
+    A stronger statement than the count above: the scorer did not tighten the
+    submission's claim, it replaced it. Zero for a submission whose locators sit
+    where its quotes do."""
+
     unchecked_citations: int = 0
     """Verified findings whose source the scorer could not obtain.
 
@@ -569,8 +593,21 @@ class ScoreReport:
         if self.refuted_citations:
             parts.append(
                 f"{_plural(self.refuted_citations, 'finding')} the submission marked verified "
-                "did not survive re-reading the source at the cited locator, and were demoted "
+                "did not survive re-reading the source inside the cited span, and were demoted "
                 "before anything was counted."
+            )
+        if self.repositioned_predictions:
+            moved = _plural(self.repositioned_predictions, "prediction")
+            elsewhere = self.repositioned_into_another_function
+            parts.append(
+                f"{moved} declared a locator wider than the lines quoted and were scored at "
+                f"the quote"
+                + (
+                    f", {elsewhere} of them in a callable other than the one the declared "
+                    "locator names."
+                    if elsewhere
+                    else "."
+                )
             )
         if self.unchecked_citations:
             parts.append(
@@ -862,7 +899,7 @@ def _repository_of(record: CorpusRecord) -> str:
 
 def recheck_citations(
     runs: Sequence[DetectorRun], records: Sequence[CorpusRecord], resolve: SourceResolver | None
-) -> tuple[list[DetectorRun], int, int]:
+) -> tuple[list[DetectorRun], int, int, int, int]:
     """Re-read every verified quote against the scorer's own copy of the source.
 
     **What this establishes, and what it cannot.** It rules out an *incoherent*
@@ -877,12 +914,16 @@ def recheck_citations(
     builds the scorer's checkout from public coordinates, so the submitter's
     bytes and the scorer's bytes are the same bytes and the answer is a
     published field. A review demonstrated the consequence: quoting the *real*
-    span at each published locator scores **micro recall 0.9908 with precision
-    1.0 in every class it scores**. The ceiling is 434 of 435 and not 435: one
-    record's source resolves from no public coordinates, so a submission
-    reaching 434 necessarily carries `unchecked >= 1` and the earlier claim of
-    "0.9977 with every counter at zero" was a figure and a condition that
-    cannot hold together. Re-reading public source at a published locator cannot
+    span at each published locator scores **micro recall 0.9931**, with
+    precision 0.9815 in access control, 0.9947 in denial of service and 1.0 in
+    the rest. Two earlier versions of this sentence were wrong in two different
+    ways: "0.9977 with every counter at zero" cannot hold, because one positive
+    record's source resolves from no public coordinates and another resolves to
+    bytes whose digest disagrees with its pin, so the cleanest submission
+    possible still reports an unchecked citation; and the correction of it,
+    "434 of 435 is the ceiling ... = 0.9908", is two errors in one clause, since
+    434/435 is 0.9977 and 0.9908 is 431/435. Re-reading public source at a
+    published locator cannot
     distinguish a finding from a copy, and no amount of strictness in this
     function changes that.
 
@@ -905,36 +946,45 @@ def recheck_citations(
     | `"function"` at every published locator | 0.754 | 0 |
     | a 181-entry generated dictionary of idioms | **0.913** | **0** |
     | generic mid-line runs of six or more tokens | 0.126 | 0 |
-    | generic whole-line statements, at every published span | 0.249 | 0 |
-    | brace-and-keyword lines, over widened spans | 0.0138 | 0.0092 |
-    | nine blind slots off the published function name and lines | -- | 0.0276 |
-    | the same, over spans widened past the published end line | -- | **0.0621** |
-    | one donor unit, every locator elsewhere | 1.000 | 0 |
+    | generic whole-line statements, at a 1- or 2-line locator | 0.249 | 0 |
+    | the same, at the whole published span | -- | 0.0046 |
+    | brace-and-keyword lines, over widened spans | 0.0138 | **0** |
+    | one donor unit, every locator elsewhere | 1.000 | 0.0069 |
     | a submitter's own `--source-root` | 0.922 | 0 |
+    | **a generic vocabulary over widened windows, in-sample** | -- | **0.2161** |
+    | **the same, cross-fitted** | -- | **0.0414** |
 
-    **The live family is the two `blind slots` rows, and the second is why a
-    prediction is scored where its quote matched.** A citation must be whole
-    lines of the span its locator declares, six tokens or more, one of them
-    naming something the language does not supply -- which closes every
-    dictionary family above. What it does not close is an attack built on what
-    the corpus publishes: the function's *name* makes its declaration line
-    partly derivable. Nine such slots score 0.0276.
+    **The last two rows are the same attack, and the difference between them is
+    the most important number here.** A blind attack is a list of guesses, and
+    every list in this table was chosen by its yield over the same 435 published
+    records it was then scored on. Cross-fitted -- rank the guesses on half the
+    corpus, score the other half, so every record is measured under an order
+    that never saw it -- the strongest family falls from **0.2161 to 0.0414**.
+    In-sample says how much a published corpus leaks to somebody willing to fit
+    it; cross-fitted says what the same method gets on records it has not seen,
+    and that is the figure a competitive ranking has to be designed against.
+    Every earlier version of this table published an in-sample number without
+    saying so.
 
-    Declaring a span **wider** than the published one used to take that to
-    0.1448, because the span is the submitter's field and nothing read it:
-    `_strength` takes the containing function from `start_line` alone, so a
-    window hundreds of lines long kept `exact` strength and the attack reduced
-    to "name one line of this function". Positioning each prediction at the
-    lines its quote matched cut that to 0.0621 at no cost to an honest
-    submission, and took a donor-unit forgery -- real text from one file, every
-    locator pointing at another -- from 0.0782 to 0.
+    What the rule itself closes is every dictionary family above: a citation
+    must be whole lines of the span its locator declares, six tokens or more,
+    one of them naming something the language does not supply. What it cannot
+    close is an attack built on what the corpus publishes -- the function's
+    *name* makes its declaration line partly derivable -- and `quote_is_at`
+    carries that argument with the rest of the numbers.
 
-    **0.0621 is the best blind attack anybody has run here, not a bound.** Five
-    versions of this check have been published, the first three as zeroes, and
-    every one of them was exceeded by the next review. The size of what is left
-    is easiest to see from the other side: a submitter who could name **one real
-    line** of each published span would score 0.9885. The whole defence is that
-    it cannot name one, and each review has named a few more.
+    Positioning each prediction at the lines its quote matched is why the
+    in-sample figure is 0.2161 rather than higher again: the declared span is
+    the submitter's own field, `_strength` takes the containing function from
+    `start_line` alone, and a window hundreds of lines long used to keep `exact`
+    strength while the attack reduced to "name one line of this function". That
+    was worth 0.1448 on its own, and the donor forgery 0.0782.
+
+    **The donor row's zero was an artefact.** The "0.0782 -> 0" published here
+    took its before and its after from two *different* submission files, one of
+    which scores 0 with the fix reverted. A before/after pair drawn from two
+    artefacts is not a measurement. The family is 0.0069 -- three records, on
+    `unchecked {` / `++i;` boilerplate the donor also contains.
 
     The last row is zero because a pin carrying a digest now wins its
     `source_id`. Measured: with every digest stripped the forgery scores 0.922,
@@ -981,8 +1031,16 @@ def recheck_citations(
             }
         )
 
+    parsed_cache: dict[str, Syntax | None] = {}
+
+    def parsed_for(source_id: str, source: str) -> Syntax | None:
+        """Parsed once per unit. Only reached when a prediction actually moved."""
+        if source_id not in parsed_cache:
+            parsed_cache[source_id] = Syntax.of(source)
+        return parsed_cache[source_id]
+
     out: list[DetectorRun] = []
-    refuted = unchecked = 0
+    refuted = unchecked = moved = moved_elsewhere = 0
     for run in runs:
         pin = by_source.get(run.source_id)
         source = source_of(run.source_id)
@@ -1072,6 +1130,10 @@ def recheck_citations(
                 # and the locator now agree on which lines are being cited.
                 if at != finding.finding.locator:
                     changed = True
+                    moved += 1
+                    parsed = parsed_for(run.source_id, source)
+                    if _signature_at(parsed, at) != _signature_at(parsed, finding.finding.locator):
+                        moved_elsewhere += 1
                     finding = finding.model_copy(
                         update={"finding": finding.finding.model_copy(update={"locator": at})}
                     )
@@ -1109,7 +1171,7 @@ def recheck_citations(
             update["outcome"] = Outcome.INVALID
             update["invalid_reason"] = InvalidReason.CITATION_UNVERIFIED
         out.append(run.model_copy(update=update))
-    return out, refuted, unchecked
+    return out, refuted, unchecked, moved, moved_elsewhere
 
 
 def score(
@@ -1172,7 +1234,13 @@ def score(
     # Before anything is counted. See `recheck_citations`: a submitted run
     # arrives with its own `status: verified`, and until this ran a hand-written
     # file could top the board with fabricated quotes at published locators.
-    runs, refuted_citations, unchecked_citations = recheck_citations(runs, records, resolve)
+    (
+        runs,
+        refuted_citations,
+        unchecked_citations,
+        repositioned,
+        repositioned_elsewhere,
+    ) = recheck_citations(runs, records, resolve)
     truths = [r for r in records if r.is_positive and r.locator is not None]
 
     # Which files a negative record says hold no instance of a class. The only
@@ -1449,6 +1517,8 @@ def score(
         ),
         deterministic_runs=deterministic_runs,
         refuted_citations=refuted_citations,
+        repositioned_predictions=repositioned,
+        repositioned_into_another_function=repositioned_elsewhere,
         unchecked_citations=unchecked_citations,
         predictions_per_unit=predictions_per_unit,
         unjudged=tuple(all_unjudged),

@@ -376,159 +376,260 @@ does the work this was once credited with.
 
 _LANGUAGES_OWN_WORDS = frozenset(
     [
+        "abi",
         "abstract",
+        "add",
+        "addmod",
+        "address",
         "after",
         "alias",
+        "and",
         "anonymous",
         "apply",
         "as",
         "assembly",
         "assert",
         "auto",
+        "balance",
+        "basefee",
+        "blobbasefee",
+        "blobhash",
+        "block",
+        "blockhash",
+        "bool",
         "break",
         "byte",
+        "bytes",
+        "call",
+        "callcode",
         "calldata",
+        "calldataload",
+        "calldatasize",
+        "caller",
+        "callvalue",
         "case",
         "catch",
+        "chainid",
+        "code",
+        "codehash",
+        "coinbase",
+        "concat",
         "constant",
         "constructor",
         "continue",
         "contract",
         "copyof",
+        "creationCode",
+        "data",
         "days",
+        "decode",
         "default",
         "define",
+        "delegatecall",
         "delete",
+        "difficulty",
+        "div",
         "do",
+        "ecrecover",
         "else",
         "emit",
+        "encode",
+        "encodeCall",
+        "encodePacked",
+        "encodeWithSelector",
+        "encodeWithSignature",
         "enum",
+        "eq",
         "error",
         "ether",
         "event",
+        "exp",
         "external",
         "fallback",
         "false",
         "final",
+        "finney",
+        "fixed",
         "for",
         "function",
+        "gas",
+        "gasleft",
+        "gaslimit",
+        "gasprice",
+        "global",
+        "gt",
         "gwei",
         "hex",
+        "hours",
+        "i",
         "if",
         "immutable",
         "implements",
         "import",
+        "in",
         "indexed",
         "inline",
+        "int",
         "interface",
+        "interfaceId",
         "internal",
         "is",
+        "iszero",
+        "j",
+        "k",
+        "keccak256",
+        "layout",
+        "length",
         "let",
         "library",
+        "lt",
+        "macro",
         "mapping",
         "match",
+        "max",
         "memory",
+        "min",
         "minutes",
+        "mload",
+        "mod",
         "modifier",
+        "msg",
+        "mstore",
+        "mul",
+        "mulmod",
         "mutable",
+        "name",
         "new",
+        "not",
+        "now",
         "null",
+        "number",
         "of",
+        "or",
+        "origin",
         "override",
         "partial",
         "payable",
+        "pop",
         "pragma",
+        "prevrandao",
         "private",
         "promise",
         "public",
         "pure",
+        "push",
         "receive",
         "reference",
         "relocatable",
         "require",
         "return",
+        "returndatasize",
         "returns",
         "revert",
+        "ripemd160",
+        "runtimeCode",
+        "sar",
+        "sdiv",
         "sealed",
         "seconds",
+        "selector",
         "selfdestruct",
+        "send",
+        "sender",
+        "sgt",
+        "sha256",
+        "sha3",
+        "shl",
+        "shr",
+        "sig",
         "sizeof",
+        "sload",
+        "slt",
+        "smod",
+        "sstore",
         "static",
+        "staticcall",
         "storage",
         "string",
         "struct",
+        "sub",
         "super",
+        "supports",
         "switch",
+        "szabo",
         "this",
         "throw",
+        "timestamp",
+        "transfer",
+        "transient",
         "true",
         "try",
+        "tx",
         "type",
         "typedef",
         "typeof",
+        "ufixed",
+        "uint",
         "unchecked",
         "unicode",
+        "unwrap",
         "using",
+        "value",
         "var",
         "view",
         "virtual",
         "weeks",
         "wei",
         "while",
+        "wrap",
+        "xor",
         "years",
-        "abi",
-        "addmod",
-        "blockhash",
-        "block",
-        "ecrecover",
-        "gasleft",
-        "keccak256",
-        "mulmod",
-        "msg",
-        "now",
-        "ripemd160",
-        "sha256",
-        "tx",
-        "balance",
-        "call",
-        "code",
-        "data",
-        "delegatecall",
-        "gas",
-        "length",
-        "number",
-        "origin",
-        "pop",
-        "push",
-        "send",
-        "sender",
-        "staticcall",
-        "timestamp",
-        "transfer",
-        "value",
-        "address",
-        "bool",
-        "bytes",
-        "int",
-        "uint",
     ]
 )
 """The words a submitter can write without having read any particular file.
 
-Reserved words, elementary type names and the globals every file may use
-without declaring them. Enumerated rather than inferred, because it is the
-language's vocabulary and not a property of this corpus.
+Reserved words (including the ones reserved and unused), elementary type names,
+the globals and their members, the time and ether units, and Yul's builtins.
+Enumerated rather than inferred, because it is the language's vocabulary and
+not a property of this corpus. Plus `i`, `j`, `k`: the loop counters the
+language's *idiom* supplies, which carry no information about a file either --
+stated here rather than smuggled in, because they are the one part of this set
+that is not in the grammar.
 
 Why a citation must name something outside it: the identifier test used to be
 `token[0].isalpha()`, which `return`, `false` and `unchecked` satisfy -- so
 `} } return false; }` was "substantive" at six tokens, and a review built a
 blind submission out of nothing but braces and keywords. Measured, this clause
-costs an honest submission 0.9931 -> 0.9885 (two records whose natural quote is
-language only) and takes the brace-and-keyword family from 0.0138 to 0.0092.
+costs an honest submission 0.9931 -> 0.9885, which is two records whose whole
+anchor line is language: `receive() external payable {}` and
+`return (false, 0);`.
+
+**Under-inclusive is the failure direction, and it was under-inclusive.** A
+review found 70 words the language supplies that were missing -- `hours` while
+every other time unit was present, `transient` and `layout` from 0.8.28/0.8.29,
+`fixed`/`ufixed`, all of `abi.*`, most of `block.*`, `type(...)`'s members, and
+every Yul builtin -- and 8 records had a line inside their span whose only
+non-language token was one of them. Adding them costs the honest side nothing
+(0.9885 unchanged) and takes the brace-and-keyword family to 0. A missing entry
+costs blind recall; a *wrong* entry silently refuses a true citation forever, so
+the set is maintained from the grammar and any addition is measured against the
+honest figure before it lands.
 
 Elementary types are listed by prefix only -- `uint`, `int`, `bytes` -- and
 their widths are matched in `_is_the_languages_own`, so `uint256` and `bytes32`
 need no entry each.
+
+**What this set is not.** A review measured the stronger axis: refuse a quote
+whose only names are ones *any project* writes -- `i`, `amount`, `token`, `to`,
+`from`, `owner`, `IERC20`, `SafeERC20`, `nonReentrant`. That takes the best
+blind attack from 0.2414 to 0.0920 for three honest records, a better trade than
+anything declined here. It is declined anyway, on the axis rather than the
+price: a list of names "projects use" has no definition to maintain it against,
+it would be extended each time a review found a new carrier -- which is fitting
+the rule to the attack that was tried -- and its corpus-frequency version would
+make a citation's validity depend on the rest of the corpus, so the same quote
+would pass in one record set and fail in another. The grammar is a boundary
+somebody else maintains; "common" is not.
 """
 
 
@@ -612,7 +713,20 @@ def cited_lines(
     | token run, floor 6 | 0 | 0 | 0 | **0.126** | -- |
     | span equality, floor 6 | 0 | 0 | 0 | 0 | 0.034 |
     | line run, floor 6 | 0 | 0 | 0 | 0 | **0.145** |
-    | **line run, positioned, named** | 0 | 0 | 0 | 0 | **0.062** |
+    | **line run, positioned, named** | 0 | 0 | 0 | 0 | **0.216** |
+
+    **Every figure in that last column is in-sample, and the honest number is
+    0.041.** This is the correction that matters most and it applies to all five
+    earlier versions of this check. A "blind attack" is a slot list, and every
+    slot list here was *chosen* by its yield over the same 435 published records
+    it was then scored on. Cross-fitted -- rank the slots on half the corpus,
+    score the other half, each record measured under an order that never saw it
+    -- the strongest family drops from **0.2161 to 0.0414**. So the last column
+    measures how finely an attacker is allowed to fit the record set it is
+    evaluated on, and the number that generalises to a record set it has not
+    seen is the cross-fitted one. Held-out is the figure a competitive ranking
+    should be designed against; in-sample is the figure to quote when asking how
+    much a *published* corpus leaks.
 
     A token run lets a fragment straddle line boundaries, which is where
     `for (uint256 i = 0; i <` and `require(msg.sender ==` live -- ten tokens
@@ -628,29 +742,43 @@ def cited_lines(
 
     | honest submission, quote unchanged | equality | now |
     | --- | --- | --- |
-    | locator exactly the quoted lines | 0.993 | 0.989 |
-    | locator one line wider below | **0.076** | **0.989** |
-    | locator five lines wider below | 0.005 | 0.989 |
-    | locator one line wider above | 0.409 | 0.989 |
-    | locator one line wider on both sides | 0.005 | 0.989 |
-    | locator five lines wider on both sides | 0.005 | 0.989 |
-    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.991 |
+    | locator exactly the quoted lines | 0.993 | 0.986 |
+    | locator one line wider below | **0.076** | **0.986** |
+    | locator five lines wider below | 0.005 | 0.986 |
+    | locator one line wider above | 0.409 | 0.986 |
+    | locator one line wider on both sides | 0.005 | 0.986 |
+    | locator five lines wider on both sides | 0.005 | 0.986 |
+    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.993 |
 
     Locator slop in *any* direction is free now. Two of those rows were not
     free under a line run alone: a span starting a line above a function
     resolved to a different function and dropped to `file` strength.
     Positioning (below) fixed them as a side effect -- the prediction is where
-    its quote is, and its quote is inside the function. The 0.993 -> 0.989 in
-    the first row is `_LANGUAGES_OWN_WORDS` refusing two records whose natural
-    one-line quote is language only.
+    its quote is, and its quote is inside the function.
 
-    Accepting part of a span has a price, and the price was under-measured
-    twice. A donor-unit forgery -- real text out of one file, every locator
-    pointing at another -- reads 0.0023 when it is built naively and **0.0782**
-    when the locators are widened, because a wide span makes duplicated
-    boilerplate land somewhere. Positioning (below) takes it to **0**. The
-    honest side of that trade is the 0.917 of recall that demanding the whole
-    span cost, so it was the right trade even at 0.0782.
+    The 0.993 -> 0.986 is `_LANGUAGES_OWN_WORDS`, and it is three records, each
+    named: `2025-05-dodo-…-94722659`, whose anchor line is
+    `receive() external payable {}`; `2025-05-lend-…-ad76a9bd`, whose anchor is
+    `return (false, 0);`; and `2024-12-plaza-finance-…-1e5ed5cb`, whose anchor
+    line is blank. Three further records have no citable single line **anywhere**
+    in their span and can only be cited with a multi-line quote. These are the
+    canonical one-line access-control and DoS shapes, so on a differently
+    weighted corpus the cost would not be three.
+
+    Accepting part of a span has a price, and it was published wrong twice. A
+    donor-unit forgery -- real text out of one file, every locator pointing at
+    another -- reads 0.0023 built naively and **0.0782** with the locators
+    widened, because a wide span makes duplicated boilerplate land somewhere.
+    Positioning and the naming clause take it to **0.0069**, three records whose
+    cited lines are `unchecked {` / `++i;` boilerplate the donor also has.
+
+    The "0.0782 -> 0" this docstring published was worse than a wrong number: a
+    review found the before and the after had been taken from **two different
+    submission files**, one of which scores 0 with the fix reverted. A
+    before/after pair drawn from two artefacts is not a measurement, and the
+    only reason it looked like one is that nothing re-derived it. The honest
+    side of the trade stands either way: demanding the whole span cost 0.917 of
+    honest recall.
 
     **The span is the submitter's field, so the scorer stopped reading it.**
     `cited_lines` returns the locator narrowed to the lines the quote matched,
@@ -665,19 +793,23 @@ def cited_lines(
     slop measured -- one line or five, above, below or both -- and for two of
     those it is what makes them free.
 
-    **What is left, and it is not zero.** Nine slots off the published function
-    name and line numbers score 0.0276, and **0.0621** when they are declared
-    over widened spans and ranked against corpus yield. No rule about quoted
-    text can make derivable text unguessable, and the record publishes the
-    function's name.
+    **What is left.** The strongest blind submission measured enumerates whole
+    lines built from a fixed generic vocabulary -- the language's words, the
+    identifier names every project writes (`i`, `amount`, `token`, `owner`,
+    `IERC20`, `nonReentrant`), and the two names the record publishes -- and
+    declares each over a window derived from the published line numbers. It
+    scores **0.2161 in-sample and 0.0414 cross-fitted**. Widening the window
+    *upward* is worth more than downward, because it pulls the function's own
+    declaration line and its top-of-body guards into the pool while every match
+    still scores `function`.
 
-    This is the fifth version of this check and the fifth number. The first
-    three were published as zeroes and every one of the five was exceeded by the
-    next review -- 0.938, then 0.913, then 0.1448, then 0.0621. So: **0.0621 is
-    a measurement of the best blind attack anybody has run here, not a floor.**
-    The size of what is left is clearest from the other side: a submitter who
-    could name one real line of each published span would score **0.9885**. The
-    defence is entirely that it cannot name one.
+    This is the fifth version of this check and each of the first four was
+    exceeded by the next review -- 0.938, 0.913, 0.1448, 0.2161 in-sample. So
+    the number here is a measurement of the best attack anybody has run, not a
+    floor, and the next reviewer should expect to beat it. The size of what is
+    left is clearest from the other side: a submitter who could name **one real
+    line** of each published span would score 0.9885. The defence is entirely
+    that it cannot name one, and each review names a few more.
 
     Two further rules were measured and **declined**, recorded here so the next
     reviewer does not have to rediscover them:

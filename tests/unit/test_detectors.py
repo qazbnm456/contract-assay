@@ -1004,6 +1004,21 @@ contract Vault {
         # is language only.
         assert self._check("total = total - amount;", 6, 6) is None
 
+    @pytest.mark.parametrize("counter", ["i", "j", "k"])
+    def test_a_loop_counter_is_not_a_name_of_its_own(self, counter: str) -> None:
+        # The one part of the set that is not in the grammar, so it is the part
+        # that needs a test: `unchecked { ++i; }` is six tokens and the only
+        # identifier is the counter. A review's donor forgery and its
+        # brace-and-keyword family both rested on exactly this line.
+        assert _is_the_languages_own(counter)
+        failure = quote_is_at(
+            f"function f() external {{\nunchecked {{ ++{counter}; }}\n}}\n",
+            Locator(file="f.sol", start_line=2, end_line=2),
+            f"unchecked {{ ++{counter}; }}",
+        )
+        assert failure is not None
+        assert failure.check == "citation_quote_is_not_substantive"
+
     @pytest.mark.parametrize("width", ["uint256", "int128", "bytes32", "uint", "bytes"])
     def test_an_elementary_type_of_any_width_is_the_languages_own(self, width: str) -> None:
         # Listed by prefix, matched by width, so the set needs no entry each.

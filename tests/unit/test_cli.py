@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from contract_assay.cli import _local_resolver, app
@@ -76,6 +77,16 @@ def workspace(tmp_path: Path) -> Path:
     (tmp_path / "src" / "Vault.sol").write_text(VAULT, encoding="utf-8")
     (tmp_path / "records").mkdir()
     return tmp_path
+
+
+def _cap_default(application: typer.Typer, command: str) -> object:
+    """The default `--predictions-per-unit` a command was declared with."""
+    import inspect
+
+    for info in application.registered_commands:
+        if (info.name or info.callback.__name__.replace("_", "-")) == command:
+            return inspect.signature(info.callback).parameters["predictions_per_unit"].default
+    raise AssertionError(f"no command named {command!r}")
 
 
 def write_record(workspace: Path, record: dict[str, object], name: str = "record.json") -> Path:
@@ -336,6 +347,16 @@ class TestTheCapIsTheSameOnBothSurfaces:
         path = workspace / "runs.jsonl"
         path.write_text(json.dumps(run) + "\n", encoding="utf-8")
         return path
+
+    def test_run_caps_without_being_asked(self, workspace: Path) -> None:
+        # The third place that chooses this number, and the one on the path a
+        # submitter uses. It was `None` while `run_submission`'s own default was
+        # nine and its docstring said "what a submission hands over is what gets
+        # scored" -- so the default was dead through the command, and a review
+        # reverted it in the other direction with the suite still green.
+        assert _cap_default(app, "run") == DEFAULT_PREDICTIONS_PER_UNIT, (
+            "contract-assay run must hand over what score will count"
+        )
 
     def test_score_caps_without_being_asked(self, workspace: Path) -> None:
         write_record(workspace, a_record())
