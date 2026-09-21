@@ -58,12 +58,14 @@ from contract_assay.evidence.solidity import index_source
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
     MAX_DESCRIPTION_CHARS,
+    MAX_QUOTE_CHARS,
     DeclaredLimit,
     DifficultyLevel,
     EvidenceRef,
     EvidenceTier,
     FailedCheck,
     Finding,
+    Locator,
     RejectionKind,
     SkipReason,
     VulnerabilityClass,
@@ -81,6 +83,7 @@ __all__ = [
     "check_citation",
     "gate",
     "is_compatible",
+    "quote_is_at",
     "validate_claim",
 ]
 
@@ -345,6 +348,60 @@ def gate(source: str) -> SkipReason | None:
     return None
 
 
+def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
+    """Whether `quote` is the source at `locator`. The comparison, without a context.
+
+    Extracted so the **scorer** can run it. `check_citation` is called from
+    `run_detector`, which means it only ever protected a run this package
+    produced -- while `contract-assay score` takes a JSON Lines file, which is
+    the documented way a third party submits. A submitted run arrived with
+    `status: verified` already set and nothing re-read the source.
+
+    Measured before the fix: a hand-written submission quoting `"THIS TEXT IS
+    NOWHERE IN THE SOURCE"` at every recorded access-control locator scored 12
+    predictions, **12 matches**, and `unverifiable_claims: 0`. The locators are
+    in the published corpus, so that is the whole benchmark in one file anybody
+    can write. The check has to live where the figures are computed, not where
+    this package happens to produce a run.
+    """
+    # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
+    # on \v, \f, \x1c-\x1e and U+2028/2029, none of which a compiler or an
+    # editor treats as a line break.
+    lines = source.split("\n")
+
+    if locator.end_line > len(lines):
+        return FailedCheck(
+            check="citation_span_out_of_range",
+            kind=RejectionKind.CITATION,
+            detail=f"span ends at {locator.end_line}, source has {len(lines)} lines",
+        )
+
+    def normalise(text: str) -> str:
+        return "\n".join(line.strip() for line in text.split("\n") if line.strip())
+
+    span = normalise("\n".join(lines[locator.start_line - 1 : locator.end_line]))
+    normalised = normalise(quote)
+    if not normalised:
+        return FailedCheck(
+            check="citation_quote_absent_from_source",
+            kind=RejectionKind.CITATION,
+            detail="the quote is blank once whitespace is normalised",
+        )
+    if normalised in span:
+        return None
+    if normalised in normalise(source):
+        return FailedCheck(
+            check="citation_quote_elsewhere_in_file",
+            kind=RejectionKind.CITATION,
+            detail="the quote is in the file but not at the cited lines",
+        )
+    return FailedCheck(
+        check="citation_quote_absent_from_source",
+        kind=RejectionKind.CITATION,
+        detail="the quote is not in the source",
+    )
+
+
 def check_citation(ctx: AnalysisContext, finding: Finding) -> FailedCheck | None:
     """Re-read the source at a finding's locator and compare it to the quote.
 
@@ -370,55 +427,7 @@ def check_citation(ctx: AnalysisContext, finding: Finding) -> FailedCheck | None
     unrelated to whether they are true, which is a wrong skip paid for in
     recall.
     """
-    # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
-    # on \v, \f, \x1c-\x1e and U+2028/2029, none of which a compiler or an
-    # editor treats as a line break.
-    lines = ctx.source.split("\n")
-    locator = finding.locator
-
-    if locator.end_line > len(lines):
-        return FailedCheck(
-            check="citation_span_out_of_range",
-            kind=RejectionKind.CITATION,
-            detail=f"span ends at {locator.end_line}, source has {len(lines)} lines",
-        )
-
-    def normalise(text: str) -> str:
-        return "\n".join(line.strip() for line in text.split("\n") if line.strip())
-
-    span = normalise("\n".join(lines[locator.start_line - 1 : locator.end_line]))
-    quote = normalise(finding.quote)
-    if not quote:
-        return FailedCheck(
-            check="citation_quote_absent_from_source",
-            kind=RejectionKind.CITATION,
-            detail="the quote is blank once whitespace is normalised",
-        )
-    if quote in span:
-        return None
-
-    # Distinguished because the two mean different things about the detector: one
-    # quoted real code and pointed at the wrong place, the other quoted code that
-    # is not in this file at all.
-    if quote in normalise(ctx.source):
-        return FailedCheck(
-            check="citation_quote_elsewhere_in_file",
-            kind=RejectionKind.CITATION,
-            detail=(
-                f"the quoted text is in {locator.file} but not at lines "
-                f"{locator.start_line}-{locator.end_line}"
-            ),
-        )
-    return FailedCheck(
-        check="citation_quote_absent_from_source",
-        kind=RejectionKind.CITATION,
-        detail=f"the quoted text does not appear in {locator.file}",
-    )
-
-
-# ---------------------------------------------------------------------------
-# The interface
-# ---------------------------------------------------------------------------
+    return quote_is_at(ctx.source, finding.locator, finding.quote)
 
 
 class Detector(ABC):
@@ -699,6 +708,17 @@ class PredicateDetector(Detector):
         lines = ctx.source.split("\n")
         out: list[Finding] = []
         for ref in evidence:
+            if not ref.is_established:
+                # An `indeterminate` evidence item is the predicate saying it had
+                # no basis to decide -- the three-valued answer this system
+                # exists to keep apart from "absent". Asserting it as a finding
+                # converts the disclaimer back into a claim: the run comes out
+                # `vulnerable`, `negative_is_established` reads True, and the
+                # prediction enters somebody's adjudication queue carrying a
+                # `reasoning` string that states the property the item itself
+                # declined to establish. Found by review, and it had tainted the
+                # measured baseline figure this class's docstring quotes.
+                continue
             start, end = ref.locator.start_line, ref.locator.end_line
             if start < 1 or end < start or end > len(lines):
                 # An evidence span outside this source has nothing to quote.
@@ -708,6 +728,15 @@ class PredicateDetector(Detector):
                 continue
             quote = "\n".join(lines[start - 1 : end])
             if not quote.strip():
+                continue
+            if len(quote) > MAX_QUOTE_CHARS:
+                # A whole-function span over a long function exceeds `Finding`'s
+                # own bound, and `_validate_each` raises on the first bad item --
+                # so one 4,000-character function turned the entire unit into
+                # `invalid`/`schema_violation`, discarding every other proposed
+                # finding and blaming the submission. Skipped instead, because a
+                # truncated quote would fail the citation check and a truncated
+                # locator would point somewhere the predicate did not.
                 continue
             out.append(
                 Finding(

@@ -1,6 +1,6 @@
 [project]
 name = "contract-assay"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Benchmark infrastructure for LLM smart contract auditing: verified findings, deterministic evidence, attributable scoring."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -78,6 +78,11 @@ artifacts = ["src/contract_assay/py.typed"]
 # Enforcement. Every tool below runs in CI on every push. A linter that is
 # configured but never run is decoration; the gate is what makes it real.
 # ---------------------------------------------------------------------------
+
+[tool.hatch.version]
+# One literal, in the package. A second copy here would drift, and the version
+# is written into every score document as `engine_version`.
+path = "src/contract_assay/__init__.py"
 
 [tool.ruff]
 line-length = 100

@@ -14,9 +14,19 @@ level down: a detector's author cannot adjudicate its own predictions, because
 precision would be 1 by construction. The same argument applies to the
 benchmark's authors and the benchmark's own ranking.
 
-And a pointer is checkable in a way a claimed number is not. Every field below
-is one the engine wrote into the score document, so a pointer either matches the
-document it points at or it does not.
+And a pointer is **derivable** in a way a claimed number is not:
+`pointer_from_document` reads every field out of a score document, so a pointer
+built that way cannot drift from the document it came from.
+
+Be exact about what that does and does not establish, because the first version
+of this docstring overstated it and a review caught it. Nothing here fetches
+`document_url` -- `HttpUrl` is a syntax check, and a pointer to a 404 validates.
+Nothing forces a publisher to use `pointer_from_document`; a hand-written file
+with the same shape is accepted identically. So a pointer is an **attributed
+claim** whose shape is checked and whose numbers are not re-derived, and the
+audit that closes the gap is a reader fetching the document. The one guard in
+this repository is a CI job that validates every file under `results/` at all,
+so a merged pointer cannot break the command for everybody else.
 
 **Comparison is refused more often than it is granted, and that is the useful
 part.** Two results computed against different corpus digests, engine versions,
@@ -29,6 +39,7 @@ change but a corpus that grew.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,7 +55,14 @@ __all__ = [
     "pointer_from_document",
 ]
 
-_BASIS = ("engine_version", "corpus_digest", "strength_floor", "weights", "predictions_per_unit")
+_BASIS = (
+    "engine_version",
+    "corpus_digest",
+    "strength_floor",
+    "weights",
+    "predictions_per_unit",
+    "main_model",
+)
 """The fields two results must agree on before their totals mean the same thing.
 
 Named once, here, because `compare` reports on them and the docs list them, and a
@@ -73,15 +91,22 @@ class ResultPointer(BaseModel):
 
     main_model: str | None = None
     """The model behind the figures, or `None` for a deterministic submission.
-    Not a gap: the benchmark declines to rank a row that names no main model
-    against one that does, and says why."""
+
+    Part of the basis, so a deterministic result and a model-backed one are
+    grouped apart rather than ranked against each other. That is the same
+    refusal `report/leaderboard.py` makes one level down, and it was in this
+    docstring as a promise before it was in `_BASIS` as a fact -- a review
+    caught the gap. A deterministic submission is not a worse one; it was
+    measured under different conditions, which is exactly what a separate group
+    is for.
+    """
 
     total: float | None = None
     """The aggregate the document reported, or `None` where it refused to
     compute one. Copied so a reader can sort without fetching every document,
     and **`None` is never rendered as zero** -- `unavailable` is why."""
 
-    unavailable: str | None = None
+    unavailable: Annotated[str | None, Field(min_length=1)] = None
     """The document's own sentence for a missing total. Present iff `total` is
     `None`; validated, because a null with no reason beside it is the one thing
     this project's wire format exists to prevent."""
@@ -97,22 +122,30 @@ class ResultPointer(BaseModel):
         contradicts the figure next to it, and a reader has no way to tell which
         of the two to believe.
         """
-        if self.total is None and not self.unavailable:
+        if self.total is None and not (self.unavailable or "").strip():
             raise ValueError(
                 "total is null and unavailable is empty: a refused figure carries the "
                 "document's own reason, or a reader renders the null as a zero"
             )
-        if self.total is not None and self.unavailable:
+        if self.total is not None and (self.unavailable or "").strip():
             raise ValueError(
                 f"total is {self.total} and unavailable says {self.unavailable!r}: one of "
                 "them is wrong and nothing here can say which"
             )
+        for level, weight in self.weights.items():
+            if not math.isfinite(weight):
+                raise ValueError(
+                    f"weight {level}={weight!r} is not a finite number: it compares unequal "
+                    "to itself, so two results sharing it would group apart, and "
+                    "`NaN`/`Infinity` are not JSON that a non-Python reader can parse"
+                )
         return self
 
     def basis(self) -> tuple[Any, ...]:
         """The values two pointers must share to be comparable."""
         return tuple(
-            json.dumps(getattr(self, field), sort_keys=True, default=str) for field in _BASIS
+            json.dumps(_canonical(getattr(self, field)), sort_keys=True, default=str)
+            for field in _BASIS
         )
 
 
@@ -125,21 +158,40 @@ def pointer_from_document(
     A pointer assembled by hand is a number somebody typed; this one either
     matches the document or fails to build.
     """
-    aggregate = document.get("aggregate", {})
-    total = aggregate.get("total", {})
-    models = document.get("models", {})
+
+    def field(name: str, *path: str) -> Any:
+        """One value out of the document, or a `ValueError` naming where it was.
+
+        Every miss is a `ValueError` so `load_pointers` can wrap it with the
+        file's name. A `KeyError` or an `AttributeError` from a document shaped
+        wrongly would escape that wrapper and read as a defect in this code.
+        """
+        node: Any = document
+        for key in (name, *path):
+            if not isinstance(node, dict) or key not in node:
+                raise ValueError(
+                    f"the document has no {'.'.join((name, *path))!r}: this is not a "
+                    "score document written by `contract-assay score`"
+                )
+            node = node[key]
+        return node
+
     return ResultPointer(
-        submission_id=document["submission_id"],
+        submission_id=field("submission_id"),
         published_by=published_by,
         document_url=HttpUrl(document_url),
-        engine_version=document["engine_version"],
-        corpus_digest=document["corpus"]["digest"],
-        strength_floor=document["strength_floor"],
-        weights=document.get("weights", {}),
-        predictions_per_unit=document.get("predictions_per_unit"),
-        main_model=models.get("main"),
-        total=total.get("value"),
-        unavailable=total.get("unavailable"),
+        engine_version=field("engine_version"),
+        corpus_digest=field("corpus", "digest"),
+        strength_floor=field("strength_floor"),
+        # Read, never defaulted. Both are basis fields, and a silently
+        # defaulted one groups a trimmed document with a genuinely unweighted
+        # or uncapped result -- the same missing-versus-stated conflation this
+        # model refuses for `total`.
+        weights=field("weights"),
+        predictions_per_unit=field("predictions_per_unit"),
+        main_model=field("models", "main"),
+        total=field("aggregate", "total", "value"),
+        unavailable=field("aggregate", "total", "unavailable"),
         notes=notes,
     )
 
@@ -222,3 +274,18 @@ def compare(pointers: Iterable[ResultPointer]) -> Comparison:
 
     groups = sorted(grouped.values(), key=lambda g: (-len(g), g[0].submission_id))
     return Comparison(comparable=tuple(order(g) for g in groups))
+
+
+def _canonical(value: Any) -> Any:
+    """Normalise a basis value so equal things compare equal.
+
+    Only `-0.0`, which `json.dumps` writes differently from `0.0` while Python
+    calls them equal -- so two results with the same weighting landed in two
+    groups. Found by review rather than by use, which is the usual way a
+    formatting artefact in a grouping key is found.
+    """
+    if isinstance(value, dict):
+        return {k: _canonical(v) for k, v in value.items()}
+    if isinstance(value, float) and value == 0.0:
+        return 0.0
+    return value

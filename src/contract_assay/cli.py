@@ -332,7 +332,7 @@ def run_command(
     caller = None
     if model_caller is not None:
         try:
-            caller = load_caller(model_caller)
+            caller = load_caller(model_caller, search_path=Path.cwd())
         except ValueError as bad:
             typer.secho(str(bad), fg=typer.colors.RED)
             raise typer.Exit(2) from bad
@@ -434,14 +434,15 @@ def score_command(
         str, typer.Option("--submission-id", help="Identifies this submission in the document.")
     ],
     source_root: Annotated[
-        Path | None,
+        Path,
         typer.Option(
             "--source-root",
             exists=True,
             file_okay=False,
-            help="Checkout to read source from, enabling function-strength matching.",
+            help="Checkout to read source from. Required: every figure rests on re-reading "
+            "the quotes, and `contract-assay fetch` builds it.",
         ),
-    ] = None,
+    ],
     weights: Annotated[
         Path | None,
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
@@ -467,7 +468,12 @@ def score_command(
     zero, and the adjudication queue is carried in full so that "precision is
     unlicensed" is a list of work rather than a verdict.
     """
-    resolve = _local_resolver(source_root) if source_root is not None else None
+    # Required rather than optional, because it stopped being an enhancement.
+    # The scorer re-reads every quote the submission marked verified, and
+    # without source it can establish none of them -- so `score` with no
+    # checkout used to return figures and now correctly returns nothing. An
+    # option that is optional and useless is worse than one that is required.
+    resolve = _local_resolver(source_root)
     held = _records_from(records)
     report = score(_runs_from(runs), held, resolve, predictions_per_unit=predictions_per_unit)
     submission = score_submission(submission_id, report, weights=_weights_from(weights))

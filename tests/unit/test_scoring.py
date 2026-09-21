@@ -66,8 +66,65 @@ contract Vault {
     function unrelated() external {
         total = 0;
     }
+
+    function filler1() external {
+        total = total + 1;
+    }
+
+    function filler2() external {
+        total = total + 2;
+    }
+
+    function filler3() external {
+        total = total + 3;
+    }
+
+    function filler4() external {
+        total = total + 4;
+    }
+
+    function filler5() external {
+        total = total + 5;
+    }
+
+    function filler6() external {
+        total = total + 6;
+    }
+
+    function filler7() external {
+        total = total + 7;
+    }
+
+    function filler8() external {
+        total = total + 8;
+    }
+
+    function filler9() external {
+        total = total + 9;
+    }
+
+    function filler10() external {
+        total = total + 10;
+    }
+
+    function filler11() external {
+        total = total + 11;
+    }
 }
 """
+
+
+def _at(start: int, end: int, source: str = SOURCE) -> str:
+    """The exact text of SOURCE at those lines, so a fixture's citation is true.
+
+    A span past the end of SOURCE falls back to a marker that is not in it --
+    a test citing line 40 of a 17-line file is testing a broken citation, and
+    should get one rather than a silently passing quote.
+    """
+    lines = source.split("\n")
+    if end > len(lines) or start < 1 or end < start:
+        return "beyond the end of this source"
+    return "\n".join(lines[start - 1 : end])
 
 
 def resolver(source: str | None = SOURCE):  # type: ignore[no-untyped-def]
@@ -134,7 +191,8 @@ def a_run(
     outcome: Outcome | None = None,
     unverifiable: int = 0,
     file: str = PATH,
-    source_id: str = "s",
+    source_id: str | None = None,
+    source: str = SOURCE,
 ) -> DetectorRun:
     # `vulnerable` requires a verified finding and `clean` forbids one, so the
     # outcome follows from the spans unless a test is specifically about an
@@ -145,7 +203,12 @@ def a_run(
         VerifiedFinding(
             finding=Finding(
                 detector_id="d",
-                quote="x",
+                # Quoted out of SOURCE at the span being cited. The fixture used
+                # to say `quote="x"` for every span, which passed only because
+                # nothing re-read the source -- the exact self-certification the
+                # scorer now refuses, so a fixture relying on it was testing a
+                # hole rather than a figure.
+                quote=_at(a, b, source),
                 reasoning="r",
                 locator=Locator(file=file, start_line=a, end_line=b),
             ),
@@ -157,7 +220,9 @@ def a_run(
         VerifiedFinding(
             finding=Finding(
                 detector_id="d",
-                quote="x",
+                # Deliberately not in the source: this one is the unverifiable
+                # claim the test is about, and it arrives already rejected.
+                quote="this text is nowhere in the source",
                 reasoning="r",
                 locator=Locator(file=PATH, start_line=1, end_line=1),
             ),
@@ -171,7 +236,12 @@ def a_run(
     return DetectorRun(
         detector_id="d",
         class_id=cls,
-        source_id=source_id,
+        # Defaults to the record's own `source_id`, because the scorer resolves
+        # a run's source through the pin that shares it. An invented id has no
+        # pin, so nothing can re-read the quote and every finding is demoted as
+        # unchecked -- correct behaviour, and it used to be invisible because
+        # nothing re-read anything.
+        source_id=source_id if source_id is not None else a_record().pin.source_id,
         outcome=outcome,
         evidence_tier=None if outcome is Outcome.SKIPPED else EvidenceTier.SYNTACTIC,
         findings=[] if outcome is Outcome.SKIPPED else findings,
@@ -231,15 +301,23 @@ class TestWhatTheScorerRefusesToClaim:
         assert got.by_strength == {MatchStrength.FUNCTION: 1}
         assert got.exact_unavailable == 1
 
-    def test_without_source_function_strength_is_unavailable_not_guessed(self) -> None:
-        # Comparing names instead would let the wrong overload score as right.
-        got = only(score([a_run([(5, 6)])], [a_record()], None))
-        assert got.by_strength == {MatchStrength.FILE: 1}
-        assert got.function_unavailable == 1
+    def test_without_source_nothing_is_scored_at_all(self) -> None:
+        # This used to report a FILE-strength match with function strength
+        # unavailable. It cannot any more, and the change is the point: without
+        # source the scorer cannot re-read a quote, and a submitted run arrives
+        # with `status: verified` set by whoever wrote it. Accepting an unchecked
+        # citation is how a hand-written file tops a leaderboard.
+        report = score([a_run([(5, 6)])], [a_record()], None)
+        got = only(report)
+        assert got.by_strength == {}
+        assert got.predictions == 0
+        assert report.unchecked_citations == 1
+        assert "an unchecked citation is not a passed one" in report.statement()
 
     def test_unresolvable_source_degrades_the_same_way(self) -> None:
-        got = only(score([a_run([(5, 6)])], [a_record()], resolver(None)))
-        assert got.function_unavailable == 1
+        report = score([a_run([(5, 6)])], [a_record()], resolver(None))
+        assert report.unchecked_citations == 1
+        assert only(report).predictions == 0
 
     def test_an_anchored_record_is_scored_against_its_anchor(self) -> None:
         # The span was widened from the anchor, so requiring overlap with the
@@ -1008,7 +1086,9 @@ contract Vault {
         return a_record(start=start, end=end, function=function)
 
     def _strength_of(self, prediction: tuple[int, int], record: CorpusRecord) -> str:
-        report = score([a_run([prediction])], [record], resolver(self.ADJACENT))
+        report = score(
+            [a_run([prediction], source=self.ADJACENT)], [record], resolver(self.ADJACENT)
+        )
         [match] = report.matches
         return match.strength.value
 
@@ -1041,7 +1121,11 @@ contract Vault {
         # Which is the whole reason it is a tier rather than a relaxation: the
         # figure §1.1 requires stays exactly as strict.
         got = only(
-            score([a_run([(9, 10)])], [self._record(4, 6, "entry")], resolver(self.ADJACENT))
+            score(
+                [a_run([(9, 10)], source=self.ADJACENT)],
+                [self._record(4, 6, "entry")],
+                resolver(self.ADJACENT),
+            )
         )
         assert got.recall(MatchStrength.FUNCTION) == 0.0
         assert got.recall(MatchStrength.CALL_ADJACENT) == 1.0
@@ -1105,11 +1189,16 @@ class TestThePoolIsBounded:
         assert got.by_strength == {MatchStrength.EXACT: 1}
 
     def test_each_unit_gets_its_own_quota(self) -> None:
+        # Two records in two repositories, so two `source_id`s -- an invented one
+        # has no pin, and the scorer then has no source to re-read a quote
+        # against, which demotes every finding as unchecked.
+        one = a_record(record_id="vault-reentrancy-1", repo="one")
+        two = a_record(record_id="vault-reentrancy-2", repo="two")
         runs = [
-            a_run([(5, 6), (20, 21)], source_id="unit-one"),
-            a_run([(5, 6), (20, 21)], source_id="unit-two"),
+            a_run([(5, 6), (20, 21)], source_id=one.pin.source_id),
+            a_run([(5, 6), (20, 21)], source_id=two.pin.source_id),
         ]
-        got = only(score(runs, [a_record()], resolver(), predictions_per_unit=1))
+        got = only(score(runs, [one, two], resolver(), predictions_per_unit=1))
         assert (got.predictions, got.capped_predictions) == (2, 2)
 
     def test_two_detectors_in_one_class_share_the_quota(self) -> None:

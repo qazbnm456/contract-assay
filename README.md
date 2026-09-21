@@ -144,9 +144,9 @@ class Baseline(PredicateDetector):
 
 That is a static-analysis baseline with no model in it — this benchmark's own
 predicates for the class, asserted as findings, citing the source at each one's
-own locator. On the public split it recalls 0.27 of access-control records. It
-is a real number and a weak detector: **you beat it by being more selective, not
-by finding more.** `docs/api.md` §1 has the five layers and what each default
+own locator. On the public split it makes 34 access-control predictions against
+55 records and recalls 0.11. It is a real number and a weak detector: **you beat
+it by being more selective, not by finding more.** `docs/api.md` §1 has the five layers and what each default
 does; `examples/reference_runner/` writes every one of them by hand, including
 a model caller.
 

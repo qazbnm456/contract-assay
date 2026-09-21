@@ -44,6 +44,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from contract_assay.corpus.records import (
     CorpusRecord,
@@ -52,6 +53,7 @@ from contract_assay.corpus.records import (
     Population,
 )
 from contract_assay.corpus.verify import SourceResolver
+from contract_assay.detectors.base import quote_is_at
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
     CitationStatus,
@@ -59,10 +61,14 @@ from contract_assay.models import (
     DetectorRun,
     DifficultyLevel,
     EvidenceTier,
+    FailedCheck,
+    InvalidReason,
     Locator,
     ModelRole,
     ModelUse,
     Outcome,
+    RejectionKind,
+    VerifiedFinding,
     VulnerabilityClass,
 )
 
@@ -374,6 +380,22 @@ class ScoreReport:
     deterministic_runs: int = 0
     """Runs whose findings came from code rather than a model, as they declared."""
 
+    refuted_citations: int = 0
+    """Findings the submission marked verified whose quote is not at its locator.
+
+    Counted, because it is the one number that separates a submission from a
+    file somebody wrote. Non-zero means the scorer disagreed with the submitter
+    about its own evidence, and the runs were demoted before any figure was
+    computed."""
+
+    unchecked_citations: int = 0
+    """Verified findings whose source the scorer could not obtain.
+
+    Demoted rather than accepted: an unchecked citation is not a passed one, and
+    treating it as one would restore the hole for anybody invoking `score`
+    without `--source-root`. A non-zero count here means the figures are over
+    what could be checked."""
+
     predictions_per_unit: int | None = None
     """The per-unit-per-class cap these figures were computed under, if any.
 
@@ -529,6 +551,19 @@ class ScoreReport:
                 f"{said}; {_plural(dropped, 'further prediction')} went unscored."
                 if dropped
                 else f"{said}, and no submission reached that limit."
+            )
+
+        if self.refuted_citations:
+            parts.append(
+                f"{_plural(self.refuted_citations, 'finding')} the submission marked verified "
+                "did not survive re-reading the source at the cited locator, and were demoted "
+                "before anything was counted."
+            )
+        if self.unchecked_citations:
+            parts.append(
+                f"{_plural(self.unchecked_citations, 'finding')} could not be re-read because "
+                "no source was available for its unit, and were demoted rather than accepted -- "
+                "an unchecked citation is not a passed one. Run with --source-root."
             )
 
         unscoreable = sum(self.unscoreable_claims.values())
@@ -780,6 +815,112 @@ def _repository_of(record: CorpusRecord) -> str:
     return f"chain {pin.chain_id}:{pin.address[:10]}"
 
 
+def recheck_citations(
+    runs: Sequence[DetectorRun], records: Sequence[CorpusRecord], resolve: SourceResolver | None
+) -> tuple[list[DetectorRun], int, int]:
+    """Re-read every verified quote against the scorer's own copy of the source.
+
+    **The check that makes a submitted figure mean anything.** `check_citation`
+    is the host's and always runs -- inside `run_detector`, which only ever sees
+    a run this package produced. A third party submits a JSON Lines file to
+    `contract-assay score`, and that arrived with `status: verified` already set
+    by whoever wrote it.
+
+    Measured before this existed: a hand-written file quoting `"THIS TEXT IS
+    NOWHERE IN THE SOURCE"` at every recorded access-control locator scored 12
+    predictions, **12 matches**, recall 0.218, and `unverifiable_claims: 0`. The
+    locators are in the published corpus, so topping a leaderboard took one
+    script and no detector. A benchmark that takes a submitter's word for its
+    citations is scoring the submitter's word.
+
+    Returns the runs with failed citations demoted, how many were demoted, and
+    how many could not be checked at all.
+
+    **Unchecked is not passed.** Without a resolver, or for a unit whose source
+    the resolver cannot produce, nothing here can establish the quote -- so the
+    finding is demoted too, with `citation_unchecked` naming why. Treating an
+    unchecked citation as a good one would restore the hole for anybody who runs
+    `score` without `--source-root`, which is the easier way to invoke it.
+    """
+    by_source = {record.pin.source_id: record.pin for record in records}
+    cache: dict[str, str | None] = {}
+
+    def source_of(source_id: str) -> str | None:
+        if source_id not in cache:
+            pin = by_source.get(source_id)
+            cache[source_id] = None if (pin is None or resolve is None) else resolve(pin)
+        return cache[source_id]
+
+    out: list[DetectorRun] = []
+    refuted = unchecked = 0
+    for run in runs:
+        source = source_of(run.source_id)
+        rechecked: list[VerifiedFinding] = []
+        changed = False
+        for finding in run.findings:
+            if finding.status is not CitationStatus.VERIFIED:
+                # Already carrying its reason. A second opinion on a rejection
+                # changes nothing the figures read.
+                rechecked.append(finding)
+                continue
+            if source is None:
+                unchecked += 1
+                changed = True
+                rechecked.append(
+                    finding.model_copy(
+                        update={
+                            "status": CitationStatus.UNVERIFIED,
+                            "failed_checks": [
+                                *finding.failed_checks,
+                                FailedCheck(
+                                    check="citation_unchecked",
+                                    kind=RejectionKind.CITATION,
+                                    detail="no source was available for this unit, so the "
+                                    "quote could not be re-read; run with --source-root",
+                                ),
+                            ],
+                        }
+                    )
+                )
+                continue
+            failure = quote_is_at(source, finding.finding.locator, finding.finding.quote)
+            if failure is None:
+                rechecked.append(finding)
+                continue
+            refuted += 1
+            changed = True
+            rechecked.append(
+                finding.model_copy(
+                    update={
+                        "status": CitationStatus.UNVERIFIED,
+                        "failed_checks": [
+                            *finding.failed_checks,
+                            failure.model_copy(
+                                update={
+                                    "detail": failure.detail
+                                    + " (re-read by the scorer against its own copy of the "
+                                    "source; the submission had marked this verified)"
+                                }
+                            ),
+                        ],
+                    }
+                )
+            )
+        if not changed:
+            out.append(run)
+            continue
+        # A run whose every verified finding was refuted measured nothing rather
+        # than finding nothing -- the same rule `run_detector` applies, applied
+        # to a run this package did not produce.
+        survives = any(f.status is CitationStatus.VERIFIED for f in rechecked)
+        update: dict[str, Any] = {"findings": rechecked}
+        if run.outcome is Outcome.VULNERABLE and not survives:
+            update["outcome"] = Outcome.INVALID
+            update["invalid_reason"] = InvalidReason.CITATION_UNVERIFIED
+        out.append(run.model_copy(update=update))
+    return out, refuted, unchecked
+
+
 def score(
     runs: Iterable[DetectorRun],
     records: Iterable[CorpusRecord],
@@ -819,6 +960,10 @@ def score(
         )
     runs = list(runs)
     records = list(records)
+    # Before anything is counted. See `recheck_citations`: a submitted run
+    # arrives with its own `status: verified`, and until this ran a hand-written
+    # file could top the board with fabricated quotes at published locators.
+    runs, refuted_citations, unchecked_citations = recheck_citations(runs, records, resolve)
     truths = [r for r in records if r.is_positive and r.locator is not None]
 
     # Which files a negative record says hold no instance of a class. The only
@@ -1080,6 +1225,8 @@ def score(
             )
         ),
         deterministic_runs=deterministic_runs,
+        refuted_citations=refuted_citations,
+        unchecked_citations=unchecked_citations,
         predictions_per_unit=predictions_per_unit,
         unjudged=tuple(all_unjudged),
         unscoreable_claims={c: n for c, n in sorted(unscoreable_claims.items()) if n},

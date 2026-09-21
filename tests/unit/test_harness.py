@@ -263,7 +263,12 @@ class TestTheLoop:
         assert run.invalid_reason is InvalidReason.TRANSPORT_FAILURE
         assert [u.tokens for u in run.models] == [7]
 
-    def test_no_caller_means_no_model_even_when_a_plan_exists(self) -> None:
+    def test_a_planned_call_the_host_never_made_is_not_a_measurement(self) -> None:
+        # This test previously asserted the opposite -- `Outcome.CLEAN` -- and so
+        # locked in the founding conflation this package refuses one layer down:
+        # a real-looking zero attributed to the detector, indistinguishable
+        # afterwards from having looked and found nothing. A review caught both
+        # the behaviour and the test blessing it.
         class Planner(Detector):
             detector_id = "planner-3"
             class_id = VulnerabilityClass.ACCESS_CONTROL
@@ -275,8 +280,73 @@ class TestTheLoop:
                 return ModelTaskSpec(instruction="ask")
 
         run = next(iter(run_submission([Planner()], [a_unit()])))
-        assert run.models == []
+        assert run.outcome is Outcome.INVALID
+        assert run.invalid_reason is InvalidReason.MODEL_NOT_PERMITTED
+        assert run.outcome.is_measurement is False
+
+    def test_a_detector_that_plans_nothing_is_still_a_clean_measurement(self) -> None:
+        # The other half: a detector that asked for no model measured the unit.
+        run = next(iter(run_submission([Minimal()], [a_unit()])))
         assert run.outcome is Outcome.CLEAN
+        assert run.models == []
+
+    def test_a_caller_that_raises_costs_one_unit_and_not_the_sweep(self) -> None:
+        # `ModelReply` states that a failed call is a value and never an
+        # exception, then asserted that about third-party code while enforcing it
+        # nowhere. Every real HTTP client raises.
+        class Planner(Detector):
+            detector_id = "planner-4"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="ask")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            raise ConnectionResetError("the endpoint hung up")
+
+        runs = list(run_submission([Planner()], [a_unit(), a_unit()], model=caller))
+        assert len(runs) == 2, "the sweep ended instead of costing one unit"
+        assert all(r.invalid_reason is InvalidReason.TRANSPORT_FAILURE for r in runs)
+
+    def test_a_detector_may_both_propose_and_call_a_model(self) -> None:
+        # This crashed: `DetectorRun` forbade naming two producers, and the
+        # refusal was an uncaught ValidationError that ended the whole sweep.
+        class Hybrid(PredicateDetector):
+            detector_id = "hybrid-access-control"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="ask")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            return ModelReply(
+                findings=(
+                    Finding(
+                        detector_id=detector.detector_id,
+                        locator=Locator(
+                            file=PATH,
+                            contract="Vault",
+                            function="withdraw",
+                            start_line=11,
+                            end_line=11,
+                        ),
+                        quote="        total = total - amount;",
+                        reasoning="the model's own claim",
+                    ),
+                ),
+                models=(ModelUse(model_id="m", role=ModelRole.MAIN, calls=1, tokens=5),),
+            )
+
+        run = next(iter(run_submission([Hybrid()], [a_unit()], model=caller)))
+        assert run.models, "the model it called is unnamed"
+        assert run.produced_without_a_model is True, "the code that proposed is unnamed"
+        assert len(run.findings) >= 2
 
 
 class TestReadingTheCorpus:

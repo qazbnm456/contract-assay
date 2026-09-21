@@ -28,7 +28,16 @@ class Baseline(PredicateDetector):
 That is a **static-analysis baseline with no model in it**: this benchmark's own
 predicates for the class, asserted as findings, quoting the source at each one's
 own locator so its citations pass by construction. Measured on the public split
-it reports 97 access-control predictions against 55 records and recalls 0.27.
+it reports 34 access-control predictions against 55 records and recalls 0.11.
+
+That figure was published as 97 predictions and 0.27 for two commits. It was
+wrong, and how it was wrong is worth keeping: `propose()` lifted **every**
+evidence item, including the ones the predicate marked `indeterminate` -- the
+three-valued answer this system exists to keep apart from "absent". Roughly two
+thirds of the baseline's predictions were the evidence layer's own disclaimers
+republished as claims, each carrying a `reasoning` string asserting the property
+the item had declined to establish. A review found it; the fix is one
+`if not ref.is_established: continue`.
 
 It is a real number, and it is not a strong detector. Its predicates establish
 that a *shape* is present, and a shape is not a defect — it names many more

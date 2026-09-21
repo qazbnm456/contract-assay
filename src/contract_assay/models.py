@@ -855,8 +855,18 @@ class DetectorRun(_Frozen):
                 "findings name no producer: record the models called, or set "
                 "produced_without_a_model when deterministic code made them"
             )
-        if self.models and self.produced_without_a_model:
-            raise ValueError("a run cannot both call a model and produce findings without one")
+        # Both may be set, and the rule that forbade it was written when only one
+        # was possible. `Detector.propose()` lets a detector assert findings from
+        # source and `plan()` lets the same detector call a model, so a run can
+        # genuinely carry some of each -- and refusing that combination turned a
+        # legitimate submission into an uncaught `ValidationError` that ended the
+        # whole sweep. Two producers named is more information than one, not
+        # less.
+        #
+        # The stated limit: the split is not recorded per finding. A run saying
+        # both says "code produced at least one of these and a model produced at
+        # least one", and nothing here says which is which. That is a real gap
+        # in the record rather than a claim it makes wrongly.
         if sum(1 for use in self.models if use.role is ModelRole.MAIN) > 1:
             raise ValueError("a run has at most one main model; the rest are sub models")
         named = {use.model_id for use in self.models}
