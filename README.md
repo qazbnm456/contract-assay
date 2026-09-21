@@ -113,8 +113,14 @@ under isolation asks of a submission.
 
 ## Using it
 
+The corpus lives in this repository, so the flow below starts from a clone.
+`pip install contract-assay` gets you the engine — the 442 records under
+`corpus/records` and the pointers under `results/` are not in the wheel, and a
+`--records` path is how you point the engine at them (or at your own).
+
 ```console
-$ pip install contract-assay
+$ git clone https://github.com/qazbnm456/contract-assay && cd contract-assay
+$ pip install -e .
 
 $ contract-assay fetch corpus/records --source-root ./checkout
 140 of 141 pinned file(s) available. 140 matched their recorded digest. ...

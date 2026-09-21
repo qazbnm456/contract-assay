@@ -43,3 +43,11 @@ jobs:
 
       - name: Tests
         run: pytest -m offline --cov=contract_assay --cov-report=term-missing --cov-fail-under=90
+      - name: Published result pointers
+        # `results/README.md` says "open a pull request with that one file" and
+        # nothing checked the file. `load_pointers` is all-or-nothing by design
+        # -- a directory that silently drops a result is a comparison over a
+        # subset nobody chose -- so one bad merged pointer makes
+        # `contract-assay results` exit 1 for every user until somebody reverts
+        # it. The gate is where that is caught, on the pull request that adds it.
+        run: contract-assay results results

@@ -404,8 +404,22 @@ def results_command(
         raise typer.Exit(1) from invalid
 
     comparison = compare(pointers)
-    for group in comparison.comparable:
+    groups = comparison.comparable
+    for index, group in enumerate(groups, start=1):
         typer.echo("")
+        if len(groups) > 1:
+            # Labelled, because two unlabelled blocks each restarting at `1.`
+            # read as one list with a spacing hiccup -- which is the "two
+            # incomparable figures in one column" failure this command exists
+            # to refuse, reintroduced in its own rendering.
+            first = group[0]
+            typer.secho(
+                f"  group {index} of {len(groups)} -- not comparable with the others "
+                f"(engine {first.engine_version}, corpus {first.corpus_digest[:12]}, "
+                f"floor {first.strength_floor}, cap {first.predictions_per_unit}, "
+                f"model {first.main_model or 'deterministic'})",
+                fg=typer.colors.YELLOW,
+            )
         for place, pointer in enumerate(group, start=1):
             if pointer.total is None:
                 typer.echo(
