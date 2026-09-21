@@ -53,7 +53,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from contract_assay.evidence.predicates import run_all
+from contract_assay.evidence.predicates import predicates, run_all
 from contract_assay.evidence.solidity import index_source
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
@@ -573,6 +573,39 @@ class Detector(ABC):
             return []
         return run_all(parsed, ctx.path, classes=[self.class_id])
 
+    def propose(self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]) -> Sequence[Finding]:
+        """Findings this detector asserts from the source alone, with no model.
+
+        This layer exists because without it the interface could not express a
+        static analyser at all. Findings reached a run only through the host's
+        `model_findings`, so a detector with `plan()` returning `None` could
+        report nothing but `clean` -- while the documentation called a
+        deterministic detector a first-class citizen and named static analysis
+        as this benchmark's own control group. Both were false for as long as
+        this method did not exist.
+
+        **The default asserts nothing**, and deliberately: an evidence item says
+        something structural is present, which is a precondition rather than a
+        claim that a defect is there. A default that turned every evidence item
+        into a finding would make every model-driven detector start claiming its
+        own preconditions, which is a different detector than its author wrote.
+        `PredicateDetector` is the subclass that does make that leap, for a
+        submission that wants exactly it.
+
+        Nothing returned here is trusted more than a model's output. A proposed
+        finding goes through the same two checks in the same order:
+        `check_citation`, which is the host's and cannot be overridden, then this
+        detector's own `verdict()`. The only difference is the producer -- the
+        run records `produced_without_a_model`, a true claim about code, and the
+        leaderboard then declines to rank it against a model baseline and says
+        why, which is the behaviour a deterministic submission already had.
+
+        Quote from the source, not from memory. `ctx.source` is right there and
+        `site.text` on any `contract_assay.evidence` site is the exact span, so
+        a deterministic finding has no excuse for failing its citation check.
+        """
+        return ()
+
     def plan(self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]) -> ModelTaskSpec | None:
         """What to ask the model, or `None` to run no model at all.
 
@@ -634,3 +667,54 @@ class Detector(ABC):
         reason this method's output is never merged into the located results.
         """
         return ()
+
+
+class PredicateDetector(Detector):
+    """A static-analysis submission: this benchmark's predicates, as claims.
+
+    The baseline an entrant improves on, and the control group the design
+    documents have always named. Subclass it, declare the three fields, and that
+    is a complete submission:
+
+        class Baseline(PredicateDetector):
+            detector_id = "baseline-access-control"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+    It runs no model, asserts one finding per evidence item its class's
+    predicates fired, quotes the source at each item's own locator -- so its
+    citations pass by construction -- and rejects nothing beyond the host's
+    citation check.
+
+    What it is and is not: a real, scoreable figure produced with no model, which
+    is the point of having it. Not a strong detector. Its predicates establish
+    that a *shape* is present, and a shape is not a defect; measured on this
+    corpus it reports many more locations than hold defects, and the
+    adjudication queue it produces is the honest cost of that. A submission
+    beats it by being more selective, not by finding more.
+    """
+
+    def propose(self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]) -> Sequence[Finding]:
+        summaries = {spec.predicate_id: spec.summary for spec in predicates()}
+        lines = ctx.source.split("\n")
+        out: list[Finding] = []
+        for ref in evidence:
+            start, end = ref.locator.start_line, ref.locator.end_line
+            if start < 1 or end < start or end > len(lines):
+                # An evidence span outside this source has nothing to quote.
+                # Skipped rather than quoted emptily: a `Finding` requires a
+                # non-empty quote and inventing one is exactly what the citation
+                # check exists to catch.
+                continue
+            quote = "\n".join(lines[start - 1 : end])
+            if not quote.strip():
+                continue
+            out.append(
+                Finding(
+                    detector_id=self.detector_id,
+                    locator=ref.locator,
+                    quote=quote,
+                    reasoning=summaries.get(ref.predicate, ref.predicate),
+                )
+            )
+        return out

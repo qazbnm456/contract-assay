@@ -18,7 +18,14 @@ from contract_assay import __version__
 from contract_assay.corpus.fetch import fetch_records, urllib_fetcher
 from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
 from contract_assay.corpus.verify import verify_all
+from contract_assay.detectors.base import Detector
+from contract_assay.detectors.loading import (
+    MalformedSubmission,
+    SubmissionManifest,
+    load_detector,
+)
 from contract_assay.evidence.solidity import index_source
+from contract_assay.harness import load_caller, run_submission, units_from
 from contract_assay.models import DetectorRun, DifficultyLevel, VulnerabilityClass
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import score
@@ -265,6 +272,110 @@ def fetch_command(
     typer.echo(report.statement())
     if not report.usable:
         raise typer.Exit(1)
+
+
+@app.command("run")
+def run_command(
+    manifest: Annotated[
+        list[Path],
+        typer.Option(
+            "--manifest", exists=True, dir_okay=False, help="Submission manifest. Repeatable."
+        ),
+    ],
+    records: Annotated[
+        Path, typer.Option("--records", exists=True, help="Corpus record file or directory.")
+    ],
+    source_root: Annotated[
+        Path,
+        typer.Option("--source-root", exists=True, file_okay=False, help="Checkout to read."),
+    ],
+    out: Annotated[Path, typer.Option("--out", help="Where the runs are written, as JSON Lines.")],
+    model_caller: Annotated[
+        str | None,
+        typer.Option(
+            "--model-caller",
+            help="`module.path:function` returning a `harness.ModelReply`. Left out, no "
+            "model is called -- which is a real submission, not a degraded one.",
+        ),
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", min=0, help="Stop after N units. 0 is all.")] = 0,
+    wall_seconds: Annotated[int, typer.Option("--wall-seconds", min=1)] = 30,
+    max_calls: Annotated[int, typer.Option("--max-calls", min=0)] = 4,
+    max_tokens: Annotated[int, typer.Option("--max-tokens", min=0)] = 20_000,
+    predictions_per_unit: Annotated[
+        int | None, typer.Option("--predictions-per-unit", min=1)
+    ] = None,
+) -> None:
+    """Run one or more detectors over the corpus and write the runs.
+
+    The loop between "a submission exists" and "it can be scored". Until this
+    existed every consumer wrote it, and the first two both got the same two
+    things wrong: reading the corpus, and naming what produced a finding.
+
+    **No model is called unless you name a caller.** A deterministic run is a
+    real submission and this benchmark's own control group, so it is the default
+    rather than a fallback. A model is your code, resolved from an import path
+    the way a submission is -- this package imports no provider, because an
+    instrument whose correctness depended on the thing it measures could not
+    tell a broken instrument from a weak model.
+    """
+    detectors: list[Detector] = []
+    for path in manifest:
+        declared = SubmissionManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            detectors.append(load_detector(declared, search_path=path.parent))
+        except MalformedSubmission as bad:
+            typer.secho(f"{path}: {bad}", fg=typer.colors.RED)
+            raise typer.Exit(2) from bad
+
+    caller = None
+    if model_caller is not None:
+        try:
+            caller = load_caller(model_caller)
+        except ValueError as bad:
+            typer.secho(str(bad), fg=typer.colors.RED)
+            raise typer.Exit(2) from bad
+
+    units, missing = units_from(_records_from(records), source_root)
+    if missing:
+        # Said out loud, never counted over. A unit absent from a checkout
+        # scores as a submission that missed it.
+        typer.secho(
+            f"{len(missing)} unit(s) are not in {source_root} and were not run; "
+            "`contract-assay fetch` builds the checkout. Figures from this run are "
+            "over the units that are present.",
+            fg=typer.colors.YELLOW,
+        )
+    if not units:
+        typer.secho(f"no source units found under {source_root}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    if limit:
+        units = units[:limit]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with out.open("w", encoding="utf-8") as handle:
+        for run in run_submission(
+            detectors,
+            units,
+            model=caller,
+            wall_seconds=wall_seconds,
+            max_calls=max_calls,
+            max_tokens=max_tokens,
+            predictions_per_unit=predictions_per_unit,
+            on_unit=lambda i, u: typer.echo(f"  [{i + 1}/{len(units)}] {u.path}", err=True),
+        ):
+            # Flushed per run, so a sweep that dies at unit 90 of 141 leaves 90
+            # units of runs behind it rather than nothing.
+            handle.write(json.dumps(run.model_dump(mode="json")) + "\n")
+            handle.flush()
+            written += 1
+
+    typer.echo(f"wrote {out}: {written} run(s) over {len(units)} unit(s)")
+    typer.echo(
+        f"  contract-assay score {out} --records {records} --source-root {source_root} "
+        "--submission-id <id> --out score.json"
+    )
 
 
 @app.command("score")

@@ -70,6 +70,7 @@ __all__ = [
     "call_classify",
     "call_evidence",
     "call_plan",
+    "call_propose",
     "call_verdict",
     "load_detector",
 ]
@@ -274,6 +275,19 @@ def call_evidence(detector: Detector, ctx: AnalysisContext) -> list[EvidenceRef]
     raw = _guard("evidence", lambda: detector.evidence(ctx))
     items = _as_list(raw, "evidence", "EvidenceRef")
     return list(_validate_each(items, EvidenceRef, "evidence", "evidence"))
+
+
+def call_propose(
+    detector: Detector, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+) -> list[Finding]:
+    """Run `propose()` and return only what validates as `Finding`.
+
+    Guarded and validated exactly like `evidence()`, because a deterministic
+    finding is a claim like any other and gets no extra credit for being cheap.
+    """
+    raw = _guard("propose", lambda: detector.propose(ctx, evidence))
+    items = _as_list(raw, "propose", "Finding")
+    return list(_validate_each(items, Finding, "propose", "finding"))
 
 
 def call_plan(

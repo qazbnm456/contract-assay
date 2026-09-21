@@ -12,24 +12,36 @@ applied to the rest of the system.
 A detector answers one question about one Solidity source unit: does an instance
 of a particular vulnerability class exist, and *where*.
 
-**The smallest complete submission is three declarations and nothing else:**
+**The smallest complete submission is three declarations:**
 
 ```python
-from contract_assay.detectors import API_VERSION, Detector
+from contract_assay.detectors import API_VERSION, PredicateDetector
 from contract_assay.models import VulnerabilityClass
 
 
-class MissingOwnerCheck(Detector):
-    detector_id = "missing-owner-check"
+class Baseline(PredicateDetector):
+    detector_id = "baseline-access-control"
     class_id = VulnerabilityClass.ACCESS_CONTROL
     api_version = API_VERSION
 ```
 
-That runs. It gets **this benchmark's own evidence layer** for its class, makes
-no model call, and rejects nothing beyond the citation check the host always
-runs. It is a real baseline you can score, and it is the floor you improve on.
+That is a **static-analysis baseline with no model in it**: this benchmark's own
+predicates for the class, asserted as findings, quoting the source at each one's
+own locator so its citations pass by construction. Measured on the public split
+it reports 97 access-control predictions against 55 records and recalls 0.27.
 
-The reason the defaults exist is about what a comparison measures. A benchmark
+It is a real number, and it is not a strong detector. Its predicates establish
+that a *shape* is present, and a shape is not a defect — it names many more
+locations than hold defects, and the adjudication queue it produces is the
+honest cost of that. **You beat it by being more selective, not by finding
+more.**
+
+Subclass `Detector` instead and you get the same defaults minus the assertion:
+it runs, it produces well-formed runs, and it claims nothing. That is the right
+base for a submission whose job is to filter a model's output rather than to
+assert from source.
+
+The reason these defaults exist is about what a comparison measures. A benchmark
 for vulnerability detection is meant to compare judgement about
 vulnerabilities. If every entrant must first write its own parser queries, then
 two figures differ partly because one entrant wrote better tree-sitter code, and
@@ -60,14 +72,20 @@ run in a fixed order:
 | Order | Layer | Model? | Default if you write nothing |
 | --- | --- | --- | --- |
 | 1 | `evidence(ctx)` | never | this benchmark's predicates for your class |
-| 2 | `plan(ctx, evidence)` → the model | optional | no model is called |
-| 3 | `verdict(ctx, finding, evidence)` | never | rejects nothing |
-| 4 | `classify(ctx, findings)` | never | returns nothing (classification mode only) |
+| 2 | `propose(ctx, evidence)` | never | nothing — `PredicateDetector` asserts one finding per evidence item |
+| 3 | `plan(ctx, evidence)` → the model | optional | no model is called |
+| 4 | `verdict(ctx, finding, evidence)` | never | rejects nothing |
+| 5 | `classify(ctx, findings)` | never | returns nothing (classification mode only) |
 
-**A detector that runs no model is a first-class submission.** Leave `plan()`
-alone and nothing is called. Static analysis is the baseline this benchmark
-measures against, so an interface that could not express a purely deterministic
-detector could not express its own control group.
+`propose()` is what makes a deterministic submission able to report anything at
+all. Before it existed, findings reached a run only through the host's model
+call, so a detector with `plan()` returning `None` could report nothing but
+`clean` — while this document called static analysis the benchmark's own control
+group. A proposed finding is trusted no more than a model's: same citation
+check, in the same order, then the same `verdict()`.
+
+**A detector that runs no model is a first-class submission**, and now
+demonstrably so rather than only in principle.
 
 ### Who judges, and why `verdict()` is not self-judging
 
@@ -80,6 +98,9 @@ things decide a score and **a submission can influence none of them**:
 | `gate` | whether a unit may be skipped at all | no |
 | the scorer | whether a prediction matches a ground-truth record, and at what strength | no — a submission never sees the records |
 | the scorer | recall, precision, F1, the aggregate | no |
+
+A proposed finding gets no exemption from any of them. It is cheaper to produce
+than a model's and is checked identically.
 
 `verdict()` can do exactly one thing: **discard your own findings.** It cannot
 make the corpus agree with one. Rejecting a true finding costs you recall and

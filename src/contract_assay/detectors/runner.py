@@ -36,6 +36,7 @@ from contract_assay.detectors.loading import (
     SubmissionFault,
     call_evidence,
     call_plan,
+    call_propose,
     call_verdict,
 )
 from contract_assay.models import (
@@ -99,7 +100,12 @@ def run_detector(
         # that out here attributes the failure to `plan` instead of to whatever
         # breaks downstream of it.
         call_plan(detector, ctx, evidence)
-        findings = _verify(detector, ctx, model_findings, evidence)
+        # The detector's own deterministic claims, ahead of the model's. Order
+        # matters because a per-unit cap keeps the first few, and a finding this
+        # detector asserted from the source is the one whose citation is certain
+        # -- it was quoted from the source rather than remembered.
+        proposed = call_propose(detector, ctx, evidence)
+        findings = _verify(detector, ctx, [*proposed, *model_findings], evidence)
     except SubmissionFault as fault:
         # The submission did not honour its contract. Reported as harness health,
         # never as the absence of a finding.
@@ -115,6 +121,11 @@ def run_detector(
             models=list(models),
             produced_without_a_model=produced_without_a_model,
         )
+
+    # Set here rather than trusted from the host: this function called
+    # `propose()`, so it is the only layer that knows a finding came from the
+    # detector's own code, and a host cannot forget what it was never asked.
+    produced_without_a_model = produced_without_a_model or bool(proposed)
 
     verified = [f for f in findings if f.status is CitationStatus.VERIFIED]
     uncheckable = any(f.has_citation_failure for f in findings)
