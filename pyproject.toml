@@ -112,6 +112,17 @@ mypy_path = "src"
 packages = ["contract_assay"]
 
 [[tool.mypy.overrides]]
+# `certifi` is a genuinely optional import, guarded by `try/except ImportError`
+# in `corpus/fetch.py` -- present on most machines because something else pulled
+# it in, absent in a clean install of this package. It was absent from both the
+# dependencies and these overrides, so `mypy` failed in a clean environment and
+# passed locally: `ci.yml`'s type step was red on every push and the release
+# gate could never reach `publish`. Found by review in a venv built verbatim
+# from the workflow, which is the only way that class of defect is found.
+module = ["certifi.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # Third-party analysis backends ship no type information. `dspy` and
 # `rlm_harness` appear only in `examples/`, which is not part of the package.
 module = ["dspy.*", "rlm_harness.*"]

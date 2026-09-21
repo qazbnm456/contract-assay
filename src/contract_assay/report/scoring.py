@@ -40,6 +40,7 @@ is used, so: maximum matching per tier, tiers in descending order.
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -820,41 +821,87 @@ def recheck_citations(
 ) -> tuple[list[DetectorRun], int, int]:
     """Re-read every verified quote against the scorer's own copy of the source.
 
-    **The check that makes a submitted figure mean anything.** `check_citation`
-    is the host's and always runs -- inside `run_detector`, which only ever sees
-    a run this package produced. A third party submits a JSON Lines file to
-    `contract-assay score`, and that arrived with `status: verified` already set
-    by whoever wrote it.
+    **What this establishes, and what it cannot.** It rules out an *incoherent*
+    submission: a quote absent from the file, a quote that is punctuation, a
+    locator naming a file other than the unit's, and source that does not match
+    the record's digest. Each of those was a way to score without reading
+    anything, and each is measured below.
 
-    Measured before this existed: a hand-written file quoting `"THIS TEXT IS
-    NOWHERE IN THE SOURCE"` at every recorded access-control locator scored 12
-    predictions, **12 matches**, recall 0.218, and `unverifiable_claims: 0`. The
-    locators are in the published corpus, so topping a leaderboard took one
-    script and no detector. A benchmark that takes a submitter's word for its
-    citations is scoring the submitter's word.
+    It does **not** establish that a submitter found a defect, and the first
+    version of this docstring said it did. The corpus publishes the full
+    locator -- file, contract, function, start and end line -- and `fetch`
+    builds the scorer's checkout from public coordinates, so the submitter's
+    bytes and the scorer's bytes are the same bytes and the answer is a
+    published field. A review demonstrated the consequence: quoting the *real*
+    span at each published locator scored **micro recall 0.9977 with precision
+    1.0 in all nine classes**, every counter here at zero and a clean
+    statement. Re-reading public source at a published locator cannot
+    distinguish a finding from a copy, and no amount of strictness in this
+    function changes that.
+
+    So: a figure this package computes over the published corpus is
+    **self-reported**. It is a real measurement of an honest submission and it
+    is not evidence against a motivated one. A competitive ranking needs records
+    whose locators are not published -- `CorpusSplit.PRIVATE_HOLDOUT` and
+    `assay-arena`'s `docs/operations.md` step 3 -- and that is where the
+    guarantee has to live. `docs/api.md` §1 says the same thing where a
+    submitter reads it.
+
+    What the four checks did close, measured over the whole corpus:
+
+    | forgery | before | after |
+    | --- | --- | --- |
+    | a constant absent from the source | 12/12 matched | 0 |
+    | `";"` at every published locator | micro recall 0.972 | 0 |
+    | one donor unit, every locator elsewhere | recall 1.000 | 0 |
+    | a submitter's own `--source-root` | recall 0.982 | 0 |
 
     Returns the runs with failed citations demoted, how many were demoted, and
     how many could not be checked at all.
 
-    **Unchecked is not passed.** Without a resolver, or for a unit whose source
-    the resolver cannot produce, nothing here can establish the quote -- so the
-    finding is demoted too, with `citation_unchecked` naming why. Treating an
-    unchecked citation as a good one would restore the hole for anybody who runs
-    `score` without `--source-root`, which is the easier way to invoke it.
+    **Unchecked is not passed.** Without source, or for a unit whose source does
+    not match its pin, nothing here can establish the quote -- so the finding is
+    demoted with `citation_unchecked`. Treating it as good would restore the
+    hole for anybody invoking `score` without `--source-root`, which is the
+    easier way to invoke it.
     """
     by_source = {record.pin.source_id: record.pin for record in records}
     cache: dict[str, str | None] = {}
 
     def source_of(source_id: str) -> str | None:
         if source_id not in cache:
-            pin = by_source.get(source_id)
-            cache[source_id] = None if (pin is None or resolve is None) else resolve(pin)
+            found = by_source.get(source_id)
+            cache[source_id] = None if (found is None or resolve is None) else resolve(found)
         return cache[source_id]
+
+    def _demoted(finding: VerifiedFinding, why: FailedCheck) -> VerifiedFinding:
+        """One shape for both demotions, so the two cannot drift apart."""
+        return finding.model_copy(
+            update={
+                "status": CitationStatus.UNVERIFIED,
+                "failed_checks": [*finding.failed_checks, why],
+            }
+        )
 
     out: list[DetectorRun] = []
     refuted = unchecked = 0
     for run in runs:
+        pin = by_source.get(run.source_id)
         source = source_of(run.source_id)
+        # The bytes must be the bytes the record was authored against, or the
+        # locators index lines that have moved. `--source-root` is the
+        # submitter's in the documented publishing workflow, so without this the
+        # scorer verified a submission against the submission: a review built
+        # synthetic `.sol` files whose declarations sit at the records' locator
+        # lines and scored access control at recall 0.982 with precision 1.0,
+        # quoting text that exists nowhere in the real source.
+        if (
+            source is not None
+            and pin is not None
+            and pin.sha256 is not None
+            and hashlib.sha256(source.encode("utf-8")).hexdigest() != pin.sha256
+        ):
+            source = None
         rechecked: list[VerifiedFinding] = []
         changed = False
         for finding in run.findings:
@@ -880,6 +927,30 @@ def recheck_citations(
                                 ),
                             ],
                         }
+                    )
+                )
+                continue
+            cited_file = finding.finding.locator.file
+            if pin is not None and cited_file != pin.path:
+                # The invariant this file was missing while two others enforce
+                # it: `corpus/records.py` requires a record's `locator.file` to
+                # equal its `pin.path`, and `detectors/reference.py` rejects a
+                # finding whose locator names another file. Here it was absent,
+                # so a submission could declare one unit, quote real text out of
+                # it, and point every locator at a different repository --
+                # measured at recall 1.0 over the whole corpus with every new
+                # counter at zero and a clean statement.
+                refuted += 1
+                changed = True
+                rechecked.append(
+                    _demoted(
+                        finding,
+                        FailedCheck(
+                            check="citation_file_is_not_the_units_file",
+                            kind=RejectionKind.CITATION,
+                            detail=f"the locator names {cited_file!r} and this run's unit is "
+                            f"{pin.path!r}; the quote was checked against neither",
+                        ),
                     )
                 )
                 continue

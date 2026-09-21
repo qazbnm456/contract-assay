@@ -96,6 +96,41 @@ check, in the same order, then the same `verdict()`.
 **A detector that runs no model is a first-class submission**, and now
 demonstrably so rather than only in principle.
 
+### What a figure over the published corpus is
+
+**Self-reported.** Read this before you publish one, and before you read
+somebody else's.
+
+The scorer re-reads every quote you mark verified, against its own copy of the
+source, and refuses a submission that is incoherent: a quote absent from the
+file, a quote made of punctuation, a locator naming a file other than the unit
+it declares, or source whose digest disagrees with the record's pin. Those were
+each a way to score without reading anything, and they are closed.
+
+What is **not** closed, and cannot be: this corpus publishes the full locator --
+file, contract, function, start and end line -- and `contract-assay fetch`
+builds the scorer's checkout from the same public coordinates you have. So a
+script that quotes the real span at each published locator scores **micro recall
+0.9977, precision 1.0 in all nine classes**, with every refusal counter at zero.
+Measured, not hypothesised.
+
+That is a property of publishing the answer, not a defect in the checking. It
+means:
+
+- A figure here is a real measurement **of an honest submission**, which is what
+  a development benchmark is for, and what you should use it as.
+- It is **not evidence** against a motivated one, and a public leaderboard built
+  on it ranks willingness to copy.
+- A competitive ranking needs records whose locators are not published. That is
+  `CorpusSplit.PRIVATE_HOLDOUT`, curated by whoever runs the competition from
+  reports the entrants have not seen — see `assay-arena`'s `docs/operations.md`
+  step 3. It is deliberately not a slice of this corpus: `docs/design.md` has the
+  measurement showing what carving one would cost.
+
+The corpus stays wholly public because that is what a benchmark is for. The
+consequence for rankings is stated here rather than hidden behind a check that
+cannot carry it.
+
 ### Who judges, and why `verdict()` is not self-judging
 
 Worth being exact about, because the shape invites the opposite reading. Four

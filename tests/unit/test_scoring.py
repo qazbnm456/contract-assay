@@ -7,6 +7,8 @@ looks exactly like a figure that does not have the problem.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -41,6 +43,7 @@ from contract_assay.models import (
 from contract_assay.report.scoring import (
     MINIMUM_RECORDS_PER_CLASS,
     MatchStrength,
+    recheck_citations,
     score,
 )
 
@@ -67,49 +70,51 @@ contract Vault {
         total = 0;
     }
 
-    function filler1() external {
-        total = total + 1;
-    }
-
-    function filler2() external {
-        total = total + 2;
-    }
-
-    function filler3() external {
-        total = total + 3;
-    }
-
-    function filler4() external {
-        total = total + 4;
-    }
-
-    function filler5() external {
-        total = total + 5;
-    }
-
-    function filler6() external {
-        total = total + 6;
-    }
-
-    function filler7() external {
-        total = total + 7;
-    }
-
-    function filler8() external {
-        total = total + 8;
-    }
-
-    function filler9() external {
-        total = total + 9;
-    }
-
-    function filler10() external {
-        total = total + 10;
-    }
-
-    function filler11() external {
-        total = total + 11;
-    }
+    function filler1() external { total = total + 1; }
+    function filler2() external { total = total + 2; }
+    function filler3() external { total = total + 3; }
+    function filler4() external { total = total + 4; }
+    function filler5() external { total = total + 5; }
+    function filler6() external { total = total + 6; }
+    function filler7() external { total = total + 7; }
+    function filler8() external { total = total + 8; }
+    function filler9() external { total = total + 9; }
+    function filler10() external { total = total + 10; }
+    function filler11() external { total = total + 11; }
+    function filler12() external { total = total + 12; }
+    function filler13() external { total = total + 13; }
+    function filler14() external { total = total + 14; }
+    function filler15() external { total = total + 15; }
+    function filler16() external { total = total + 16; }
+    function filler17() external { total = total + 17; }
+    function filler18() external { total = total + 18; }
+    function filler19() external { total = total + 19; }
+    function filler20() external { total = total + 20; }
+    function filler21() external { total = total + 21; }
+    function filler22() external { total = total + 22; }
+    function filler23() external { total = total + 23; }
+    function filler24() external { total = total + 24; }
+    function filler25() external { total = total + 25; }
+    function filler26() external { total = total + 26; }
+    function filler27() external { total = total + 27; }
+    function filler28() external { total = total + 28; }
+    function filler29() external { total = total + 29; }
+    function filler30() external { total = total + 30; }
+    function filler31() external { total = total + 31; }
+    function filler32() external { total = total + 32; }
+    function filler33() external { total = total + 33; }
+    function filler34() external { total = total + 34; }
+    function filler35() external { total = total + 35; }
+    function filler36() external { total = total + 36; }
+    function filler37() external { total = total + 37; }
+    function filler38() external { total = total + 38; }
+    function filler39() external { total = total + 39; }
+    function filler40() external { total = total + 40; }
+    function filler41() external { total = total + 41; }
+    function filler42() external { total = total + 42; }
+    function filler43() external { total = total + 43; }
+    function filler44() external { total = total + 44; }
+    function filler45() external { total = total + 45; }
 }
 """
 
@@ -324,7 +329,10 @@ class TestWhatTheScorerRefusesToClaim:
         # span would accept a prediction anywhere in the function.
         record = a_record(provenance=LocatorProvenance.ANCHORED, anchor=5, start=4, end=7)
         covering = only(score([a_run([(5, 5)])], [record], resolver()))
-        missing = only(score([a_run([(7, 7)])], [record], resolver()))
+        # Line 6, not 7: line 7 is a bare `}` and a punctuation-only quote is
+        # now refused, so citing it would test the citation check rather than
+        # the anchor.
+        missing = only(score([a_run([(6, 6)])], [record], resolver()))
         assert covering.by_strength == {MatchStrength.EXACT: 1}
         assert missing.by_strength == {MatchStrength.FUNCTION: 1}
 
@@ -382,7 +390,10 @@ class TestPrecisionCountsEveryPrediction:
     def test_spraying_claims_lowers_precision(self) -> None:
         got = only(
             score(
-                [a_run([(5, 6), (15, 16), (2, 2), (16, 16)])],
+                # (18, 18) rather than (16, 16): line 16 is a bare `}` and a
+                # punctuation-only quote is now refused, which would make this
+                # a test of the citation check instead of of precision.
+                [a_run([(5, 6), (15, 16), (2, 2), (18, 18)])],
                 [a_record(), a_negative()],
                 resolver(),
             )
@@ -1249,3 +1260,143 @@ class TestThePoolIsBounded:
     def test_a_cap_nobody_reached_still_says_so(self) -> None:
         report = score([a_run([(5, 6)])], [a_record()], resolver(), predictions_per_unit=3)
         assert "no submission reached that limit" in report.statement()
+
+
+class TestTheScorerTakesNobodysWordForACitation:
+    """The four forgeries that scored without reading anything.
+
+    Every one of these was measured against the whole published corpus before it
+    was closed, and none had a test -- `refuted_citations`, `recheck_citations`
+    and `quote_is_at` appeared nowhere under `tests/`, so the 12-to-0 figure in
+    the commit message was a hand measurement that nothing pinned. A review
+    found that, and then found three more forgeries the commit had not closed.
+
+    What these tests do NOT establish is in `recheck_citations`' docstring: the
+    corpus publishes the locator, so quoting the real span is not a forgery this
+    or any check can refuse.
+    """
+
+    def a_submitted_run(
+        self, quote: str, span: tuple[int, int] = (5, 6), **over: Any
+    ) -> DetectorRun:
+        """A run as a third party submits one: `status` already set to verified."""
+        record = a_record()
+        fields: dict[str, Any] = {
+            "detector_id": "submitted",
+            "class_id": CLS,
+            "source_id": record.pin.source_id,
+            "outcome": Outcome.VULNERABLE,
+            "evidence_tier": EvidenceTier.SYNTACTIC,
+            "produced_without_a_model": True,
+            "findings": [
+                VerifiedFinding(
+                    finding=Finding(
+                        detector_id="submitted",
+                        locator=Locator(file=PATH, start_line=span[0], end_line=span[1]),
+                        quote=quote,
+                        reasoning="submitted as verified",
+                    ),
+                    status=CitationStatus.VERIFIED,
+                )
+            ],
+        }
+        return DetectorRun.model_validate({**fields, **over})
+
+    def test_a_quote_absent_from_the_source_is_refuted(self) -> None:
+        report = score([self.a_submitted_run("THIS TEXT IS NOWHERE")], [a_record()], resolver())
+        assert report.refuted_citations == 1
+        assert only(report).predictions == 0
+        assert "did not survive re-reading" in report.statement()
+
+    @pytest.mark.parametrize("quote", [";", "}", "{", "();", "  ;  ", "+"])
+    def test_a_punctuation_quote_establishes_nothing(self, quote: str) -> None:
+        # Measured at micro recall 0.972 across the corpus, at EXACT strength,
+        # from a single semicolon. The comparison is containment, so a quote
+        # appearing in nearly every span says nothing about this one.
+        report = score([self.a_submitted_run(quote)], [a_record()], resolver())
+        assert report.refuted_citations == 1
+        assert only(report).predictions == 0
+
+    def test_a_locator_naming_another_file_is_refuted(self) -> None:
+        # Measured at recall 1.000 over the whole corpus: every run declared one
+        # donor unit, quoted real text out of it, and pointed its locator at a
+        # different repository. The quote was checked against neither file.
+        run = self.a_submitted_run(_at(5, 6))
+        elsewhere = run.findings[0].finding.locator.model_copy(update={"file": "src/Other.sol"})
+        moved = run.model_copy(
+            update={
+                "findings": [
+                    run.findings[0].model_copy(
+                        update={
+                            "finding": run.findings[0].finding.model_copy(
+                                update={"locator": elsewhere}
+                            )
+                        }
+                    )
+                ]
+            }
+        )
+        report = score([moved], [a_record()], resolver())
+        assert report.refuted_citations == 1
+        assert only(report).predictions == 0
+
+    def test_the_refusal_names_the_file_mismatch(self) -> None:
+        run = self.a_submitted_run(_at(5, 6))
+        elsewhere = run.findings[0].finding.locator.model_copy(update={"file": "src/Other.sol"})
+        moved = run.model_copy(
+            update={
+                "findings": [
+                    run.findings[0].model_copy(
+                        update={
+                            "finding": run.findings[0].finding.model_copy(
+                                update={"locator": elsewhere}
+                            )
+                        }
+                    )
+                ]
+            }
+        )
+        rechecked, refuted, _ = recheck_citations([moved], [a_record()], resolver())
+        assert refuted == 1
+        names = [c.check for f in rechecked[0].findings for c in f.failed_checks]
+        assert "citation_file_is_not_the_units_file" in names
+
+    def test_source_that_does_not_match_the_pin_is_not_used(self) -> None:
+        # `--source-root` is the submitter's in the documented publishing
+        # workflow. A directory of synthetic files whose declarations sit at the
+        # records' locator lines scored access control at recall 0.982 with
+        # precision 1.0, so the scorer was verifying a submission against the
+        # submission.
+        # The shared fixture pins no digest, so this one does: without a digest
+        # there is nothing to check and the record says so rather than this
+        # hiding it.
+        import hashlib
+
+        record = a_record()
+        pinned = record.pin.model_copy(
+            update={"sha256": hashlib.sha256(SOURCE.encode("utf-8")).hexdigest()}
+        )
+        record = record.model_copy(update={"pin": pinned})
+        report = score(
+            [self.a_submitted_run(_at(5, 6))],
+            [record],
+            lambda pin: "contract Forged { uint256 total; }\n" * 9,
+        )
+        assert report.unchecked_citations == 1
+        assert only(report).predictions == 0
+
+    def test_an_honest_submission_is_untouched(self) -> None:
+        # The other half: nothing above may cost a true citation.
+        report = score([self.a_submitted_run(_at(5, 6))], [a_record()], resolver())
+        assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
+        assert only(report).predictions == 1
+
+    def test_quoting_the_real_span_is_not_refused_and_that_is_the_point(self) -> None:
+        # Measured at micro recall 0.9977 with precision 1.0 in all nine
+        # classes. It is not a forgery this check can refuse -- the corpus
+        # publishes the locator and `fetch` builds the scorer's checkout from
+        # the same public coordinates. The test exists so that nobody reads the
+        # four refusals above as a neutrality guarantee.
+        report = score([self.a_submitted_run(_at(4, 7), span=(4, 7))], [a_record()], resolver())
+        assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
+        assert only(report).predictions == 1

@@ -84,10 +84,16 @@ def _source_from_manifest(root: Path, pin: SourcePin) -> str | None:
 def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
     """Resolve pinned paths against a checkout on disk.
 
+    Resolves whatever is there, digest or no digest, and that is deliberate:
+    `verify` distinguishes `digest_mismatch` from `source_unresolvable`, and a
+    resolver that returned `None` for a mismatch would collapse the two -- a
+    cause recorded wrongly points investigation away from the fix. The digest is
+    enforced where the trust boundary is, in `report.scoring.recheck_citations`,
+    which is the path a third party's submission travels.
+
     Verification against a working tree, not a fetched commit: it cannot confirm
     that the bytes belong to the pinned commit, only that the record is coherent
-    against what is here. Adequate for authoring records; not a substitute for
-    fetch-based verification once that exists.
+    against what is here.
     """
 
     def resolve(pin: SourcePin) -> str | None:

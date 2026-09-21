@@ -46,6 +46,7 @@ boundary.
 
 from __future__ import annotations
 
+import re
 from abc import ABC
 from collections.abc import Sequence
 from enum import StrEnum
@@ -348,6 +349,20 @@ def gate(source: str) -> SkipReason | None:
     return None
 
 
+_WORD = re.compile(r"[A-Za-z_][A-Za-z_0-9]{1,}")
+
+
+def _is_substantive(normalised: str) -> bool:
+    """Whether a quote carries content rather than punctuation.
+
+    At least one identifier-shaped token of two or more characters. Solidity is
+    case-sensitive and this does not fold case, for the same reason a predicate
+    does not: a match manufactured by folding is one the compiler would not
+    make.
+    """
+    return bool(_WORD.search(normalised))
+
+
 def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
     """Whether `quote` is the source at `locator`. The comparison, without a context.
 
@@ -386,6 +401,25 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
             check="citation_quote_absent_from_source",
             kind=RejectionKind.CITATION,
             detail="the quote is blank once whitespace is normalised",
+        )
+    if not _is_substantive(normalised):
+        # A review scored **micro recall 0.972** across the whole corpus, at
+        # `exact` strength, by quoting `";"` at every published locator. The
+        # comparison below is containment, so a quote that appears in nearly
+        # every span establishes nothing about whether the author read it.
+        #
+        # Containment is kept deliberately: a record's locator spans a function
+        # and a correct finding often cites one statement inside it, so
+        # demanding the whole span would reject true findings. What is demanded
+        # instead is that the quote carry *content* -- an identifier or a
+        # keyword, not punctuation. That raises the floor from one character to
+        # one token and no further, which is worth being plain about: it removes
+        # the trivial forgery and not the informed one.
+        return FailedCheck(
+            check="citation_quote_is_not_substantive",
+            kind=RejectionKind.CITATION,
+            detail=f"{quote.strip()[:40]!r} carries no identifier or keyword, so it "
+            "appears in most spans and establishes nothing about this one",
         )
     if normalised in span:
         return None
