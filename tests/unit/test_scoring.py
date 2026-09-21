@@ -1131,6 +1131,31 @@ contract Vault {
         # refusing is the rule the declaration index applies everywhere else.
         assert self._strength_of((20, 20), self._record(16, 16, "_twice")) == "file"
 
+    def test_the_same_signature_in_another_contract_is_not_the_same_function(self) -> None:
+        # `Declaration.signature` is `name(paramtypes)` with no qualifier, and a
+        # *file* holds several contracts. Unqualified, a prediction inside one
+        # contract's `getThePrice(address)` scored a `function` match against a
+        # record in another's -- and two of the three records this affects have
+        # their twin in a one-line interface stub, quotable from the published
+        # function name alone. The signature is qualified by its enclosing type.
+        source = """\
+contract A {
+    function price(address token) external view returns (uint256) {
+        return 1;
+    }
+}
+
+interface B {
+    function price(address token) external view returns (uint256);
+}
+"""
+        record = a_record(start=2, end=4, function="price")
+        report = score(
+            [a_run([(8, 8)], source=source)], [record], resolver(source), predictions_per_unit=9
+        )
+        [match] = report.matches
+        assert match.strength is MatchStrength.FILE
+
     def test_it_ranks_between_file_and_function(self) -> None:
         assert (
             MatchStrength.FILE.rank < MatchStrength.CALL_ADJACENT.rank < MatchStrength.FUNCTION.rank
@@ -1219,6 +1244,28 @@ class TestThePoolIsBounded:
         ]
         got = only(score(runs, [one, two], resolver(), predictions_per_unit=1))
         assert (got.predictions, got.capped_predictions) == (2, 2)
+
+    def test_one_file_pinned_at_two_commits_is_one_quota(self) -> None:
+        # `source_id` carries the commit, so the same file at two revisions is
+        # two keys -- and the corpus pins eight paths that way, seven of them
+        # byte-identical under both pins. A submission may declare either, so a
+        # quota on `source_id` gave those records twice the guesses. The quota
+        # keys on `SourcePin.unit_id`, which is the file across revisions.
+        one = a_record(record_id="vault-reentrancy-1")
+        two = a_record(
+            record_id="vault-reentrancy-2",
+            start=20,
+            end=21,
+        )
+        moved = two.model_copy(update={"pin": two.pin.model_copy(update={"commit": "b" * 40})})
+        assert one.pin.source_id != moved.pin.source_id
+        assert one.pin.unit_id == moved.pin.unit_id
+        runs = [
+            a_run([(5, 6)], source_id=one.pin.source_id),
+            a_run([(20, 21)], source_id=moved.pin.source_id),
+        ]
+        got = only(score(runs, [one, moved], resolver(), predictions_per_unit=1))
+        assert (got.predictions, got.capped_predictions) == (1, 1)
 
     def test_two_detectors_in_one_class_share_the_quota(self) -> None:
         # The case a cap applied per run cannot see: a condition quantified over
@@ -1407,14 +1454,25 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
         assert only(report).predictions == 1
 
-    def test_a_fragment_of_the_declared_span_is_refused(self) -> None:
-        # The forgery this closed: with containment, a submitter declared the
-        # span the corpus published and hid a guessed fragment inside it. A
-        # 181-entry generated dictionary of Solidity idioms -- `; if (`,
-        # `msg.sender`, `returns (uint256` -- scored micro recall 0.913 over the
-        # whole published corpus that way, reading no source at all.
+    def test_whole_lines_inside_a_wider_span_are_accepted(self) -> None:
+        # A locator a line wider than the lines quoted is a locator, not a
+        # forgery. Demanding equality here cost an honest submission 0.993 ->
+        # 0.076 over the whole corpus, against a forger who was getting 0.034.
         report = score(
             [self.a_submitted_run("total = total - amount;", (4, 7))], [a_record()], resolver()
+        )
+        assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
+        assert only(report).predictions == 1
+
+    def test_a_quote_that_starts_mid_line_is_refused(self) -> None:
+        # The forgery a whole-line rule closes and a token-run rule does not:
+        # a generic run that straddles line boundaries. `for (uint256 i = 0; i <`
+        # is ten tokens, clears the six-token floor, and sits inside hundreds of
+        # published spans -- 0.126 over the whole corpus, reading no source.
+        report = score(
+            [self.a_submitted_run("msg.sender).transfer(amount);", (4, 7))],
+            [a_record()],
+            resolver(),
         )
         assert report.refuted_citations == 1
         assert only(report).predictions == 0

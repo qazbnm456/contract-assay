@@ -355,22 +355,25 @@ _TOKEN = re.compile(r"[A-Za-z_][A-Za-z_0-9]*|\d+|[^\sA-Za-z_0-9]")
 Rough is enough. This is not a parser -- it exists so that a quote is compared
 to a span **at token boundaries**, and any tokenisation that agrees with itself
 on both sides gives that.
+
+A multi-character operator is two tokens here: `-=` is `-` then `=`. Worth
+knowing because the floor below counts these, so a quote carrying one clears a
+six-token floor with five Solidity tokens.
 """
 
-_MINIMUM_SPAN_TOKENS = 6
-"""How many tokens a cited span must carry before it can be cited at all.
+_MINIMUM_QUOTE_TOKENS = 6
+"""How many tokens a quote must carry to cite anything.
 
-Six, measured. The language's own statements run to five tokens -- `} else {`,
-`msg.sender,`, `address(this),`, `) internal {` -- so a span below six is
-something a submitter can type out of the language and the published locator
-without opening the file. A dictionary of generic full statements, sprayed at
-every line run inside every published span, scored **0.2488 at a floor of
-three, 0.0530 at five and 0.0046 at six**. Ten buys 0.0023 and costs a
-submitter the ability to cite one short statement, so six is where it sits.
+Six, measured against a blind attacker. Below it a quote is a line anybody can
+type: `} else {`, `msg.sender,`, `address(this),`, `) internal {`. A dictionary
+of generic single statements sprayed at every published span scores 0.249 at a
+floor of three and 0.005 at six.
 
-The floor is on the **span**, not on the quote, because the two must now be
-equal (`quote_is_at`). A submitter whose finding is one short statement widens
-the locator by a line; that is a better locator, not a worse one.
+Not a free parameter above six. Measured against the strongest blind attack
+below, floors of three, five and six are indistinguishable (0.034 each) because
+that attack guesses whole lines rather than short ones; eight and ten cut it to
+0.030 and cost an honest submitter 0.25 and 0.41 of its recall. So six is the
+point where the cheap families die and the honest side is still whole.
 """
 
 
@@ -381,11 +384,10 @@ def _tokens(text: str) -> list[str]:
 def _is_token_run_of(quote_tokens: list[str], span_tokens: list[str]) -> bool:
     """Whether the quote's tokens are a contiguous run of the span's.
 
-    Not the acceptance test -- `quote_is_at` demands equality. This only tells
-    two refusals apart: a quote that is a run *inside* the span is a submitter
-    citing less than it declared, and a quote that is a run of the file
-    somewhere else is a locator pointing at the wrong lines. Each has its own
-    check name because each has a different fix.
+    Not the acceptance test -- `quote_is_at` compares whole lines. This tells
+    two refusals apart: a quote that is a token run but not a line run is a
+    mid-line fragment, and a quote that is a run of the file somewhere else is a
+    locator pointing at the wrong lines. Each has a different fix.
     """
     width = len(quote_tokens)
     if width == 0 or width > len(span_tokens):
@@ -396,8 +398,24 @@ def _is_token_run_of(quote_tokens: list[str], span_tokens: list[str]) -> bool:
     )
 
 
+def _line_tokens(text: str) -> list[list[str]]:
+    """One token list per non-blank line, indentation and inner spacing dropped."""
+    return [_tokens(line) for line in text.split("\n") if line.strip()]
+
+
+def _is_line_run_of(quote_lines: list[list[str]], span_lines: list[list[str]]) -> bool:
+    """Whether the quote is a contiguous run of whole lines of the span."""
+    width = len(quote_lines)
+    if width == 0 or width > len(span_lines):
+        return False
+    return any(
+        span_lines[start : start + width] == quote_lines
+        for start in range(len(span_lines) - width + 1)
+    )
+
+
 def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
-    """Whether `quote` is the source at `locator` -- the whole of it, not a part.
+    """Whether `quote` is whole lines of the source inside `locator`.
 
     Extracted so the **scorer** can run it. `check_citation` is called from
     `run_detector`, which means it only ever protected a run this package
@@ -409,49 +427,90 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
     NOWHERE IN THE SOURCE"` at every recorded access-control locator scored 12
     predictions, **12 matches**, and `unverifiable_claims: 0`.
 
-    **Equality, not containment, and that is the whole of the defence.** A
-    submitter picks its own locator, so letting the quote be a fragment of the
-    declared span lets it declare the span the corpus published and hide a
-    guessed fragment inside. Containment was tried twice and broke twice:
+    **Whole lines, contiguous, inside the declared span.** Four versions of this
+    check have been broken by review, each at a different granularity, and the
+    numbers are what chose this one. Every figure is micro recall at the
+    exact+function floor over the whole published corpus, through
+    `contract-assay score`, for a submission that opens no `.sol` file:
 
-    | forgery, reading no source | recall |
-    | --- | --- |
-    | `";"` contained in every published span, floor 1 token | 0.972 |
-    | `"er"` inside `require`/`transfer`, floor 1 token untokenised | 0.938 |
-    | a 181-entry generated dictionary, floor 3 tokens, tokenised | **0.913** |
-    | 9 generic fragments, containment, floor raised to 6 tokens | 0.270 |
-    | the same dictionary, **equality**, floor 6 tokens | **0** |
-    | generic full *statements*, equality, floor 6 tokens | **0.009** |
+    | rule | `";"` | `"er"` | 181 idioms | generic runs | 9 blind slots |
+    | --- | --- | --- | --- | --- | --- |
+    | bytes, floor 1 | 0.972 | -- | -- | -- | -- |
+    | quote tokenised, span not | -- | 0.938 | -- | -- | -- |
+    | both tokenised, token run, floor 3 | 0 | 0 | **0.913** | -- | -- |
+    | token run, floor 6 | 0 | 0 | 0 | **0.126** | -- |
+    | span equality, floor 6 | 0 | 0 | 0 | 0 | **0.034** |
+    | **line run, floor 6** | 0 | 0 | 0 | 0 | **0.030** |
 
-    The third row is the state this replaced: both sides were tokenised and a
-    contiguous run was demanded, and a cross product of elementary types,
-    visibility and mutability -- `; if (`, `msg.sender`, `returns (uint256` --
-    still landed inside 397 of 435 published spans, because a 3-token run is
-    vocabulary and not a fingerprint. Raising the floor under containment does
-    not reach it either: `for (uint256 i = 0; i <` is ten tokens and generic.
+    A token run lets a fragment straddle line boundaries, which is where
+    `for (uint256 i = 0; i <` and `require(msg.sender ==` live -- ten tokens
+    each, generic, and inside hundreds of spans. Whole lines close that family
+    without closing anything an honest submitter does, because an honest
+    submitter slices the file by line.
 
-    Equality reaches it because a span cannot be guessed. What a submitter must
-    now produce is the text of the lines it declared, which is exactly the thing
-    that requires opening the file. The last row is what is left: a dictionary
-    of generic full statements, declared at every one- and two-line locator
-    inside every published span, lands on 4 of 435 records -- four spans that
-    happen to be a statement anybody can type. It is reported rather than
-    rounded, and `recheck_citations` carries the same number.
+    **Equality was the previous rule and this replaces it at no cost to
+    forgery resistance and a large gain to the honest side.** Equality demanded
+    the quote *be* the declared span, which made a correct quote fail whenever
+    the locator was a line wide -- the commonest thing a model gets wrong about
+    a span. Measured, same honest submission, only the declared span moving:
 
-    Honest submissions are unaffected, measured the same way: quoting each
-    record's whole declared span scores 0.9885, and quoting one real statement
-    with the locator narrowed to it scores 0.9954 -- the same figure the
-    fragment pattern used to get, from a better locator. The benchmark's own
-    `PredicateDetector` baseline is unchanged at 34 predictions and 0.11, since
-    it quotes each evidence item's own span and its shortest is 13 tokens.
+    | honest submission | equality | line run |
+    | --- | --- | --- |
+    | locator exactly the quoted lines | 0.993 | 0.993 |
+    | locator one line wider below | **0.076** | **0.993** |
+    | locator one line wider on both sides | 0.005 | 0.409 |
+    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.993 |
 
-    What it still does **not** establish is that the submitter found a defect.
-    The corpus publishes the full locator and `fetch` builds the scorer's
-    checkout from public coordinates, so a submitter reading the public source
-    can quote the real span at the published locator: measured **micro recall
-    0.9977 with precision 1.0 in all nine classes**. That class is not closable
-    here, it is why a figure over the published corpus is self-reported, and
-    `docs/api.md` §1 says so where a submitter reads it.
+    (The third row is limited by the strength ladder, not by this check: a span
+    starting a line above a function no longer resolves to that function. The
+    fourth is three records whose span exceeds 4,000 characters: equality left
+    them uncitable at that locator, and a line run accepts the part that fits.)
+
+    It costs one thing, measured: a submission that quotes real text out of one
+    donor unit and points its locators at other files used to score 0 and now
+    scores **0.0023** -- one record of 435 whose cited lines are duplicated
+    boilerplate the donor also contains. That is the price of accepting part of
+    a span, and it is smaller than the 0.917 of honest recall that demanding all
+    of it cost.
+
+    **What is left, and it is not zero.** Nine hand-picked slots -- the record's
+    published `function` name written into `function {F}() external {`, plus
+    loop and argument-list boilerplate at offsets from the published line
+    numbers -- score **0.0299 (13 of 435)** under the default cap, and **0.0414
+    (18 of 435)** with the slot order tuned against corpus yield. The corpus
+    publishes the function's name, so the text of its declaration line is
+    partly derivable, and no rule about quoted text can make derivable text
+    unguessable. A review bounded that family at 0.258 using a per-record oracle
+    it could not have in practice.
+
+    This is the fourth version of this check and the fourth number. The first
+    three were each published as a zero and each was exceeded by the next
+    review. So: **0.0299 is a measurement of the best blind attack anybody has
+    run here, not a floor**, and the next reviewer should expect to beat it.
+
+    Two further rules were measured and **declined**, recorded here so the next
+    reviewer does not have to rediscover them:
+
+    - *The quote must name an identifier that is neither Solidity vocabulary nor
+      the locator's own contract and function name.* Cuts the blind attack from
+      0.034 to 0.011 and costs the honest side 0.993 -> 0.956, because a correct
+      finding about a zero-argument function often quotes exactly that
+      function's declaration line. Refusing 16 true citations to remove 11 false
+      ones is the wrong trade for an instrument whose honest ceiling should be
+      1.0, and the vocabulary list it needs is a maintenance surface whose every
+      gap is a refused true finding.
+    - *The quote's token run must occur exactly once in the file.* A cheaper
+      test of "could not have been produced without reading this file", and it
+      costs far more: honest recall 0.993 -> 0.446, because a correct finding
+      often quotes a guard or an assignment that the file repeats. Its blind
+      figure, 0.023, is no better than what whole lines give.
+
+    So: a figure over the published corpus is **self-reported**, and this check
+    holds a blind submitter to a *measured* 0.03 rather than to zero. A
+    competitive ranking needs records whose locators are not published --
+    `CorpusSplit.PRIVATE_HOLDOUT` and `assay-arena`'s `docs/operations.md` step
+    3 -- and that is where the guarantee has to live. `docs/api.md` §1 says the
+    same thing where a submitter reads it.
     """
     # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
     # on \v, \f, \x1c-\x1e and U+2028/2029, none of which a compiler or an
@@ -465,51 +524,50 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
             detail=f"span ends at {locator.end_line}, source has {len(lines)} lines",
         )
 
-    def normalise(text: str) -> str:
-        return "\n".join(line.strip() for line in text.split("\n") if line.strip())
-
-    span = normalise("\n".join(lines[locator.start_line - 1 : locator.end_line]))
-    normalised = normalise(quote)
-    if not normalised:
+    span = "\n".join(lines[locator.start_line - 1 : locator.end_line])
+    if not quote.strip():
         return FailedCheck(
             check="citation_quote_absent_from_source",
             kind=RejectionKind.CITATION,
             detail="the quote is blank once whitespace is normalised",
         )
 
-    span_tokens = _tokens(span)
-    quote_tokens = _tokens(normalised)
-    if len(span_tokens) < _MINIMUM_SPAN_TOKENS or not any(
-        token[0].isalpha() or token[0] == "_" for token in span_tokens
+    quote_tokens = _tokens(quote)
+    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not any(
+        token[0].isalpha() or token[0] == "_" for token in quote_tokens
     ):
-        # The span itself, not the quote: a one-line locator over `} else {` is
-        # a location a submitter can name from the language alone, and demanding
-        # its text back proves nothing. Widening the locator by a line fixes it
-        # and improves the locator.
+        # A review scored **micro recall 0.972** across the whole corpus, at
+        # `exact` strength, by quoting `";"` at every published locator: the
+        # comparison is containment, so a quote that appears in nearly every
+        # span establishes nothing about whether its author read one.
         return FailedCheck(
-            check="citation_span_is_not_substantive",
+            check="citation_quote_is_not_substantive",
             kind=RejectionKind.CITATION,
-            detail=f"lines {locator.start_line}-{locator.end_line} carry "
-            f"{len(span_tokens)} token(s) and a citable span needs at least "
-            f"{_MINIMUM_SPAN_TOKENS} including an identifier; a shorter span is one "
-            "the language supplies rather than this file",
+            detail=f"{quote.strip()[:40]!r} is {len(quote_tokens)} token(s) and needs at "
+            f"least {_MINIMUM_QUOTE_TOKENS} including an identifier; a shorter quote names "
+            "something that appears in most spans rather than this one",
         )
 
-    if quote_tokens == span_tokens:
+    quote_lines = _line_tokens(quote)
+    if _is_line_run_of(quote_lines, _line_tokens(span)):
         return None
-    if _is_token_run_of(quote_tokens, span_tokens):
-        return FailedCheck(
-            check="citation_quote_is_a_fragment",
-            kind=RejectionKind.CITATION,
-            detail=f"the quote is {len(quote_tokens)} of the span's {len(span_tokens)} "
-            "tokens; quote the lines the locator declares, or narrow the locator to "
-            "the lines being quoted",
-        )
-    if _is_token_run_of(quote_tokens, _tokens(normalise(source))):
+    if _is_line_run_of(quote_lines, _line_tokens(source)):
         return FailedCheck(
             check="citation_quote_elsewhere_in_file",
             kind=RejectionKind.CITATION,
             detail="the quote is in the file but not at the cited lines",
+        )
+    if _is_token_run_of(_tokens("\n".join(" ".join(line) for line in quote_lines)), _tokens(span)):
+        # Real text at the cited lines, and not whole lines of it: a fragment
+        # that starts or stops mid-line. Refused because that is where a blind
+        # guess lives -- `for (uint256 i = 0; i <` is ten generic tokens and
+        # sits inside hundreds of spans -- and it is not what an honest
+        # submitter produces, because slicing a file gives whole lines.
+        return FailedCheck(
+            check="citation_quote_is_not_whole_lines",
+            kind=RejectionKind.CITATION,
+            detail="the quote starts or ends mid-line; quote the whole of each line it "
+            "covers, which is what slicing the source at a locator gives",
         )
     return FailedCheck(
         check="citation_quote_absent_from_source",

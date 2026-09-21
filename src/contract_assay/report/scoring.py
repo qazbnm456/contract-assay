@@ -408,9 +408,16 @@ class ScoreReport:
     Carried on the report because a precision computed over three predictions
     per unit and one computed over every prediction a submission cared to make
     are not the same measurement, and nothing else in the document would say
-    which happened. `None` is the benchmark's default: a cap states how much
-    adjudication an exercise is willing to fund, which is a property of the
-    exercise and not of the instrument.
+    which happened. It is also one of the six fields `results.compare` requires
+    two figures to share.
+
+    `None` means uncapped and is **not** the default any more. It was, on the
+    argument that a cap states how much adjudication an exercise is willing to
+    fund and is therefore the exercise's to state -- an argument about the queue
+    that missed the figure, since recall over an unbounded pool is not a
+    measurement. `score`'s default is `DEFAULT_PREDICTIONS_PER_UNIT`; this field
+    is `None` here only because a dataclass default has to be something and an
+    uncapped report is a thing this type must be able to describe.
     """
 
     unjudged: tuple[Unjudged, ...] = ()
@@ -696,12 +703,25 @@ def _plural(count: int, noun: str, plural: str | None = None) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {plural or noun + 's'}"
 
 
-def _signature_at(parsed: Syntax | None, locator: Locator) -> str | None:
-    """The declared signature of the function containing a locator, if resolvable."""
+def _signature_at(parsed: Syntax | None, locator: Locator) -> tuple[str | None, str] | None:
+    """The containing function, as (enclosing type, declared signature).
+
+    Qualified by the enclosing type, because a *file* holds several contracts
+    and `Declaration.signature` is `name(paramtypes)` with no qualifier. Its own
+    docstring rests on "the compiler rejects a contract that declares the same
+    signature twice" -- true per contract, which is exactly what `parent` adds.
+    Unqualified, a prediction in one contract's `getThePrice(address)` scored a
+    `function` match against a record in another's: measured, 3 of 435 records
+    have such a twin outside their function, two of them a one-line interface
+    stub quotable from the published function name. That is §7's stated failure
+    mode -- "a prediction naming the right name in the wrong overload would
+    score as having found the right function" -- arriving through signature
+    collision rather than name collision, inside the mechanism built to stop it.
+    """
     if parsed is None:
         return None
     declaration = parsed.callable_at(locator.start_line)
-    return declaration.signature if declaration is not None else None
+    return (declaration.parent, declaration.signature) if declaration is not None else None
 
 
 def _call_adjacent(parsed: Syntax | None, prediction: Locator, truth: Locator) -> bool:
@@ -862,26 +882,27 @@ def recheck_citations(
     | `"er"`, inside `require`/`transfer`/`reserve` | 0.938 | 0 |
     | `"function"` at every published locator | 0.754 | 0 |
     | a 181-entry generated dictionary of idioms | **0.913** | **0** |
-    | generic full statements, every line run in every span | 0.249 | **0.009** |
-    | one donor unit, every locator elsewhere | 1.000 | 0 |
+    | generic mid-line runs of six or more tokens | 0.126 | 0 |
+    | generic whole-line statements, at every published span | 0.249 | 0 |
+    | nine blind slots off the published function name and lines | -- | **0.0299** |
+    | one donor unit, every locator elsewhere | 1.000 | 0.0023 |
     | a submitter's own `--source-root` | 0.922 | 0 |
 
-    **The fifth row is why the quote must now equal the span it declares**, and
-    it is the third time this check was declared closed and was not. The first
-    version compared bytes; the second tokenised the quote but not the span, so
-    `"er"` composed through; the third tokenised both and demanded a contiguous
-    run, and a cross product of elementary types, visibility and mutability
-    still landed inside 397 of 435 published spans -- because a submitter picks
-    its own locator, so a rule about *part* of the span is a rule it can satisfy
-    with vocabulary. `quote_is_at` has the argument and the rest of the numbers.
+    **The eighth row is the live one, and it is not zero.** A citation must be
+    whole lines of the span its locator declares, six tokens or more, which
+    closes every dictionary family above -- but the corpus publishes the
+    function's *name*, so a blind submitter can write `function {F}() external
+    {` and be right about a zero-argument function's declaration line. Nine such
+    slots score 0.0299, or 0.0414 with their order tuned against corpus yield.
+    Four versions of this check have now been published, the first three as
+    zeroes, and each was exceeded by the next review; this one is stated as what
+    it is -- the best blind attack anybody has run, not a bound.
 
-    **The sixth row is not zero and will not become zero.** A dictionary of
-    generic full statements -- `balances[msg.sender] = 0;`,
-    `balanceOf[msg.sender] -= amount;` -- declared at every one- and two-line
-    locator inside every published span lands on 4 of 435 records: 668,655
-    quotes, 666,233 of them refused, four spans that happen to be a statement
-    anybody can type. Raising the floor to ten tokens halves it and costs an
-    honest one-statement citation, so it sits where it is and is reported.
+    **The ninth row went from zero to 0.0023 deliberately.** Accepting part of a
+    declared span means a donor unit's duplicated boilerplate can match at
+    another file's locator: one record of 435. Demanding the whole span instead
+    cost an honest submission whose locator was a single line wide 0.993 -> 0.076
+    of its recall, which is a far worse trade. `quote_is_at` has both tables.
 
     The last row is zero because a pin carrying a digest now wins its
     `source_id`. Measured: with every digest stripped the forgery scores 0.922,
@@ -1067,8 +1088,9 @@ def score(
     capped -- and it used to be `None`, on the argument that "a cap states how
     much adjudication an exercise will fund and the benchmark is not the
     exercise". That argument was about the queue and it missed the figure.
-    `None` is still accepted and still caps nothing, for tooling that wants the
-    whole pool; it is no longer what a submission gets by default.
+    `None` is still accepted by this function and still caps nothing, for
+    tooling that wants the whole pool. It is not reachable from the CLI, which
+    types the option as `int`: the published submission surface is capped.
 
     Enforced here rather than by whatever ran the submission, because this is the
     only layer that sees a whole submission's runs at once. A cap applied by the
@@ -1088,6 +1110,11 @@ def score(
         )
     runs = list(runs)
     records = list(records)
+    # `unit_id` is the pinned file across revisions; `source_id` includes the
+    # revision. An unknown `source_id` falls back to the cited file: it has no
+    # source to re-read a quote against, so its findings are refused either way,
+    # and keying by file stops a submission inventing quota by inventing pins.
+    units = {record.pin.source_id: record.pin.unit_id for record in records}
     # Before anything is counted. See `recheck_citations`: a submitted run
     # arrives with its own `status: verified`, and until this ran a hand-written
     # file could top the board with fabricated quotes at published locators.
@@ -1223,13 +1250,17 @@ def score(
         per_unit: Counter[str] = Counter()
         for run in class_runs:
             for finding in run.findings:
-                if (
-                    predictions_per_unit is not None
-                    and per_unit[run.source_id] >= predictions_per_unit
-                ):
+                # Keyed by the *unit*, not by the run's declared `source_id`.
+                # `source_id` includes the revision, so the corpus's eight paths
+                # pinned at two commits each are sixteen keys -- and a
+                # submission is free to declare either, which handed the 35
+                # records on those paths eighteen guesses instead of nine.
+                # `SourcePin.unit_id` is the file across revisions.
+                unit = units.get(run.source_id) or f"file:{finding.finding.locator.file}"
+                if predictions_per_unit is not None and per_unit[unit] >= predictions_per_unit:
                     capped += 1
                     continue
-                per_unit[run.source_id] += 1
+                per_unit[unit] += 1
                 # A claim that failed its citation measured nothing about the
                 # source, and costs precision so that emitting many is not free
                 # (§7.2). Counted inside the quota for the same reason `claimed`

@@ -424,6 +424,20 @@ class CommitPin(_Pin):
         repo = self.repo_url.rstrip("/").rsplit("/", 1)[-1]
         return f"commit:{repo}@{self.commit[:12]}:{self.path}"
 
+    @property
+    def unit_id(self) -> str:
+        """The same file across revisions. **Never parse this either.**
+
+        `source_id` includes the commit, so one file pinned at two commits is
+        two `source_id`s -- correct for "exactly which bytes", and wrong for
+        "how many guesses does a submission get here". The shipped corpus pins
+        eight paths under two commits each, and a per-unit quota keyed on
+        `source_id` handed the records on those paths twice the quota. Keyed on
+        this, a submission declaring either pin lands in the same bucket, and
+        two repositories that happen to share a path still do not.
+        """
+        return f"commit:{self.repo_url}:{self.path}"
+
     def describe(self) -> str:
         return f"{self.repo_url}@{self.commit[:12]}:{self.path}"
 
@@ -492,6 +506,11 @@ class AddressPin(_Pin):
         """An opaque key for the pinned unit. **Never parse this.** See `CommitPin`."""
         point = self.fork_point if self.fork_point.isdigit() else self.fork_point[:14]
         return f"address:{self.chain_id}:{self.address}@{point}:{self.path}"
+
+    @property
+    def unit_id(self) -> str:
+        """The same file across fork points. See `CommitPin.unit_id`."""
+        return f"address:{self.chain_id}:{self.address}:{self.path}"
 
     def describe(self) -> str:
         at = "tx" if self.pins_a_transaction else "block"

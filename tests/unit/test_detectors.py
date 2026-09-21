@@ -17,7 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from contract_assay.detectors.base import (
-    _MINIMUM_SPAN_TOKENS,
+    _MINIMUM_QUOTE_TOKENS,
     API_VERSION,
     AnalysisContext,
     ClassificationClaim,
@@ -864,7 +864,7 @@ contract Vault {
         assert failure.check == "citation_quote_elsewhere_in_file"
 
     def test_a_quote_absent_from_the_file_is_reported(self) -> None:
-        failure = check_citation(self._ctx(), self._finding("selfdestruct(owner);", 3, 3))
+        failure = check_citation(self._ctx(), self._finding("selfdestruct(payable(owner));", 3, 3))
         assert failure is not None
         assert failure.check == "citation_quote_absent_from_source"
 
@@ -896,7 +896,7 @@ contract Vault {
         assert not hasattr(Ok(), "check_citation")
 
 
-class TestWhatMakesASpanCitable:
+class TestWhatMakesAQuoteACitation:
     """Each refusal by name, and the floor pinned from both sides.
 
     Written this way because of how the last two versions of this check failed.
@@ -946,30 +946,43 @@ contract Vault {
         assert len(_tokens("total -= amount;")) == 5
         assert len(_tokens("total = total - amount;")) == 6
 
-    def test_a_fragment_of_the_declared_span_is_named_as_one(self) -> None:
-        # The forgery: declare the span the corpus published, quote something
-        # guessable inside it. Measured at micro recall 0.913 over the whole
-        # corpus from a generated dictionary of Solidity idioms.
-        assert self._check("total = total - amount;", 4, 7) == "citation_quote_is_a_fragment"
+    def test_whole_lines_inside_a_wider_span_are_accepted(self) -> None:
+        # The honest case the previous rule destroyed. Equality demanded the
+        # quote *be* the declared span, so a correct quote with a locator one
+        # line wide was refused: measured over the whole corpus, an honest
+        # submission whose locator is one line wider below fell from 0.993 to
+        # 0.076. It is 0.993 under this rule.
+        assert self._check("total = total - amount;", 4, 7) is None
 
-    def test_a_span_of_five_tokens_cannot_be_cited(self) -> None:
+    def test_a_quote_that_starts_mid_line_is_named_as_such(self) -> None:
+        # Where a blind guess lives: `for (uint256 i = 0; i <` is ten generic
+        # tokens and sits inside hundreds of spans. A token-run rule with this
+        # same six-token floor scored 0.126 over the whole corpus reading no
+        # source; requiring whole lines scores 0.
+        assert (
+            self._check("msg.sender).transfer(amount);", 5, 6)
+            == "citation_quote_is_not_whole_lines"
+        )
+
+    def test_a_quote_of_five_tokens_cannot_cite(self) -> None:
         # Pins the floor from below. `total -= amount;` is five tokens as this
-        # counts them, and the language's own statements run to five: at a floor
-        # of five a dictionary of generic statements scored 0.053 over the whole
-        # corpus, at six 0.005.
-        assert self._check("total -= amount;", 10, 10) == "citation_span_is_not_substantive"
+        # counts them, and a line anybody can type runs to about five: at a
+        # floor of five a dictionary of generic statements scored 0.053 over the
+        # whole corpus, at six 0.005.
+        assert self._check("total -= amount;", 10, 10) == "citation_quote_is_not_substantive"
 
-    def test_a_span_of_six_tokens_can_be_cited(self) -> None:
+    def test_a_quote_of_six_tokens_can_cite(self) -> None:
         # Pins the floor from above: at seven this stops being citable, and an
-        # honest one-statement finding has nothing left to quote.
+        # honest one-statement finding has nothing left to quote. Measured, a
+        # floor of eight costs an honest submission 0.25 of its recall.
         assert self._check("total = total - amount;", 6, 6) is None
 
     def test_the_floor_is_six(self) -> None:
         # Stated, so that moving the constant without a measurement fails here
         # rather than silently changing what a citation proves.
-        assert _MINIMUM_SPAN_TOKENS == 6
+        assert _MINIMUM_QUOTE_TOKENS == 6
 
-    def test_a_span_of_punctuation_alone_cannot_be_cited(self) -> None:
+    def test_a_quote_of_punctuation_alone_cannot_cite(self) -> None:
         # Six tokens, no identifier -- so the floor alone does not refuse it and
         # this is the only test that holds the identifier clause. A review
         # deleted that clause and 1154 tests still passed, because every case
@@ -978,8 +991,8 @@ contract Vault {
             "a();\n}}}});\n", Locator(file="f.sol", start_line=2, end_line=2), "}}}});"
         )
         assert failure is not None
-        assert len(_tokens("}}}});")) == _MINIMUM_SPAN_TOKENS
-        assert failure.check == "citation_span_is_not_substantive"
+        assert len(_tokens("}}}});")) == _MINIMUM_QUOTE_TOKENS
+        assert failure.check == "citation_quote_is_not_substantive"
 
     def test_real_code_from_elsewhere_in_the_file_is_named_as_such(self) -> None:
         assert (
@@ -1016,6 +1029,16 @@ contract Vault {
         # it, and rejecting that would cost recall for a reason unrelated to
         # whether the finding is true.
         assert self._check(quote, 5, 6) is None
+
+    def test_the_lines_have_to_be_contiguous(self) -> None:
+        # Blank lines are dropped on both sides, so two lines with a blank
+        # between them are adjacent -- but two lines with *code* between them
+        # are not, and quoting them as if they were is a different claim about
+        # the file than the one the file supports.
+        assert (
+            self._check("payable(msg.sender).transfer(amount);\ntotal = total + amount;", 4, 11)
+            == "citation_quote_absent_from_source"
+        )
 
     def test_the_lines_have_to_be_in_the_order_the_file_has_them(self) -> None:
         assert (

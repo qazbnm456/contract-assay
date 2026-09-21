@@ -37,6 +37,7 @@ from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSp
 from contract_assay.detectors.loading import SubmissionFault, call_evidence, call_plan
 from contract_assay.detectors.runner import run_detector
 from contract_assay.models import (
+    DEFAULT_PREDICTIONS_PER_UNIT,
     DetectorRun,
     EvidenceTier,
     Finding,
@@ -197,7 +198,7 @@ def run_submission(
     wall_seconds: int = 30,
     max_calls: int = 4,
     max_tokens: int = 20_000,
-    predictions_per_unit: int | None = None,
+    predictions_per_unit: int | None = DEFAULT_PREDICTIONS_PER_UNIT,
     on_unit: Callable[[int, SourceUnit], None] | None = None,
 ) -> Iterator[DetectorRun]:
     """Run every detector against every unit, yielding one run at a time.
@@ -205,11 +206,19 @@ def run_submission(
     Yielded rather than returned so a caller can write as it goes: a sweep that
     dies at unit 90 of 141 should leave 90 units of runs behind it, not nothing.
 
-    `predictions_per_unit` caps what is handed to the benchmark, as a courtesy
-    to keep a runaway model from filling a file. It is **not** the cap that
-    counts -- `contract-assay score --predictions-per-unit` is, because the
-    scorer is the only layer that sees a whole submission's runs at once and can
-    see two detectors for one class using the quota between them.
+    `predictions_per_unit` caps what is handed to the benchmark, and it defaults
+    to what the scorer will count, so that what a submission hands over is what
+    gets scored. It is **not** the cap that counts -- `contract-assay score
+    --predictions-per-unit` is, because the scorer is the only layer that sees a
+    whole submission's runs at once and can see two detectors for one class
+    using the quota between them, and because it charges for a finding whose
+    citation it refuses while this cannot know which those are.
+
+    The default used to be `None`. A submission then emitted everything, the
+    scorer charged for all of it in the runner's own unit order, and a docstring
+    defending the cap with "the order is the submission's own, so spending slots
+    on guesses is its choice" was describing a choice the documented workflow
+    never offered.
     """
     for index, unit in enumerate(units):
         if on_unit is not None:

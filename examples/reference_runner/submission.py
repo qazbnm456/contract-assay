@@ -79,10 +79,10 @@ class UnguardedStateWrite(Detector):
     instruction = (
         "The variable `source` holds one Solidity file. Find external or public "
         "functions that write to contract state without checking who called them. "
-        "For each one, report the line range of the assignment and quote every "
-        "line in that range verbatim -- the quote must be the whole of what the "
-        "line range names, and the range must cover at least six tokens, so "
-        "include the neighbouring line when the statement is short. Do not "
+        "For each one, report the line range of the assignment and quote whole "
+        "lines verbatim -- every quoted line complete, no line started or "
+        "stopped in the middle, and at least six tokens in total, so include "
+        "the neighbouring line when the statement is short. Do not "
         "report a function whose body checks the caller, and do not report a "
         "constructor or an initializer guarded against a second call."
     )
@@ -180,12 +180,12 @@ def self_check(ctx: AnalysisContext, finding: Finding) -> str | None:
     the run measured nothing at all. Calling this during development turns that
     into a message you see immediately.
 
-    The mismatch to expect from a model is a *fragment*: asked for the lines of
-    an assignment, it returns the assignment and a locator covering the whole
-    function. The host wants the two to agree, so either narrow the locator or
-    widen the quote -- and the cheapest way to never get this wrong is to slice
-    `ctx.source` at the locator you are about to report, which is what the
-    bundled `PredicateDetector` does.
+    The mismatch to expect from a model is a quote that starts mid-line --
+    asked for a statement, it returns the condition without the `if (`. Whole
+    lines inside the declared span are accepted, part of a line is not, and the
+    cheapest way to never get it wrong is to slice `ctx.source` by line at the
+    locator you are about to report, which is what the bundled
+    `PredicateDetector` does.
     """
     failure = check_citation(ctx, finding)
     return None if failure is None else f"{failure.check}: {failure.detail}"
