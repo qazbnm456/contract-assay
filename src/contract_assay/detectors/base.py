@@ -553,7 +553,7 @@ Why a citation must name something outside it: the identifier test used to be
 `token[0].isalpha()`, which `return`, `false` and `unchecked` satisfy -- so
 `} } return false; }` was "substantive" at six tokens, and a review built a
 blind submission out of nothing but braces and keywords. Measured, this clause
-costs an honest submission 0.9931 -> 0.9885, which is two records whose whole
+costs an honest submission 0.9931 -> 0.9908, which is two records whose whole
 anchor line is language -- `receive() external payable {}` and
 `return (false, 0);` -- and a third record, `2024-12-plaza-finance-…-1e5ed5cb`,
 which has no citable quote for a different reason (its anchor line is blank, so
@@ -568,7 +568,7 @@ every other time unit was present, `transient` and `layout` from 0.8.28/0.8.29,
 `fixed`/`ufixed`, all of `abi.*`, most of `block.*`, `type(...)`'s members, and
 every Yul builtin -- and 8 records had a line inside their span whose only
 non-language token was one of them. Adding them costs the honest side nothing
-(0.9885 unchanged) and takes the brace-and-keyword family to 0. A missing entry
+(0.9908 unchanged) and takes the brace-and-keyword family to 0. A missing entry
 costs blind recall; a *wrong* entry silently refuses a true citation forever, so
 the set is maintained from the grammar and any addition is measured against the
 honest figure before it lands.
@@ -580,7 +580,7 @@ need no entry each.
 **What this set is not.** A review measured the stronger axis: refuse a quote
 whose only names are ones *any project* writes -- `i`, `amount`, `token`, `to`,
 `from`, `owner`, `IERC20`, `SafeERC20`, `nonReentrant`. That takes the best
-blind attack from 0.2115 to about 0.09 for three honest records, a better trade than
+blind attack from 0.2414 to about 0.09 for three honest records, a better trade than
 anything declined here. It is declined anyway, on the axis rather than the
 price: a list of names "projects use" has no definition to maintain it against,
 it would be extended each time a review found a new carrier -- which is fitting
@@ -671,13 +671,14 @@ citation that way, 7 of them to `encodePacked` alone.
 So a member name counts as the language's only where the language puts it:
 immediately after a `.`. Bare, it is a name the file chose.
 
-**It recovers 8 of those 16, not all of them**, and the ten lines still refused
-are worth knowing because they are the shapes a one-line finding takes:
-`abi.encodePacked(msg.sender)` (four dodo records -- every token is the
-language's, receiver included), `type(uint128).max,`,
-`for (uint256 i = 0; i < 50; i++) {` and `... i < 255; i++) {`,
-`return (true, i);` and `if (k == 0) {`. Each is citable by widening a line, and
-`_IDIOMATIC_COUNTERS` says what the counters in them cost.
+**It recovers 8, and the population it recovers from is 15, not the 16 first
+published here** -- 16 counts a record the counters took, which belongs to
+`_IDIOMATIC_COUNTERS` and not to this set. What stays refused is 8 occurrences
+over 5 distinct lines across 7 records, and they are worth knowing because they
+are shapes a one-line finding takes: `abi.encodePacked(msg.sender)` in four
+dodo records (every token is the language's, the receiver included),
+`type(uint128).max`, `return uint32(block.timestamp % 2 ** 32);` and a
+commented-out `? msg.sender`. Each is citable by widening a line.
 """
 
 
@@ -786,7 +787,7 @@ def cited_lines(
     slot list here was *chosen* by its yield over the same 435 published records
     it was then scored on. Cross-fitted -- rank the slots on half the corpus,
     score the other half, each record measured under an order that never saw it
-    -- the strongest family drops from **0.2115 to 0.0598**. So the last column
+    -- the strongest family drops from **0.2414 to 0.0713**. So the last column
     measures how finely an attacker is allowed to fit the record set it is
     evaluated on, and the number that generalises to a record set it has not
     seen is the cross-fitted one. Held-out is the figure a competitive ranking
@@ -827,7 +828,7 @@ def cited_lines(
     Positioning (below) fixed them as a side effect -- the prediction is where
     its quote is, and its quote is inside the function.
 
-    The 0.993 -> 0.9885 is three records with no citable quote in their anchor
+    The 0.993 -> 0.9908 is three records with no citable quote in their anchor
     window: `2025-05-dodo-…-94722659` (`receive() external payable {}`) and
     `2025-05-lend-…-ad76a9bd` (`return (false, 0);`), which
     `_LANGUAGES_OWN_WORDS` refuses, and `2024-12-plaza-finance-…-1e5ed5cb`,
@@ -835,11 +836,14 @@ def cited_lines(
 
     **The figure depends on a submission shape neither number states, so both
     are here.** A submitter that may widen its quote by a line scores 0.9908. A
-    submitter confined to quoting its anchor line alone scores **0.7149** --
-    124 records have no citable single line at their anchor, of which **120 are
-    the six-token floor**, three the naming clause and one a blank anchor line.
-    The floor's cost is the dominant one in that shape and it was never
-    published.
+    submitter confined to quoting its anchor line alone scores **0.7149**. The
+    124 records it misses are **120 refused by the six-token floor**, three by
+    the naming clause, and one whose source no repository checkout can hold --
+    so 123 of them have no citable anchor line, and the floor's cost is the
+    dominant one in that shape. An earlier version of this paragraph said "one
+    a blank anchor line", which is not a fourth category: there are three
+    blank-anchor records and all three are inside the 120, where the floor
+    refuses them for having no tokens at all.
 
     Accepting part of a span has a price, and it was published wrong twice. A
     donor-unit forgery -- real text out of one file, every locator pointing at
@@ -874,29 +878,44 @@ def cited_lines(
     identifier names every project writes (`i`, `amount`, `token`, `owner`,
     `IERC20`, `nonReentrant`), and the two names the record publishes -- and
     declares each over a window derived from the published line numbers. It
-    scores **0.4069 in-sample and 0.0644 held out**. Widening the window
+    scores, at its best measured, **0.2414 in-sample with 0.0713 held out** --
+    or **0.4299 in-sample with 0.0690 held out**, the same attack grouped to
+    favour the first column. Widening the window
     *upward* is worth more than downward, because it pulls the function's own
     declaration line and its top-of-body guards into the pool while every match
     still scores `function`.
 
+    **Both numbers of a pair come from one configuration.** The version of this
+    docstring before this one published 0.4069 and 0.0644 as a pair; they were
+    two different attacks -- different guess vocabulary, different grouping,
+    different window sweep -- and that method's held-out figure was 0.0621. It
+    is the same defect as the donor row two paragraphs down, re-committed on the
+    headline, and a review found it by re-deriving both halves. A pair is one
+    configuration measured twice or it is not a pair.
+
     The held-out figure is leave-one-out: every record scored under a guess
-    order fitted on the other 434. Two-fold cross-fitting reads 0.046 and
+    order fitted on the other 434. Two-fold cross-fitting reads lower and
     *understates*, because an attacker has the whole public corpus and not half
     of it, so leave-one-out is the estimator quoted. It moves about two records
     with the tie-break order of the greedy that produces it.
 
     **Read the in-sample column as a measure of the attacker's effort, not of
-    this check.** Five reviews have each raised it with better tooling and the
-    same idea -- 0.1448, then 0.2161, then 0.2299, then 0.4069, the last from
-    adding the language's member names to the guess vocabulary and conditioning
-    the guess order on the published span width. Every one of those numbers was
-    published here as if it were a property of the rule, and each was beaten
-    within a round. The held-out figure has moved far less: 0.0414, 0.0598,
-    0.0644 across three independent estimators, which is why it is the one a
-    competitive ranking should be designed against.
+    this check.** Six reviews have each raised it with better tooling and the
+    same idea -- 0.1448, 0.2161, 0.2299, 0.4069, 0.4299 -- the last two from
+    adding the language's member names and then the words of common revert
+    strings to the guess vocabulary, and from conditioning the guess order on
+    the published span width. `_TOKEN` tokenises a string literal's contents, so
+    `"caller is not the owner"` is a guess that generalises rather than fits.
+    Every one of those numbers was published here as if it were a property of
+    the rule, and each was beaten within a round.
+
+    The held-out figure has moved far less -- 0.0414, 0.0598, 0.0644, 0.0713 --
+    and it is the one a competitive ranking should be designed against. It is
+    also still moving, and a fifth of it arrived with the revert strings, so
+    treat 0.07 as this week's measurement and not as a limit.
 
     The size of what is left is clearest from the other side: a submitter who
-    could name **one real line** of each published span would score 0.9885. The
+    could name **one real line** of each published span would score 0.9908. The
     defence is entirely that it cannot name one, and each review names a few
     more.
 

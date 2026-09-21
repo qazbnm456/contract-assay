@@ -15,8 +15,9 @@ Three things worth knowing before you start:
 - **The figures in `results/` are self-reported.** `results/README.md` says what
   a pointer does and does not establish before it says how to add one.
 
-Run the gate the same way CI does. CI runs the first two lines; the third needs
-a checkout and is yours to run before proposing a record.
+Run the gate the same way CI does. CI runs everything down to `pytest`; the two
+commands after the blank line need a checkout and are yours to run before
+proposing a record.
 
 ```console
 $ python -m pip install --upgrade pip      # `--group` needs pip >= 25.1
@@ -31,4 +32,4 @@ $ contract-assay verify corpus/records --source-root ./checkout
 caused: 441 of 442 records are admitted and the last one pins verified source
 for a deployed address, which no repository checkout can hold. The gate is that
 your change adds no *new* rejection — run it before and after. `./checkout` is
-132 files and belongs in your `.gitignore`, not in a commit.
+134 files and is already in `.gitignore`.

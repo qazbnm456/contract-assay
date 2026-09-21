@@ -89,6 +89,50 @@ def run(*drafts: DraftRecord, source: str | None = VAULT):  # type: ignore[no-un
     )
 
 
+class TestADraftThatCannotBecomeARecordIsCounted:
+    """One malformed permalink used to abort the whole corpus build.
+
+    `DraftRecord` refuses such a path where the draft is built. This is the
+    second line of defence: `normalize` constructs a `CommitPin` from a draft's
+    path at two sites and had no `try` around either, so a `ValidationError`
+    escaped the run. A draft that cannot become a record is one counted
+    rejection.
+    """
+
+    def test_an_unusable_path_is_refused_at_the_draft(self) -> None:
+        # `adapters.markdown` takes the path from a GitHub blob URL with nothing
+        # but `lstrip("/")`, so `../../etc/passwd.sol` is a shape a real report
+        # can produce. Refused where the adapter that built it is identifiable.
+        with pytest.raises(ValidationError, match="path must"):
+            a_draft(path="../../etc/passwd.sol")
+
+    def test_normalize_counts_one_rather_than_raising(self) -> None:
+        # Reached by a draft built any way other than through the model -- a
+        # script, a fixture, a future adapter that bypasses it.
+        draft = a_draft().model_construct(**{**a_draft().__dict__, "path": "../../etc/passwd.sol"})
+        outcome = run(draft)
+        assert outcome.records == ()
+        assert outcome.by_cause[NormalizeCause.UNUSABLE_PATH] == 1
+        assert len(outcome.skipped) == 1
+
+    def test_one_unusable_alternative_does_not_lose_the_draft(self) -> None:
+        # The quote may still name one of the others, so an unusable candidate
+        # is skipped rather than fatal.
+        draft = a_draft().model_construct(
+            **{
+                **a_draft().__dict__,
+                "path": "src/Vault.sol",
+                "alternative_paths": ("..",),
+                "quoted_source": "owner = who;",
+                "contract": None,
+                "function": None,
+            }
+        )
+        outcome = run(draft)
+        # Whatever becomes of the draft, the unusable candidate is not why.
+        assert NormalizeCause.UNUSABLE_PATH not in outcome.by_cause
+
+
 class TestAStatedSpanIsKept:
     def test_the_report_span_is_used_verbatim(self) -> None:
         report = run(a_draft(start_line=7, end_line=9))

@@ -127,7 +127,34 @@ class TestSourcePin:
             a_pin(commit=bad)
 
     @pytest.mark.parametrize(
-        "bad", [".", "..", "", "/etc/passwd", "../../etc/passwd", "a/../b", "a/b/", " a/b", "a\\b"]
+        "bad",
+        [
+            ".",
+            "..",
+            "",
+            "/etc/passwd",
+            "../../etc/passwd",
+            "a/../b",
+            "a/b/",
+            " a/b",
+            "a\\b",
+            # `PurePosixPath` normalises a single dot away before `parts` is
+            # read, so these passed and collapsed onto `a/b` -- two `path`
+            # strings, two `source_id`s, one file, and `fetch`'s collision
+            # detector keys on the string.
+            "./a/b",
+            "a/./b",
+            "a/b/.",
+            # The only check that refuses an empty component, and it was the one
+            # mutation of this validator nothing caught.
+            "a//b",
+            # Control characters and interior whitespace: `Path.is_file()`
+            # swallows the `ValueError` a NUL raises, so this never crashed and
+            # never read anything either.
+            "a\x00b/c",
+            "src/My Vault.sol",
+            "src/Vault\n.sol",
+        ],
     )
     def test_rejects_a_path_that_names_no_file_or_leaves_the_checkout(self, bad: str) -> None:
         # `path` is joined to a `--source-root` by five consumers and had no

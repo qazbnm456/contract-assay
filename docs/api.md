@@ -118,29 +118,31 @@ publishes: the record gives you the function's *name*, so `function {F}()
 external {` is the right text for a zero-argument function's declaration line.
 The strongest such submission measured — whole lines built from a fixed generic
 vocabulary, declared over windows derived from the published line numbers —
-scores **0.4069**.
+scores **0.2414**, with **0.0713** held out — or 0.4299 in-sample and 0.0690
+held out, the same attack grouped to favour the first figure.
 
-**That 0.4069 is in-sample, and the held-out figure for the same method is
-0.0644.** A blind attack is a list of guesses, and every list measured here was
+**Both halves of a pair have to come from one configuration.** An earlier
+version of this page put 0.4069 beside 0.0644, which were two different
+attacks. A blind attack is a list of guesses, and every list measured here was
 chosen by its yield over the same 435 records it was then scored on. Scored
 leave-one-out — every record under a guess order fitted on the other 434 — the
-family drops to 0.0644. Use the in-sample number to ask how much a *published*
+family drops to 0.0713. Use the in-sample number to ask how much a *published*
 corpus leaks to somebody willing to fit it; use the held-out one to ask what a
 submission gets on records it has not seen. A competition is the second
 question, and `assay-arena` answers it with records whose locators are not
 published.
 
 Read the in-sample figure as a measure of how hard the attacker worked, not of
-the check: five reviews have raised it with better tooling and the same idea —
-0.14, 0.22, 0.23, 0.41 — and each value was published here as a property of the
-rule and beaten within a round. The held-out figure has moved far less: 0.041,
-0.060, 0.064 across three estimators.
+the check: six reviews have raised it with better tooling and the same idea —
+0.14, 0.22, 0.23, 0.41, 0.43 — and each value was published here as a property
+of the rule and beaten within a round. The held-out figure has moved far less,
+0.041 → 0.060 → 0.064 → 0.071, and it is still moving.
 
 Read both as measurements and not as bounds. This check has been rewritten five
 times, the first three published as zeroes, and every one of them was exceeded
 by the next review. The size of what is left is clearest from the other side: a
 submitter who could name **one real line** of each published span would score
-0.9885. The whole defence is that it cannot name one.
+0.9908. The whole defence is that it cannot name one.
 
 What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
@@ -315,8 +317,9 @@ nothing.
 
 **What the floor costs, measured.** A submitter that may widen its quote by a
 line scores 0.9908 over the whole corpus. One confined to quoting a single
-anchor line scores **0.7149**: 124 records have no citable single line at their
-anchor, 120 of them because the line is under six tokens. Widen, or narrow the
+anchor line scores **0.7149**: of the 124 records it misses, 120 are refused
+because the anchor line is under six tokens, three by the naming clause, and one
+has no source a repository checkout can hold. Widen, or narrow the
 locator to a run of two lines and quote both.
 
 **Shapes this refuses, with what they cost.** A quote assembled from

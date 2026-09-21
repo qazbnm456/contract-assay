@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -43,6 +43,7 @@ __all__ = [
     "Provenance",
     "SourcePin",
     "VulnerabilityClass",
+    "check_unit_path",
     "defect_key",
     "fold_preference",
     "load_records",
@@ -322,6 +323,54 @@ class NegativeKind(StrEnum):
         return self.scope is NegativeScope.FILE
 
 
+def check_unit_path(raw: str) -> None:
+    """Refuse a `path` that names no file, or names one outside a checkout.
+
+    `path` is joined to a `--source-root` by every consumer that resolves a pin,
+    and it had no check at all. Three failures, in order of how badly they went:
+    `"."` made `corpus.fetch.revisioned_name` raise
+    `ValueError: PurePosixPath('.') has an empty name` out of the resolver, so
+    the gate that exists to refuse a bad record died on it and took the scorer
+    with it; `"../../etc/passwd"` and `"/etc/passwd"` resolve outside the root,
+    in a read *and*, since revision names, in a write; and `"a/b/"` had its
+    trailing separator silently swallowed.
+
+    A **function** and not only a validator, because putting it on `_Pin` alone
+    moved the crash upstream rather than removing it. `normalize` builds a
+    `CommitPin` from a `DraftRecord`'s path at two sites and contains no `try`,
+    so one malformed permalink in one harvested report -- `adapters.markdown`
+    takes the path from a blob URL with nothing but `lstrip("/")` -- aborted the
+    whole corpus build where it used to be one counted rejection. `DraftRecord`
+    calls this too, which is where its own docstring says invariants belong:
+    "refused at the point it is built, where the adapter that built it is still
+    identifiable".
+
+    `.` components are checked on the raw string rather than on `parts`, because
+    `PurePosixPath` normalises a single dot away before `parts` is read: `a/./b`
+    passed and collapsed to `a/b`, which makes two `path` strings -- and so two
+    `source_id`s -- name one file, and `fetch`'s collision detector keys on the
+    string.
+    """
+    if not raw or raw != raw.strip():
+        raise ValueError(f"path must be a non-empty key with no surrounding space, got {raw!r}")
+    if raw.startswith("/") or raw.endswith("/") or "\\" in raw:
+        raise ValueError(
+            f"path must be relative, with no leading or trailing separator, got {raw!r}"
+        )
+    if any(part in {"", ".", ".."} for part in raw.split("/")):
+        # Split on the raw string, not `PurePosixPath.parts`, which normalises a
+        # single dot away before it can be seen: `a/./b` passed and collapsed
+        # onto `a/b`, so two `path` strings -- two `source_id`s -- named one
+        # file, and `fetch`'s collision detector keys on the string. The empty
+        # component this also refuses is `a//b`, the same thing spelled shorter.
+        raise ValueError(
+            f"path must name a file and stay inside a checkout, got {raw!r}; "
+            "'.', '..' and empty components name no file of their own"
+        )
+    if any(character.isspace() or not character.isprintable() for character in raw):
+        raise ValueError(f"path must hold no whitespace or control characters, got {raw!r}")
+
+
 class _Pin(BaseModel):
     """What every kind of pin owes its consumers.
 
@@ -342,40 +391,8 @@ class _Pin(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     @model_validator(mode="after")
-    def _path_is_a_key_and_not_a_traversal(self) -> _Pin:
-        """A path that names no file, or names one outside a checkout, is refused.
-
-        `path` is joined to a `--source-root` by every consumer that resolves a
-        pin, and it had no validator at all. Three failures, in order of how
-        badly they went: `"."` made `revisioned_name` raise
-        `ValueError: PurePosixPath('.') has an empty name` out of the resolver,
-        so the gate that exists to refuse a bad record died on it and took the
-        scorer with it; `"../../etc/passwd"` and `"/etc/passwd"` resolve outside
-        the root, in a read *and*, for `fetch`, in a write; and `"a/b/"` had its
-        trailing separator silently swallowed. Refused here rather than guarded
-        at each join, because there are five joins and a record with no file is
-        not a record.
-        """
-        raw = self.path
-        if (
-            not raw
-            or raw != raw.strip()
-            or raw.startswith("/")
-            or raw.endswith("/")
-            or "\\" in raw
-            or "//" in raw
-        ):
-            raise ValueError(f"path must be a relative key with no leading separator, got {raw!r}")
-        parts = PurePosixPath(raw).parts
-        if (
-            not parts
-            or PurePosixPath(raw).name in {"", ".", ".."}
-            or any(part in {".", ".."} for part in parts)
-        ):
-            raise ValueError(
-                f"path must name a file and stay inside a checkout, got {raw!r}; "
-                "'.', '..' and a trailing separator name no file"
-            )
+    def _path_names_a_file_inside_a_checkout(self) -> _Pin:
+        check_unit_path(self.path)
         return self
 
     path: str = Field(

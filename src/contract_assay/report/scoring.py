@@ -408,7 +408,7 @@ class ScoreReport:
     sides: every prediction moves, and `repositioned_into_another_function`
     counts how many landed in a callable other than the one the declared locator
     resolves to -- 283 of 431 in that case. The figures are unchanged by it
-    (0.9885 either way), which is the point: the mechanism is favourable and it
+    (0.9908 either way), which is the point: the mechanism is favourable and it
     was silent."""
 
     repositioned_into_another_function: int = 0
@@ -953,22 +953,28 @@ def recheck_citations(
     | brace-and-keyword lines, over widened spans | 0.0138 | **0** |
     | one donor unit, every locator elsewhere | 1.000 | 0.0069 |
     | a submitter's own `--source-root` | 0.922 | 0 |
-    | **a generic vocabulary over widened windows, in-sample** | -- | **0.4069** |
-    | **the same, held out (leave-one-out)** | -- | **0.0644** |
+    | **a generic vocabulary over widened windows, in-sample** | -- | **0.2414** |
+    | **the same configuration, held out (leave-one-out)** | -- | **0.0713** |
 
     **The last two rows are the same attack, and the difference between them is
     the most important number here.** A blind attack is a list of guesses, and
     every list in this table was chosen by its yield over the same 435 published
     records it was then scored on. Cross-fitted -- rank the guesses on half the
     corpus, score the other half, so every record is measured under an order
-    that never saw it -- the strongest family falls from **0.4069 to 0.0644**.
+    that never saw it -- the strongest family falls from **0.2414 to 0.0713**,
+    and a grouping tuned for the first column reads 0.4299 with 0.0690 held
+    out. Both halves of a pair must come from one configuration: the version of
+    this table before this one took 0.4069 from one attack and 0.0644 from
+    another.
     In-sample says how much a published corpus leaks to somebody willing to fit
     it; cross-fitted says what the same method gets on records it has not seen,
     and that is the figure a competitive ranking has to be designed against.
     Every earlier version of this table published an in-sample number without
     saying so, and each was beaten inside a round: 0.1448, 0.2161, 0.2299,
-    0.4069, all the same idea with better tooling. The held-out figure has moved
-    from 0.0414 to 0.0644 over three estimators. Read the first column as how
+    0.4069, 0.4299, all the same idea with better tooling. The held-out figure
+    has moved from 0.0414 to 0.0713 over four rounds, a fifth of the last step
+    arriving with the words of common revert strings, which `_TOKEN` tokenises
+    out of string literals. Read the first column as how
     hard the attacker worked and the second as what the method gets on records
     it has not seen.
 
@@ -980,7 +986,7 @@ def recheck_citations(
     carries that argument with the rest of the numbers.
 
     Positioning each prediction at the lines its quote matched is why the
-    in-sample figure is 0.4069 rather than higher again: the declared span is
+    in-sample figure is 0.24 rather than higher again: the declared span is
     the submitter's own field, `_strength` takes the containing function from
     `start_line` alone, and a window hundreds of lines long used to keep `exact`
     strength while the attack reduced to "name one line of this function". That

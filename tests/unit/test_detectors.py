@@ -1049,7 +1049,10 @@ contract Vault {
         # The `index > 0` guard. Without it `tokens[-1]` is consulted for token
         # 0, so a quote *ending* in `.` has its first token read as a member --
         # which can only refuse a true citation, and silently.
-        assert _names_something_of_its_own(["sender", "=", "1", ";", "x", "."])
+        # No bystander name in the list: with `x` in it the assertion passed
+        # with and without the guard, because `x` is a name of its own either
+        # way. A review found that by mutation.
+        assert _names_something_of_its_own(["sender", "=", "1", ";", "."])
 
     def test_an_underscore_leading_name_is_a_name(self) -> None:
         # `_status`, `_mint`, `_owner`: the convention half this corpus uses.

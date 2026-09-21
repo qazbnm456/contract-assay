@@ -294,21 +294,50 @@ def checkout_file(root: Path, pin: SourcePin) -> Path | None:
     """
     if not pin.is_filesystem_path:
         return None
+
+    def inside(candidate: Path) -> Path | None:
+        """The file, if it really is under `root`.
+
+        `is_file()` follows symlinks, so a link inside a checkout reads whatever
+        it points at -- and a checkout is built from paths third-party reports
+        supplied. `_Pin` refuses a traversing path; a link is the same escape
+        one indirection along, and the validator's docstring claims to refuse
+        both. The root is resolved too, so a checkout that is *itself* reached
+        through a link still works.
+        """
+        try:
+            if not candidate.is_file():
+                return None
+            resolved_root = root.resolve()
+            if candidate.resolve().is_relative_to(resolved_root):
+                return candidate
+        except OSError:
+            return None
+        return None
+
     revision = revisioned_name(pin)
     if revision is not None and pin.sha256 is not None:
-        candidate = root / revision
+        candidate = inside(root / revision)
         try:
-            if candidate.is_file() and _digest(candidate.read_bytes()) == pin.sha256:
+            if candidate is not None and _digest(candidate.read_bytes()) == pin.sha256:
                 return candidate
         except OSError:
             pass
-    plain = root / pin.path
-    if plain.is_file():
+    plain = inside(root / pin.path)
+    if plain is not None:
         return plain
-    if revision is not None and (root / revision).is_file():
-        # No digest to compare, or the plain path is absent: the revision file
-        # is all there is, and returning it is better than reporting a unit the
-        # checkout does have as missing.
+    if revision is not None and pin.sha256 is not None and inside(root / revision) is not None:
+        # The plain path is absent and the revision file is all there is. Its
+        # bytes did not match above, so this returns a file the digest gate will
+        # then name as `digest_mismatch` -- which is the point: a cause recorded
+        # wrongly points investigation away from the fix.
+        #
+        # **Only for a pin that has a digest.** Without one there is nothing to
+        # check and nothing to name, so a review's planted `Ghost@<commit>.sol`
+        # was read as the unit: the six digest-less records in this corpus are
+        # all negatives whose pins also carry a digest-bearing record, so it was
+        # unreachable here and reachable on any third-party checkout whose plain
+        # file is absent.
         return root / revision
     return None
 

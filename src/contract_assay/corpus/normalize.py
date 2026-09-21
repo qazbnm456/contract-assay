@@ -42,6 +42,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from pydantic import ValidationError
+
 from contract_assay.corpus.harvest import DraftRecord
 from contract_assay.corpus.records import (
     CommitPin,
@@ -170,12 +172,17 @@ def _file_the_quote_names(draft: DraftRecord, resolve: SourceResolver) -> str | 
     assert draft.quoted_source is not None
     matched: list[str] = []
     for path in (draft.path, *draft.alternative_paths):
-        pin = CommitPin(
-            repo_url=draft.repo_url,
-            commit=draft.commit,
-            path=path,
-            resolved_from=draft.commit_resolved_from,
-        )
+        try:
+            pin = CommitPin(
+                repo_url=draft.repo_url,
+                commit=draft.commit,
+                path=path,
+                resolved_from=draft.commit_resolved_from,
+            )
+        except ValidationError:
+            # One unusable candidate among several is not a reason to abandon
+            # the draft: the quote may still name one of the others.
+            continue
         source = resolve(pin)
         if source is None or not source.strip():
             continue
@@ -229,6 +236,17 @@ class NormalizeCause(StrEnum):
 
     SOURCE_UNRESOLVABLE = "source_unresolvable"
     """The pinned commit or path could not be fetched."""
+
+    UNUSABLE_PATH = "unusable_path"
+    """The cited path cannot name a file inside a checkout.
+
+    `DraftRecord` refuses such a path where the draft is built, so this is the
+    second line of defence and not the first -- and it exists because there was
+    no first: `CommitPin` is constructed here from a draft's path with no `try`
+    around it, so one malformed permalink out of `adapters.markdown`, which
+    takes the path from a blob URL with nothing but `lstrip("/")`, raised a
+    `ValidationError` out of the whole corpus build. A draft that cannot become
+    a record is one counted rejection, never an aborted run."""
 
     UNPARSEABLE_SOURCE = "unparseable_source"
     """Nothing could be read from the file, so no span can be derived or checked."""
@@ -701,12 +719,17 @@ def normalize(
         # The pin is built before resolution rather than after, because
         # resolution is now asked for a pin: where bytes come from depends on
         # what kind of coordinates name them, and only the pin knows that.
-        pin = CommitPin(
-            repo_url=draft.repo_url,
-            commit=draft.commit,
-            path=draft.path,
-            resolved_from=draft.commit_resolved_from,
-        )
+        try:
+            pin = CommitPin(
+                repo_url=draft.repo_url,
+                commit=draft.commit,
+                path=draft.path,
+                resolved_from=draft.commit_resolved_from,
+            )
+        except ValidationError as refused:
+            # Counted, not raised. See `NormalizeCause.UNUSABLE_PATH`.
+            lose(draft, NormalizeCause.UNUSABLE_PATH, str(refused).splitlines()[-1][:120])
+            continue
         if draft.alternative_paths:
             chosen = _file_the_quote_names(draft, resolve)
             if isinstance(chosen, NormalizeCause):

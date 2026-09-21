@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from contract_assay.corpus.fetch import fetch_records, raw_url, urllib_fetcher
+from contract_assay.corpus.fetch import checkout_file, fetch_records, raw_url, urllib_fetcher
 from contract_assay.corpus.records import (
     AddressPin,
     CommitPin,
@@ -246,6 +246,46 @@ class TestWhatItWillNotGuess:
             second: "verified",
         }
         assert "replaced after they were verified" in report.by_state("mismatched")[0].detail
+
+    def test_a_digest_less_pin_does_not_read_a_planted_revision_file(self, tmp_path: Path) -> None:
+        # The revision branch is skipped when there is no digest, and the
+        # fallback used to return the revision file unconditionally -- so a
+        # planted `Ghost@<commit>.sol` was read as the unit. Nothing to check
+        # means nothing to name, so there is nothing to return.
+        pin = CommitPin(
+            repo_url="https://github.com/example/vault", commit="a" * 40, path="src/Ghost.sol"
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / f"Ghost@{'a' * 12}.sol").write_text("contract Planted {}")
+        assert checkout_file(tmp_path, pin) is None
+
+    def test_a_symlink_out_of_the_checkout_is_not_the_unit(self, tmp_path: Path) -> None:
+        # `is_file()` follows links, and a checkout is built from paths that
+        # third-party reports supplied. `_Pin` refuses a traversing path; a link
+        # is the same escape one indirection along.
+        outside = tmp_path / "outside.txt"
+        outside.write_text("not in the checkout")
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / "src" / "Vault.sol").symlink_to(outside)
+        pin = CommitPin(
+            repo_url="https://github.com/example/vault", commit="a" * 40, path="src/Vault.sol"
+        )
+        assert checkout_file(root, pin) is None
+
+    def test_a_symlink_inside_the_checkout_still_resolves(self, tmp_path: Path) -> None:
+        # Containment, not a ban on links: a checkout reached through one, or
+        # arranged with one internally, still works.
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / "real.sol").write_text("contract Vault {}")
+        (root / "src" / "Vault.sol").symlink_to(root / "real.sol")
+        pin = CommitPin(
+            repo_url="https://github.com/example/vault", commit="a" * 40, path="src/Vault.sol"
+        )
+        got = checkout_file(root, pin)
+        assert got is not None
+        assert got.read_text() == "contract Vault {}"
 
     def test_a_deployed_address_is_unavailable_with_its_reason(self, tmp_path: Path) -> None:
         # Its source of truth is a chain explorer. Guessing at a repository that

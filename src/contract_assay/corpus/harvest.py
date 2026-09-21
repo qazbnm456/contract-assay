@@ -46,7 +46,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from contract_assay.corpus.records import Provenance
+from contract_assay.corpus.records import Provenance, check_unit_path
 from contract_assay.models import VulnerabilityClass
 
 SAMPLES = 3
@@ -260,6 +260,23 @@ class DraftRecord(BaseModel):
     )
     classes: tuple[VulnerabilityClass, ...] = Field(min_length=1)
     provenance: Provenance
+
+    @model_validator(mode="after")
+    def _every_cited_path_can_name_a_file(self) -> DraftRecord:
+        """Refuse a draft whose path cannot become a pin, with the adapter named.
+
+        The same rule `corpus.records.check_unit_path` applies to a pin, applied
+        where this class's docstring says invariants belong. Without it,
+        `normalize` built a `CommitPin` from this path at two sites with no
+        `try` around either, so one malformed permalink -- `adapters.markdown`
+        takes the path from a blob URL with nothing but `lstrip("/")`, which
+        happily yields `../../etc/passwd.sol` -- aborted the whole corpus build
+        instead of being one counted rejection. A draft refused here is a
+        `ValidationError` naming the candidate, at the adapter that built it.
+        """
+        for cited in (self.path, *self.alternative_paths):
+            check_unit_path(cited)
+        return self
 
     @model_validator(mode="after")
     def _draft_can_become_a_record(self) -> DraftRecord:
