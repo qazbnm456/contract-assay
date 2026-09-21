@@ -1,8 +1,19 @@
 """A submission, complete and minimal, in the shape the interface asks for.
 
-Copy this file. It is the smallest thing that satisfies the whole contract, and
-every part of it is here because the contract requires it rather than because a
-real detector would want it this way.
+Copy this file. It shows every layer of the contract being written by hand --
+which is what you do when you can beat the defaults, and **not** what the
+contract requires. The smallest working submission is three declarations:
+
+    class MissingOwnerCheck(Detector):
+        detector_id = "missing-owner-check"
+        class_id = VulnerabilityClass.ACCESS_CONTROL
+        api_version = "1.0"
+
+That gets the benchmark's own evidence layer for its class and rejects nothing,
+which is a real baseline you can score. Everything below is an override of a
+default, so read each part as "here is why you might do better than what you
+already get" rather than as an obligation. `docs/api.md` §1 has the table of
+what each default is.
 
 Read `docs/api.md` §4 for the rules. What this file shows is the *shape*:
 

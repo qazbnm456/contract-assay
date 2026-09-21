@@ -394,16 +394,32 @@ class TestDetectorDeclaration:
                 },
             )
 
-    def test_an_abstract_intermediate_class_need_not_declare_anything(self) -> None:
+    def test_an_intermediate_class_need_not_declare_anything(self) -> None:
         # A shared base that subclasses complete is normal. Forcing it to invent
         # a detector_id would push authors into declaring a fake one.
+        #
+        # It is exempt by declaring none of the three fields, not by being
+        # abstract: `evidence` and `verdict` have defaults now, so this base has
+        # no abstract methods left for the other exemption to see.
         class Partial(Detector):
             def verdict(
                 self, ctx: AnalysisContext, finding: Finding, evidence: Sequence[EvidenceRef]
             ) -> Sequence[FailedCheck]:
                 return []
 
-        assert Partial.__abstractmethods__
+        assert Partial.__abstractmethods__ == frozenset()
+        assert getattr(Partial, "detector_id", None) is None
+
+    def test_an_intermediate_with_its_own_abstract_method_is_exempt_too(self) -> None:
+        # The other exemption, which now fires only for a hierarchy that
+        # introduced abstractness itself. Kept because a submission may.
+        from abc import abstractmethod
+
+        class Shared(Detector):
+            @abstractmethod
+            def house_rule(self) -> str: ...
+
+        assert Shared.__abstractmethods__ == frozenset({"house_rule"})
 
     def test_a_detector_runs_no_model_by_default(self) -> None:
         # A purely deterministic detector is first-class: static analysers are the

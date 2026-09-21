@@ -10,7 +10,16 @@ by import side effect means the only way to learn what a submission contains is
 to run its module-level code, which is the one thing you want to decide about
 before doing it. A manifest is readable without executing anything.
 
-**Checking** re-validates everything the submission hands back. The interface in
+**Checking** re-validates the *shape* of everything the submission hands back,
+and the truth of exactly one thing. The distinction matters and was stated
+imprecisely here for a while: every returned value is validated against its
+model and dropped if it does not conform, and a `Finding`'s quote is
+additionally re-read against the source (`check_citation`, the host's, always
+run, not overridable). An `EvidenceRef`'s *claim* is **not** verified -- nothing
+re-reads the source to confirm that a predicate fired where the submission says
+it did. That is affordable because the only thing an evidence item feeds is the
+submission's own `verdict()`, so a false one can cost it recall and cannot buy
+it anything. The interface in
 `base` describes what a detector returns; across an untrusted boundary that is a
 claim, not a guarantee. A submission can return a dict where a list belongs, a
 string where a sequence belongs -- `str` is iterable, so this one type-checks

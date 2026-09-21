@@ -12,39 +12,80 @@ applied to the rest of the system.
 A detector answers one question about one Solidity source unit: does an instance
 of a particular vulnerability class exist, and *where*.
 
-```python
-from collections.abc import Sequence
+**The smallest complete submission is three declarations and nothing else:**
 
-from contract_assay.detectors import API_VERSION, AnalysisContext, Detector
-from contract_assay.models import EvidenceRef, FailedCheck, Finding, VulnerabilityClass
+```python
+from contract_assay.detectors import API_VERSION, Detector
+from contract_assay.models import VulnerabilityClass
 
 
 class MissingOwnerCheck(Detector):
     detector_id = "missing-owner-check"
     class_id = VulnerabilityClass.ACCESS_CONTROL
     api_version = API_VERSION
-
-    def evidence(self, ctx: AnalysisContext) -> Sequence[EvidenceRef]: ...
-
-    def verdict(
-        self, ctx: AnalysisContext, finding: Finding, evidence: Sequence[EvidenceRef]
-    ) -> Sequence[FailedCheck]: ...
 ```
 
-Three declarations and two methods is the whole obligation. The layers run in a
-fixed order:
+That runs. It gets **this benchmark's own evidence layer** for its class, makes
+no model call, and rejects nothing beyond the citation check the host always
+runs. It is a real baseline you can score, and it is the floor you improve on.
 
-| Order | Layer | Model? | Required? |
+The reason the defaults exist is about what a comparison measures. A benchmark
+for vulnerability detection is meant to compare judgement about
+vulnerabilities. If every entrant must first write its own parser queries, then
+two figures differ partly because one entrant wrote better tree-sitter code, and
+that second variable sits inside every comparison this project publishes.
+Shipping the analysis holds it constant.
+
+So `contract_assay.evidence` is public, and it is the same code the reference
+detectors use:
+
+```python
+from contract_assay.evidence import Syntax, run_all
+
+parsed = Syntax.of(ctx.source)  # functions, calls, writes, guards,
+# loops, arithmetic, member_reads
+refs = run_all(parsed, ctx.path, classes=[VulnerabilityClass.REENTRANCY])
+```
+
+Every site carries `start_line`, `end_line`, `host` (contract and function) and
+`text` — the **exact** source it spans — plus `site.locator(path)` in the shape a
+`Finding` wants. Quote `site.text`: a finding's quote is re-read against the
+source unconditionally, and one typed from memory fails that check about half
+the time, which reads as a detector that found nothing rather than one that was
+wrong.
+
+Override a layer when you can establish something the default cannot. The layers
+run in a fixed order:
+
+| Order | Layer | Model? | Default if you write nothing |
 | --- | --- | --- | --- |
-| 1 | `evidence(ctx)` | never | yes |
-| 2 | `plan(ctx, evidence)` → the model | optional | no — default runs no model |
-| 3 | `verdict(ctx, finding, evidence)` | never | yes |
-| 4 | `classify(ctx, findings)` | never | no — only in classification mode |
+| 1 | `evidence(ctx)` | never | this benchmark's predicates for your class |
+| 2 | `plan(ctx, evidence)` → the model | optional | no model is called |
+| 3 | `verdict(ctx, finding, evidence)` | never | rejects nothing |
+| 4 | `classify(ctx, findings)` | never | returns nothing (classification mode only) |
 
 **A detector that runs no model is a first-class submission.** Leave `plan()`
 alone and nothing is called. Static analysis is the baseline this benchmark
 measures against, so an interface that could not express a purely deterministic
 detector could not express its own control group.
+
+### Who judges, and why `verdict()` is not self-judging
+
+Worth being exact about, because the shape invites the opposite reading. Four
+things decide a score and **a submission can influence none of them**:
+
+| Decided by | What | Overridable? |
+| --- | --- | --- |
+| `check_citation` | whether the quote is really at the cited lines | no — the host's, runs before any verdict |
+| `gate` | whether a unit may be skipped at all | no |
+| the scorer | whether a prediction matches a ground-truth record, and at what strength | no — a submission never sees the records |
+| the scorer | recall, precision, F1, the aggregate | no |
+
+`verdict()` can do exactly one thing: **discard your own findings.** It cannot
+make the corpus agree with one. Rejecting a true finding costs you recall and
+buys you precision, which is the trade a detector exists to make — and every
+rejection is recorded by name, so the cost of each rule of yours is a number
+rather than a matter of faith.
 
 ### `evidence()` — deterministic facts
 
@@ -225,7 +266,9 @@ Submissions run as untrusted code under external isolation. Assume all of:
 ## 5. Nothing you return is taken on trust
 
 The interface describes what your methods return. Across this boundary that is a
-claim, and it is checked. Every returned value is re-validated, and anything
+claim, and it is checked -- with one exactness worth stating, because this
+paragraph read as a stronger promise than the code makes. Every returned value
+is validated against its model, and anything
 unusable becomes `Outcome.INVALID` with `InvalidReason.SCHEMA_VIOLATION` —
 reported as harness health, never entering a confusion matrix, and never recorded
 as `clean`.

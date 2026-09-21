@@ -374,7 +374,8 @@ design rather than merely describing it.
 **Nothing a submission returns is taken on trust.** Among cooperating authors an
 abstract base class is a convention: nothing checks that `verdict()` returned
 what it promised, and nothing needs to. Across an untrusted boundary the same
-class is a claim. Every returned value is therefore re-validated, and anything
+class is a claim. Every returned value is therefore validated against its
+model, a finding's quote is re-read against the source, and anything
 unusable becomes `invalid` with `schema_violation` — never a crash, and never
 `clean`. Recording a submission's bug as `clean` would report the code under test
 as sound on the strength of a defect in the code testing it.

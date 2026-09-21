@@ -14,7 +14,9 @@ method names coincide. Two differences drive almost every decision below.
 cooperating authors is a convention: the compiler does not check that
 `verdict()` returns what it promised, and among colleagues it does not need to.
 Across an untrusted boundary the same class is a claim to be checked. So every
-value a submission hands back is re-validated before it is believed -- see
+value a submission hands back is validated against its model before it is
+believed, and a finding's quote is re-read against the source; an evidence
+item's claim is not re-verified, and `Detector.evidence` says why -- see
 `contract_assay.detectors.loading` -- and a submission that returns nonsense
 yields `invalid` with `schema_violation`, never a crash and never `clean`.
 
@@ -44,14 +46,16 @@ boundary.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from contract_assay.evidence.predicates import run_all
 from contract_assay.evidence.solidity import index_source
+from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
     MAX_DESCRIPTION_CHARS,
     DeclaredLimit,
@@ -523,21 +527,51 @@ class Detector(ABC):
         """Difficulty of this detector's class. Derived, never declared separately."""
         return self.class_id.level
 
-    @abstractmethod
     def evidence(self, ctx: AnalysisContext) -> Sequence[EvidenceRef]:
         """Structural facts about the source, each with a location.
 
-        Deterministic, model-free, and always run. Must not consult a model, a
-        network or a clock: the guarantee that evidence is independent of the
-        verdict holds only if nothing in this method can be influenced by what
-        the model later says.
+        **The default is the benchmark's own evidence layer**, run for this
+        detector's class. A submission that writes nothing here is not a
+        submission with no evidence: it gets the same predicates the reference
+        detectors use, over the same parser, and its figures then differ from
+        another submission's because of what the two *conclude* rather than
+        because of who wrote the better tree-sitter query.
 
-        Predicates here should test shapes rather than names. Identifiers are
-        chosen by whoever wrote the contract and can be changed without changing
-        behaviour, so a predicate keyed on one measures the author's naming
-        habits. Solidity is case-sensitive; do not case-fold identifiers, which
-        manufactures matches that the compiler would not make.
+        That is the point of the default. This class of benchmark is meant to
+        compare judgement about vulnerabilities, and making every entrant
+        reimplement source analysis puts a second variable into every
+        comparison. `contract_assay.evidence` is public for the same reason --
+        use `Syntax` and `predicates.run_all` directly when you want a subset,
+        a different tier, or facts of your own.
+
+        Override it when you can establish something this layer cannot. Two
+        constraints if you do:
+
+        - **Deterministic, model-free, and always run.** Must not consult a
+          model, a network or a clock: the guarantee that evidence is
+          independent of the verdict holds only if nothing here can be
+          influenced by what the model later says.
+        - **Predicates test shapes, not names.** Identifiers are chosen by
+          whoever wrote the contract and can change without changing behaviour,
+          so a predicate keyed on one measures the author's naming habits.
+          Solidity is case-sensitive; do not case-fold identifiers, which
+          manufactures matches the compiler would not make.
+
+        What is checked, precisely: the host validates that every item is a
+        well-formed `EvidenceRef` and drops what is not. It does **not** verify
+        that the property an item claims actually holds at that location --
+        nothing re-reads the source to confirm a predicate fired. An evidence
+        item is therefore your claim, and the only thing that consumes it is
+        your own `verdict()`. A `Finding`'s quote is the value that *is* checked
+        against source, unconditionally, by the host (`check_citation`).
         """
+        parsed = Syntax.of(ctx.source)
+        if parsed is None:
+            # Unparseable source establishes nothing rather than nothing being
+            # there. `gate` is what decides whether a unit is skipped; this
+            # returns an honest empty list.
+            return []
+        return run_all(parsed, ctx.path, classes=[self.class_id])
 
     def plan(self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]) -> ModelTaskSpec | None:
         """What to ask the model, or `None` to run no model at all.
@@ -548,27 +582,40 @@ class Detector(ABC):
         """
         return None
 
-    @abstractmethod
     def verdict(
         self, ctx: AnalysisContext, finding: Finding, evidence: Sequence[EvidenceRef]
     ) -> Sequence[FailedCheck]:
         """Checks that reject `finding`. Empty means it stands.
 
-        Strict, in the opposite direction from `gate`: reject when unsure. That
-        is affordable only because every rejection is recorded and named. A
-        rejected finding is retained with `status=unverified` and the list of
-        checks that rejected it, so the recall cost of each rule is a number
-        somebody can look at and argue with -- rather than a silent absence
-        indistinguishable from the model never having looked.
+        **The default rejects nothing**, and that is the honest default rather
+        than a lenient one: a default that invented rejections would turn away
+        findings on rules the submission never chose. Writing no `verdict()`
+        says "I assert nothing about this class beyond what the citation check
+        establishes" -- and the citation check is the host's, runs first, and
+        cannot be overridden.
 
-        Each returned `FailedCheck` must carry the right `RejectionKind`, and the
-        distinction decides what the whole run is. `VERDICT` means a rule was
-        applied and the claim did not meet it: a judgement, and the run remains a
-        measurement. `CITATION` means the claim could not be checked against
-        source at all: an error, and the run measured nothing. Returning the
-        second as the first converts infrastructure failures into model
-        judgements, which is invisible in any aggregate afterwards.
+        What this method can and cannot do is worth being exact about, because
+        it looks like self-judging and is not. It can only **discard your own
+        findings**. It cannot make the corpus agree with one: matching a
+        prediction against a ground-truth record happens in the scorer, which a
+        submission never touches, as does every figure computed from it. So a
+        rejection costs you recall and buys you precision, which is the trade a
+        detector exists to make.
+
+        Override it to be strict, in the opposite direction from `gate`: reject
+        when unsure. That is affordable only because every rejection is recorded
+        and named. A rejected finding is retained with `status=unverified` and
+        the list of checks that rejected it, so the recall cost of each rule is
+        a number rather than a matter of faith.
+
+        The rule worth internalising before writing one: **the layer that
+        decides must ask for the property the layer that observes established.**
+        If `evidence()` established that a function takes a deadline argument,
+        ask the evidence for that -- do not re-derive it from the finding's
+        text. Six separate bugs in this project's own reference detectors were
+        that mistake, and the sixth was written while fixing the fifth.
         """
+        return []
 
     def classify(
         self, ctx: AnalysisContext, findings: Sequence[Finding]
