@@ -55,7 +55,7 @@ from contract_assay.corpus.records import (
     SourcePin,
 )
 from contract_assay.corpus.verify import SourceResolver
-from contract_assay.detectors.base import quote_is_at
+from contract_assay.detectors.base import cited_lines
 from contract_assay.evidence.syntax import Syntax
 from contract_assay.models import (
     DEFAULT_PREDICTIONS_PER_UNIT,
@@ -703,25 +703,44 @@ def _plural(count: int, noun: str, plural: str | None = None) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {plural or noun + 's'}"
 
 
-def _signature_at(parsed: Syntax | None, locator: Locator) -> tuple[str | None, str] | None:
-    """The containing function, as (enclosing type, declared signature).
+def _signature_at(
+    parsed: Syntax | None, locator: Locator
+) -> tuple[str | None, str, int, int] | None:
+    """Which callable contains a locator, identified so that no two collide.
 
-    Qualified by the enclosing type, because a *file* holds several contracts
-    and `Declaration.signature` is `name(paramtypes)` with no qualifier. Its own
-    docstring rests on "the compiler rejects a contract that declares the same
-    signature twice" -- true per contract, which is exactly what `parent` adds.
-    Unqualified, a prediction in one contract's `getThePrice(address)` scored a
-    `function` match against a record in another's: measured, 3 of 435 records
-    have such a twin outside their function, two of them a one-line interface
-    stub quotable from the published function name. That is §7's stated failure
-    mode -- "a prediction naming the right name in the wrong overload would
-    score as having found the right function" -- arriving through signature
-    collision rather than name collision, inside the mechanism built to stop it.
+    "The same function" is declaration identity, and a signature is only a
+    proxy for it. The proxy leaked twice:
+
+    - Unqualified by the enclosing type. A *file* holds several contracts and
+      `Declaration.signature` is `name(paramtypes)`, so a prediction inside one
+      contract's `getThePrice(address)` scored a `function` match against a
+      record in another's -- 3 of 435 records have such a twin, two of them a
+      one-line interface stub quotable from the published function name alone.
+    - Qualified, and still colliding. `signature` names a declaration by
+      `names[0]`, and the grammar gives `receive` and `fallback` one kind with
+      both names, so a contract declaring both yields `receive()` twice. A
+      review cited `fallback() external payable {}` against a record whose
+      locator is the `receive()` line above it and scored a `function` match.
+      The docstring that licensed the proxy -- "the compiler rejects a contract
+      that declares the same signature twice" -- is false for exactly that
+      pair.
+
+    So the identity carries the declaration's own line span, which two distinct
+    declarations cannot share. `callable_at` returns the same declaration for
+    every line inside it, so this is stable across a prediction and a record
+    that really are in one function, which is the only thing it has to be.
     """
     if parsed is None:
         return None
     declaration = parsed.callable_at(locator.start_line)
-    return (declaration.parent, declaration.signature) if declaration is not None else None
+    if declaration is None:
+        return None
+    return (
+        declaration.parent,
+        declaration.signature,
+        declaration.start_line,
+        declaration.end_line,
+    )
 
 
 def _call_adjacent(parsed: Syntax | None, prediction: Locator, truth: Locator) -> bool:
@@ -858,9 +877,12 @@ def recheck_citations(
     builds the scorer's checkout from public coordinates, so the submitter's
     bytes and the scorer's bytes are the same bytes and the answer is a
     published field. A review demonstrated the consequence: quoting the *real*
-    span at each published locator scored **micro recall 0.9977 with precision
-    1.0 in all nine classes**, every counter here at zero and a clean
-    statement. Re-reading public source at a published locator cannot
+    span at each published locator scores **micro recall 0.9908 with precision
+    1.0 in every class it scores**. The ceiling is 434 of 435 and not 435: one
+    record's source resolves from no public coordinates, so a submission
+    reaching 434 necessarily carries `unchecked >= 1` and the earlier claim of
+    "0.9977 with every counter at zero" was a figure and a condition that
+    cannot hold together. Re-reading public source at a published locator cannot
     distinguish a finding from a copy, and no amount of strictness in this
     function changes that.
 
@@ -884,25 +906,35 @@ def recheck_citations(
     | a 181-entry generated dictionary of idioms | **0.913** | **0** |
     | generic mid-line runs of six or more tokens | 0.126 | 0 |
     | generic whole-line statements, at every published span | 0.249 | 0 |
-    | nine blind slots off the published function name and lines | -- | **0.0299** |
-    | one donor unit, every locator elsewhere | 1.000 | 0.0023 |
+    | brace-and-keyword lines, over widened spans | 0.0138 | 0.0092 |
+    | nine blind slots off the published function name and lines | -- | 0.0276 |
+    | the same, over spans widened past the published end line | -- | **0.0621** |
+    | one donor unit, every locator elsewhere | 1.000 | 0 |
     | a submitter's own `--source-root` | 0.922 | 0 |
 
-    **The eighth row is the live one, and it is not zero.** A citation must be
-    whole lines of the span its locator declares, six tokens or more, which
-    closes every dictionary family above -- but the corpus publishes the
-    function's *name*, so a blind submitter can write `function {F}() external
-    {` and be right about a zero-argument function's declaration line. Nine such
-    slots score 0.0299, or 0.0414 with their order tuned against corpus yield.
-    Four versions of this check have now been published, the first three as
-    zeroes, and each was exceeded by the next review; this one is stated as what
-    it is -- the best blind attack anybody has run, not a bound.
+    **The live family is the two `blind slots` rows, and the second is why a
+    prediction is scored where its quote matched.** A citation must be whole
+    lines of the span its locator declares, six tokens or more, one of them
+    naming something the language does not supply -- which closes every
+    dictionary family above. What it does not close is an attack built on what
+    the corpus publishes: the function's *name* makes its declaration line
+    partly derivable. Nine such slots score 0.0276.
 
-    **The ninth row went from zero to 0.0023 deliberately.** Accepting part of a
-    declared span means a donor unit's duplicated boilerplate can match at
-    another file's locator: one record of 435. Demanding the whole span instead
-    cost an honest submission whose locator was a single line wide 0.993 -> 0.076
-    of its recall, which is a far worse trade. `quote_is_at` has both tables.
+    Declaring a span **wider** than the published one used to take that to
+    0.1448, because the span is the submitter's field and nothing read it:
+    `_strength` takes the containing function from `start_line` alone, so a
+    window hundreds of lines long kept `exact` strength and the attack reduced
+    to "name one line of this function". Positioning each prediction at the
+    lines its quote matched cut that to 0.0621 at no cost to an honest
+    submission, and took a donor-unit forgery -- real text from one file, every
+    locator pointing at another -- from 0.0782 to 0.
+
+    **0.0621 is the best blind attack anybody has run here, not a bound.** Five
+    versions of this check have been published, the first three as zeroes, and
+    every one of them was exceeded by the next review. The size of what is left
+    is easiest to see from the other side: a submitter who could name **one real
+    line** of each published span would score 0.9885. The whole defence is that
+    it cannot name one, and each review has named a few more.
 
     The last row is zero because a pin carrying a digest now wins its
     `source_id`. Measured: with every digest stripped the forgery scores 0.922,
@@ -1020,10 +1052,32 @@ def recheck_citations(
                     )
                 )
                 continue
-            failure = quote_is_at(source, finding.finding.locator, finding.finding.quote)
-            if failure is None:
+            at, failure = cited_lines(source, finding.finding.locator, finding.finding.quote)
+            if at is not None:
+                # **Positioned where the quote is, not where the locator said.**
+                # The citation rule binds the quote to the span a *submitter*
+                # declared, and nothing downstream read that span: `_strength`
+                # takes the containing function from `start_line` alone and
+                # `_overlaps` needs only to cover the record's anchor. So a
+                # submission could declare the published start line and an end
+                # line hundreds of lines later, keep `exact` strength, and turn
+                # "name one line of this function" into its whole problem --
+                # measured, that took a blind submission from 0.041 to 0.145,
+                # and 0.092 of it needed nothing but braces and keywords.
+                #
+                # Narrowing to the matched lines costs an honest submission
+                # nothing, measured at locators one and five lines wider than
+                # the quote, because an honest quote is where its locator says
+                # it is. It is also the invariant the rule claims: the citation
+                # and the locator now agree on which lines are being cited.
+                if at != finding.finding.locator:
+                    changed = True
+                    finding = finding.model_copy(
+                        update={"finding": finding.finding.model_copy(update={"locator": at})}
+                    )
                 rechecked.append(finding)
                 continue
+            assert failure is not None
             refuted += 1
             changed = True
             rechecked.append(

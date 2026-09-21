@@ -1156,6 +1156,25 @@ interface B {
         [match] = report.matches
         assert match.strength is MatchStrength.FILE
 
+    def test_receive_and_fallback_in_one_contract_are_not_one_function(self) -> None:
+        # The pair the grammar gives one kind and two names, so
+        # `Declaration.signature` calls both `receive()`. A review cited
+        # `fallback() external payable {}` against a record whose locator is the
+        # `receive()` line above it and scored a `function` match -- and the
+        # record publishes the function name and the line, so the quote is
+        # derivable from the corpus alone. The identity carries the
+        # declaration's own line span, which two declarations cannot share.
+        source = """\
+contract Gateway {
+    receive() external payable { emit Received(msg.value); }
+    fallback() external payable { emit Fell(msg.sender); }
+}
+"""
+        record = a_record(start=2, end=2, function="receive")
+        report = score([a_run([(3, 3)], source=source)], [record], resolver(source))
+        [match] = report.matches
+        assert match.strength is MatchStrength.FILE
+
     def test_it_ranks_between_file_and_function(self) -> None:
         assert (
             MatchStrength.FILE.rank < MatchStrength.CALL_ADJACENT.rank < MatchStrength.FUNCTION.rank
@@ -1463,6 +1482,31 @@ class TestTheScorerTakesNobodysWordForACitation:
         )
         assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
         assert only(report).predictions == 1
+
+    def test_a_prediction_is_scored_where_its_quote_matched(self) -> None:
+        # The span is the submitter's own field and nothing downstream read it:
+        # `_strength` takes the containing function from `start_line` alone, so
+        # a submission could declare the published start line and an end line
+        # hundreds of lines later, keep `exact` strength, and reduce its whole
+        # problem to naming one line of a large window. Measured, that took a
+        # blind submission from 0.041 to 0.145, and 0.092 of it needed nothing
+        # but braces and keywords.
+        runs, refuted, unchecked = recheck_citations(
+            [self.a_submitted_run(_at(6, 6), (4, 50))], [a_record()], resolver()
+        )
+        assert (refuted, unchecked) == (0, 0)
+        [finding] = runs[0].findings
+        assert finding.status is CitationStatus.VERIFIED
+        assert (finding.finding.locator.start_line, finding.finding.locator.end_line) == (6, 6)
+
+    def test_a_widened_span_no_longer_buys_the_function_it_started_in(self) -> None:
+        # The consequence, at the level the figures read: a quote matched in
+        # another function is scored in that other function, which is a file
+        # match and not a function one.
+        report = score([self.a_submitted_run(_at(15, 15), (4, 20))], [a_record()], resolver())
+        assert report.refuted_citations == 0
+        [match] = report.matches
+        assert match.strength is MatchStrength.FILE
 
     def test_a_quote_that_starts_mid_line_is_refused(self) -> None:
         # The forgery a whole-line rule closes and a token-run rule does not:

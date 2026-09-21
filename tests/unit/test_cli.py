@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from contract_assay.cli import _local_resolver, app
 from contract_assay.corpus.records import AddressPin, CommitPin
+from contract_assay.models import DEFAULT_PREDICTIONS_PER_UNIT
 
 pytestmark = pytest.mark.offline
 
@@ -293,3 +294,69 @@ class TestResolvingAnAddressPin:
         self._manifest(tmp_path, {"src/Vault.sol": "contract Vault {}"})
         pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
         assert _local_resolver(tmp_path)(pin) is None
+
+
+class TestTheCapIsTheSameOnBothSurfaces:
+    """The number `score` counts, the number `run` hands over, and one test each.
+
+    A review reverted both defaults to `None` and the whole suite stayed green:
+    `DEFAULT_PREDICTIONS_PER_UNIT` was asserted only where the scorer enforces
+    it, never where either command chooses it. That is the same failure the
+    sibling repository's round cap had -- a value justified in one place and
+    relied on in another.
+    """
+
+    def _runs(self, workspace: Path, count: int) -> Path:
+        run = {
+            "detector_id": "d",
+            "class_id": "slippage",
+            "source_id": CommitPin(
+                repo_url="https://github.com/example/vault", commit=COMMIT, path="src/Vault.sol"
+            ).source_id,
+            "outcome": "vulnerable",
+            "evidence_tier": "syntactic",
+            "produced_without_a_model": True,
+            "findings": [
+                {
+                    "finding": {
+                        "detector_id": "d",
+                        "locator": {
+                            "file": "src/Vault.sol",
+                            "start_line": 11,
+                            "end_line": 13,
+                        },
+                        "quote": VAULT.split("\n")[11],
+                        "reasoning": f"claim {index}",
+                    },
+                    "status": "verified",
+                }
+                for index in range(count)
+            ],
+        }
+        path = workspace / "runs.jsonl"
+        path.write_text(json.dumps(run) + "\n", encoding="utf-8")
+        return path
+
+    def test_score_caps_without_being_asked(self, workspace: Path) -> None:
+        write_record(workspace, a_record())
+        result = runner.invoke(
+            app,
+            [
+                "score",
+                str(self._runs(workspace, DEFAULT_PREDICTIONS_PER_UNIT + 3)),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--submission-id",
+                "s",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        document = json.loads(result.output)
+        assert document["predictions_per_unit"] == DEFAULT_PREDICTIONS_PER_UNIT
+        [cls] = document["classes"]
+        assert (cls["predictions"], cls["capped_predictions"]) == (
+            DEFAULT_PREDICTIONS_PER_UNIT,
+            3,
+        )

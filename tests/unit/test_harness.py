@@ -32,6 +32,7 @@ from contract_assay.harness import (
     units_from,
 )
 from contract_assay.models import (
+    DEFAULT_PREDICTIONS_PER_UNIT,
     CitationStatus,
     EvidenceRef,
     EvidenceTier,
@@ -238,6 +239,40 @@ class TestTheLoop:
         run = next(iter(run_submission([Planner()], [a_unit()], model=caller)))
         assert run.outcome is Outcome.VULNERABLE
         assert [u.tokens for u in run.models] == [42]
+
+    def test_it_hands_over_only_what_the_scorer_will_count(self) -> None:
+        # Otherwise a submission emits everything, the scorer charges for all of
+        # it in this loop's own unit order, and the cap's own defence -- "the
+        # order is the submission's own, so spending slots on guesses is its
+        # choice" -- describes a choice the documented workflow never offered. A
+        # review reverted this default to `None` and the whole suite stayed
+        # green, which is why the assertion is here and not only in the scorer's.
+        class Planner(Detector):
+            detector_id = "planner-capped"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="look for a guardless setter")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            return ModelReply(
+                findings=tuple(
+                    Finding(
+                        detector_id=detector.detector_id,
+                        locator=Locator(file=PATH, start_line=5, end_line=6),
+                        quote="    function setOwner(address who) external {\n        owner = who;",
+                        reasoning=f"claim {index}",
+                    )
+                    for index in range(DEFAULT_PREDICTIONS_PER_UNIT + 3)
+                ),
+                models=(ModelUse(model_id="m", role=ModelRole.MAIN, calls=1, tokens=1),),
+            )
+
+        run = next(iter(run_submission([Planner()], [a_unit()], model=caller)))
+        assert len(run.findings) == DEFAULT_PREDICTIONS_PER_UNIT
 
     def test_a_failed_call_is_invalid_and_keeps_its_cost(self) -> None:
         # A call that happened and returned nothing still cost tokens, and the

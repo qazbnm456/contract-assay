@@ -82,6 +82,7 @@ __all__ = [
     "SubmissionLimits",
     "TaskOutput",
     "check_citation",
+    "cited_lines",
     "gate",
     "is_compatible",
     "quote_is_at",
@@ -364,17 +365,181 @@ six-token floor with five Solidity tokens.
 _MINIMUM_QUOTE_TOKENS = 6
 """How many tokens a quote must carry to cite anything.
 
-Six, measured against a blind attacker. Below it a quote is a line anybody can
-type: `} else {`, `msg.sender,`, `address(this),`, `) internal {`. A dictionary
-of generic single statements sprayed at every published span scores 0.249 at a
-floor of three and 0.005 at six.
-
-Not a free parameter above six. Measured against the strongest blind attack
-below, floors of three, five and six are indistinguishable (0.034 each) because
-that attack guesses whole lines rather than short ones; eight and ten cut it to
-0.030 and cost an honest submitter 0.25 and 0.41 of its recall. So six is the
-point where the cheap families die and the honest side is still whole.
+Harmless rather than optimal, and the docstring used to claim the second. A
+review swept it under the whole-line rule: floors of one, three, five and six
+are **identical on every attack measured**, because whole lines already closed
+the families a length floor was for, and the next value that moves anything is
+eight -- which costs an honest submitter 0.24 of its recall. So six keeps out a
+quote too short to mean anything and does no other work; `_LANGUAGES_OWN_WORDS`
+does the work this was once credited with.
 """
+
+_LANGUAGES_OWN_WORDS = frozenset(
+    [
+        "abstract",
+        "after",
+        "alias",
+        "anonymous",
+        "apply",
+        "as",
+        "assembly",
+        "assert",
+        "auto",
+        "break",
+        "byte",
+        "calldata",
+        "case",
+        "catch",
+        "constant",
+        "constructor",
+        "continue",
+        "contract",
+        "copyof",
+        "days",
+        "default",
+        "define",
+        "delete",
+        "do",
+        "else",
+        "emit",
+        "enum",
+        "error",
+        "ether",
+        "event",
+        "external",
+        "fallback",
+        "false",
+        "final",
+        "for",
+        "function",
+        "gwei",
+        "hex",
+        "if",
+        "immutable",
+        "implements",
+        "import",
+        "indexed",
+        "inline",
+        "interface",
+        "internal",
+        "is",
+        "let",
+        "library",
+        "mapping",
+        "match",
+        "memory",
+        "minutes",
+        "modifier",
+        "mutable",
+        "new",
+        "null",
+        "of",
+        "override",
+        "partial",
+        "payable",
+        "pragma",
+        "private",
+        "promise",
+        "public",
+        "pure",
+        "receive",
+        "reference",
+        "relocatable",
+        "require",
+        "return",
+        "returns",
+        "revert",
+        "sealed",
+        "seconds",
+        "selfdestruct",
+        "sizeof",
+        "static",
+        "storage",
+        "string",
+        "struct",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "type",
+        "typedef",
+        "typeof",
+        "unchecked",
+        "unicode",
+        "using",
+        "var",
+        "view",
+        "virtual",
+        "weeks",
+        "wei",
+        "while",
+        "years",
+        "abi",
+        "addmod",
+        "blockhash",
+        "block",
+        "ecrecover",
+        "gasleft",
+        "keccak256",
+        "mulmod",
+        "msg",
+        "now",
+        "ripemd160",
+        "sha256",
+        "tx",
+        "balance",
+        "call",
+        "code",
+        "data",
+        "delegatecall",
+        "gas",
+        "length",
+        "number",
+        "origin",
+        "pop",
+        "push",
+        "send",
+        "sender",
+        "staticcall",
+        "timestamp",
+        "transfer",
+        "value",
+        "address",
+        "bool",
+        "bytes",
+        "int",
+        "uint",
+    ]
+)
+"""The words a submitter can write without having read any particular file.
+
+Reserved words, elementary type names and the globals every file may use
+without declaring them. Enumerated rather than inferred, because it is the
+language's vocabulary and not a property of this corpus.
+
+Why a citation must name something outside it: the identifier test used to be
+`token[0].isalpha()`, which `return`, `false` and `unchecked` satisfy -- so
+`} } return false; }` was "substantive" at six tokens, and a review built a
+blind submission out of nothing but braces and keywords. Measured, this clause
+costs an honest submission 0.9931 -> 0.9885 (two records whose natural quote is
+language only) and takes the brace-and-keyword family from 0.0138 to 0.0092.
+
+Elementary types are listed by prefix only -- `uint`, `int`, `bytes` -- and
+their widths are matched in `_is_the_languages_own`, so `uint256` and `bytes32`
+need no entry each.
+"""
+
+
+def _is_the_languages_own(token: str) -> bool:
+    """Whether one identifier is the language's rather than a file's."""
+    if token in _LANGUAGES_OWN_WORDS:
+        return True
+    for stem in ("uint", "int", "bytes"):
+        if token.startswith(stem) and token[len(stem) :].isdigit():
+            return True
+    return False
 
 
 def _tokens(text: str) -> list[str]:
@@ -414,8 +579,14 @@ def _is_line_run_of(quote_lines: list[list[str]], span_lines: list[list[str]]) -
     )
 
 
-def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
-    """Whether `quote` is whole lines of the source inside `locator`.
+def cited_lines(
+    source: str, locator: Locator, quote: str
+) -> tuple[Locator | None, FailedCheck | None]:
+    """Where `quote` really is in the source, or why it is nowhere.
+
+    Returns the locator **narrowed to the lines the quote matched**, which is
+    what the scorer positions the prediction at. `quote_is_at` is the same check
+    without the position, for the in-process path that only needs a verdict.
 
     Extracted so the **scorer** can run it. `check_citation` is called from
     `run_detector`, which means it only ever protected a run this package
@@ -433,14 +604,15 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
     exact+function floor over the whole published corpus, through
     `contract-assay score`, for a submission that opens no `.sol` file:
 
-    | rule | `";"` | `"er"` | 181 idioms | generic runs | 9 blind slots |
+    | rule | `";"` | `"er"` | 181 idioms | generic runs | blind slots |
     | --- | --- | --- | --- | --- | --- |
     | bytes, floor 1 | 0.972 | -- | -- | -- | -- |
     | quote tokenised, span not | -- | 0.938 | -- | -- | -- |
     | both tokenised, token run, floor 3 | 0 | 0 | **0.913** | -- | -- |
     | token run, floor 6 | 0 | 0 | 0 | **0.126** | -- |
-    | span equality, floor 6 | 0 | 0 | 0 | 0 | **0.034** |
-    | **line run, floor 6** | 0 | 0 | 0 | 0 | **0.030** |
+    | span equality, floor 6 | 0 | 0 | 0 | 0 | 0.034 |
+    | line run, floor 6 | 0 | 0 | 0 | 0 | **0.145** |
+    | **line run, positioned, named** | 0 | 0 | 0 | 0 | **0.062** |
 
     A token run lets a fragment straddle line boundaries, which is where
     `for (uint256 i = 0; i <` and `require(msg.sender ==` live -- ten tokens
@@ -454,59 +626,83 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
     the locator was a line wide -- the commonest thing a model gets wrong about
     a span. Measured, same honest submission, only the declared span moving:
 
-    | honest submission | equality | line run |
+    | honest submission, quote unchanged | equality | now |
     | --- | --- | --- |
-    | locator exactly the quoted lines | 0.993 | 0.993 |
-    | locator one line wider below | **0.076** | **0.993** |
-    | locator one line wider on both sides | 0.005 | 0.409 |
-    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.993 |
+    | locator exactly the quoted lines | 0.993 | 0.989 |
+    | locator one line wider below | **0.076** | **0.989** |
+    | locator five lines wider below | 0.005 | 0.989 |
+    | locator one line wider above | 0.409 | 0.989 |
+    | locator one line wider on both sides | 0.005 | 0.989 |
+    | locator five lines wider on both sides | 0.005 | 0.989 |
+    | each record's whole span, truncated at `MAX_QUOTE_CHARS` | 0.989 | 0.991 |
 
-    (The third row is limited by the strength ladder, not by this check: a span
-    starting a line above a function no longer resolves to that function. The
-    fourth is three records whose span exceeds 4,000 characters: equality left
-    them uncitable at that locator, and a line run accepts the part that fits.)
+    Locator slop in *any* direction is free now. Two of those rows were not
+    free under a line run alone: a span starting a line above a function
+    resolved to a different function and dropped to `file` strength.
+    Positioning (below) fixed them as a side effect -- the prediction is where
+    its quote is, and its quote is inside the function. The 0.993 -> 0.989 in
+    the first row is `_LANGUAGES_OWN_WORDS` refusing two records whose natural
+    one-line quote is language only.
 
-    It costs one thing, measured: a submission that quotes real text out of one
-    donor unit and points its locators at other files used to score 0 and now
-    scores **0.0023** -- one record of 435 whose cited lines are duplicated
-    boilerplate the donor also contains. That is the price of accepting part of
-    a span, and it is smaller than the 0.917 of honest recall that demanding all
-    of it cost.
+    Accepting part of a span has a price, and the price was under-measured
+    twice. A donor-unit forgery -- real text out of one file, every locator
+    pointing at another -- reads 0.0023 when it is built naively and **0.0782**
+    when the locators are widened, because a wide span makes duplicated
+    boilerplate land somewhere. Positioning (below) takes it to **0**. The
+    honest side of that trade is the 0.917 of recall that demanding the whole
+    span cost, so it was the right trade even at 0.0782.
 
-    **What is left, and it is not zero.** Nine hand-picked slots -- the record's
-    published `function` name written into `function {F}() external {`, plus
-    loop and argument-list boilerplate at offsets from the published line
-    numbers -- score **0.0299 (13 of 435)** under the default cap, and **0.0414
-    (18 of 435)** with the slot order tuned against corpus yield. The corpus
-    publishes the function's name, so the text of its declaration line is
-    partly derivable, and no rule about quoted text can make derivable text
-    unguessable. A review bounded that family at 0.258 using a per-record oracle
-    it could not have in practice.
+    **The span is the submitter's field, so the scorer stopped reading it.**
+    `cited_lines` returns the locator narrowed to the lines the quote matched,
+    and `recheck_citations` puts the prediction there. Without that, "inside the
+    declared span" bounded nothing: `_strength` takes the containing function
+    from `start_line` alone and `_overlaps` needs only to reach the record's
+    anchor, so a submission could declare the published start line and an end
+    line hundreds of lines later, keep `exact` strength, and reduce its whole
+    problem to naming **one line of a large window**. Measured, that took a
+    blind submission from 0.0414 to **0.1448**, and 0.092 of it needed nothing
+    but braces and keywords. Positioning costs an honest submission nothing at any
+    slop measured -- one line or five, above, below or both -- and for two of
+    those it is what makes them free.
 
-    This is the fourth version of this check and the fourth number. The first
-    three were each published as a zero and each was exceeded by the next
-    review. So: **0.0299 is a measurement of the best blind attack anybody has
-    run here, not a floor**, and the next reviewer should expect to beat it.
+    **What is left, and it is not zero.** Nine slots off the published function
+    name and line numbers score 0.0276, and **0.0621** when they are declared
+    over widened spans and ranked against corpus yield. No rule about quoted
+    text can make derivable text unguessable, and the record publishes the
+    function's name.
+
+    This is the fifth version of this check and the fifth number. The first
+    three were published as zeroes and every one of the five was exceeded by the
+    next review -- 0.938, then 0.913, then 0.1448, then 0.0621. So: **0.0621 is
+    a measurement of the best blind attack anybody has run here, not a floor.**
+    The size of what is left is clearest from the other side: a submitter who
+    could name one real line of each published span would score **0.9885**. The
+    defence is entirely that it cannot name one.
 
     Two further rules were measured and **declined**, recorded here so the next
     reviewer does not have to rediscover them:
 
-    - *The quote must name an identifier that is neither Solidity vocabulary nor
-      the locator's own contract and function name.* Cuts the blind attack from
-      0.034 to 0.011 and costs the honest side 0.993 -> 0.956, because a correct
-      finding about a zero-argument function often quotes exactly that
-      function's declaration line. Refusing 16 true citations to remove 11 false
-      ones is the wrong trade for an instrument whose honest ceiling should be
-      1.0, and the vocabulary list it needs is a maintenance surface whose every
-      gap is a refused true finding.
+    - *The quote must also not name the locator's own contract or function.*
+      The stricter cousin of `_LANGUAGES_OWN_WORDS`, which is adopted: this adds
+      the two names the record itself publishes. It cuts the nine-slot attack
+      from 0.034 to 0.011 and costs the honest side 0.993 -> 0.956, because a
+      correct finding about a zero-argument function often quotes exactly that
+      function's declaration line. Sixteen true citations to remove eleven
+      forged ones is the wrong direction for an instrument whose honest ceiling
+      should be 1.0.
     - *The quote's token run must occur exactly once in the file.* A cheaper
-      test of "could not have been produced without reading this file", and it
-      costs far more: honest recall 0.993 -> 0.446, because a correct finding
-      often quotes a guard or an assignment that the file repeats. Its blind
-      figure, 0.023, is no better than what whole lines give.
+      test of "could not have been produced without reading this file". Honest
+      recall 0.9931 -> **0.9448**, and the strongest blind attack 0.0759 ->
+      0.0506 on the same code. An earlier version of this note said the honest
+      cost was 0.446; that was a measurement bug -- the uniqueness cache was
+      keyed on `id(source)`, and CPython recycles ids, so it answered for the
+      wrong file. The corrected trade still declines it: 21 true citations
+      refused to remove 11 forged ones, and the true ones are refused silently
+      and forever, because a correct finding often quotes a guard the file
+      repeats.
 
     So: a figure over the published corpus is **self-reported**, and this check
-    holds a blind submitter to a *measured* 0.03 rather than to zero. A
+    holds a blind submitter to a *measured* 0.06 rather than to zero. A
     competitive ranking needs records whose locators are not published --
     `CorpusSplit.PRIVATE_HOLDOUT` and `assay-arena`'s `docs/operations.md` step
     3 -- and that is where the guarantee has to live. `docs/api.md` §1 says the
@@ -518,7 +714,7 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
     lines = source.split("\n")
 
     if locator.end_line > len(lines):
-        return FailedCheck(
+        return None, FailedCheck(
             check="citation_span_out_of_range",
             kind=RejectionKind.CITATION,
             detail=f"span ends at {locator.end_line}, source has {len(lines)} lines",
@@ -526,33 +722,59 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
 
     span = "\n".join(lines[locator.start_line - 1 : locator.end_line])
     if not quote.strip():
-        return FailedCheck(
+        return None, FailedCheck(
             check="citation_quote_absent_from_source",
             kind=RejectionKind.CITATION,
             detail="the quote is blank once whitespace is normalised",
         )
 
     quote_tokens = _tokens(quote)
-    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not any(
-        token[0].isalpha() or token[0] == "_" for token in quote_tokens
-    ):
-        # A review scored **micro recall 0.972** across the whole corpus, at
-        # `exact` strength, by quoting `";"` at every published locator: the
-        # comparison is containment, so a quote that appears in nearly every
-        # span establishes nothing about whether its author read one.
-        return FailedCheck(
+    names_something = any(
+        (token[0].isalpha() or token[0] == "_") and not _is_the_languages_own(token)
+        for token in quote_tokens
+    )
+    if len(quote_tokens) < _MINIMUM_QUOTE_TOKENS or not names_something:
+        # Two things at once, and the second is the load-bearing one. A review
+        # scored **micro recall 0.972** by quoting `";"` at every published
+        # locator, which the length floor closes. It then scored **0.0138**
+        # reading no source at all out of brace-and-keyword lines like
+        # `} } return false; }` -- six tokens, and "an identifier" under a test
+        # that only asked whether a character was a letter. A quote that names
+        # nothing outside the language names no file in particular.
+        return None, FailedCheck(
             check="citation_quote_is_not_substantive",
             kind=RejectionKind.CITATION,
             detail=f"{quote.strip()[:40]!r} is {len(quote_tokens)} token(s) and needs at "
-            f"least {_MINIMUM_QUOTE_TOKENS} including an identifier; a shorter quote names "
-            "something that appears in most spans rather than this one",
+            f"least {_MINIMUM_QUOTE_TOKENS}, one of them naming something the language "
+            "does not supply; a quote of keywords and punctuation names no file in "
+            "particular",
         )
 
     quote_lines = _line_tokens(quote)
-    if _is_line_run_of(quote_lines, _line_tokens(span)):
-        return None
+    # The span's non-blank lines, each keeping the number it has in the file, so
+    # a match can be reported at its real coordinates.
+    numbered = [
+        (number, _tokens(line))
+        for number, line in enumerate(
+            lines[locator.start_line - 1 : locator.end_line], locator.start_line
+        )
+        if line.strip()
+    ]
+    width = len(quote_lines)
+    if width and width <= len(numbered):
+        for first in range(len(numbered) - width + 1):
+            if [tokens for _, tokens in numbered[first : first + width]] == quote_lines:
+                return (
+                    locator.model_copy(
+                        update={
+                            "start_line": numbered[first][0],
+                            "end_line": numbered[first + width - 1][0],
+                        }
+                    ),
+                    None,
+                )
     if _is_line_run_of(quote_lines, _line_tokens(source)):
-        return FailedCheck(
+        return None, FailedCheck(
             check="citation_quote_elsewhere_in_file",
             kind=RejectionKind.CITATION,
             detail="the quote is in the file but not at the cited lines",
@@ -563,17 +785,28 @@ def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None
         # guess lives -- `for (uint256 i = 0; i <` is ten generic tokens and
         # sits inside hundreds of spans -- and it is not what an honest
         # submitter produces, because slicing a file gives whole lines.
-        return FailedCheck(
+        return None, FailedCheck(
             check="citation_quote_is_not_whole_lines",
             kind=RejectionKind.CITATION,
             detail="the quote starts or ends mid-line; quote the whole of each line it "
             "covers, which is what slicing the source at a locator gives",
         )
-    return FailedCheck(
+    return None, FailedCheck(
         check="citation_quote_absent_from_source",
         kind=RejectionKind.CITATION,
         detail="the quote is not in the source",
     )
+
+
+def quote_is_at(source: str, locator: Locator, quote: str) -> FailedCheck | None:
+    """Whether `quote` is whole lines of the source inside `locator`.
+
+    The verdict without the position. `run_detector` wants only this: it is
+    checking a finding its own detector produced, and a submission's locator is
+    not something it is in a position to correct. The **scorer** uses
+    `cited_lines`, because there the locator is a claim by somebody else.
+    """
+    return cited_lines(source, locator, quote)[1]
 
 
 def check_citation(ctx: AnalysisContext, finding: Finding) -> FailedCheck | None:

@@ -26,8 +26,10 @@ from contract_assay.detectors.base import (
     ModelTaskSpec,
     SubmissionLimits,
     TaskOutput,
+    _is_the_languages_own,
     _tokens,
     check_citation,
+    cited_lines,
     gate,
     is_compatible,
     quote_is_at,
@@ -982,6 +984,31 @@ contract Vault {
         # rather than silently changing what a citation proves.
         assert _MINIMUM_QUOTE_TOKENS == 6
 
+    def test_a_quote_of_keywords_and_braces_names_no_file_in_particular(self) -> None:
+        # Six tokens, and "an identifier" under a test that only asked whether a
+        # character was a letter -- `return` and `false` both pass that. A
+        # review built a blind submission out of nothing but lines of this shape
+        # and scored 0.0138 over the whole corpus reading no source.
+        failure = quote_is_at(
+            "function f() external {\nif (x) {\n}\n}\nreturn false;\n}\n",
+            Locator(file="f.sol", start_line=1, end_line=6),
+            "}\n}\nreturn false;\n}",
+        )
+        assert failure is not None
+        assert failure.check == "citation_quote_is_not_substantive"
+
+    def test_one_name_the_language_does_not_supply_is_enough(self) -> None:
+        # The other side of it: a real statement names a variable, and that is
+        # all this asks for. The clause costs an honest submission 0.9931 ->
+        # 0.9885 over the whole corpus, which is two records whose natural quote
+        # is language only.
+        assert self._check("total = total - amount;", 6, 6) is None
+
+    @pytest.mark.parametrize("width", ["uint256", "int128", "bytes32", "uint", "bytes"])
+    def test_an_elementary_type_of_any_width_is_the_languages_own(self, width: str) -> None:
+        # Listed by prefix, matched by width, so the set needs no entry each.
+        assert _is_the_languages_own(width)
+
     def test_a_quote_of_punctuation_alone_cannot_cite(self) -> None:
         # Six tokens, no identifier -- so the floor alone does not refuse it and
         # this is the only test that holds the identifier clause. A review
@@ -1045,6 +1072,32 @@ contract Vault {
             self._check("total = total - amount;\npayable(msg.sender).transfer(amount);", 5, 6)
             == "citation_quote_absent_from_source"
         )
+
+    def test_the_match_is_reported_at_the_lines_it_matched(self) -> None:
+        # What the scorer positions a prediction at. The citation rule binds the
+        # quote to a span the *submitter* declares, and nothing downstream read
+        # that span: a submission could declare the published start line and an
+        # end line hundreds of lines later and keep `exact` strength, which took
+        # a blind submission from 0.041 to 0.145.
+        at, failure = cited_lines(
+            self.SOURCE,
+            Locator(file="src/Vault.sol", start_line=1, end_line=12),
+            "total = total - amount;",
+        )
+        assert failure is None
+        assert at is not None
+        assert (at.start_line, at.end_line) == (6, 6)
+
+    def test_the_first_match_inside_the_declared_span_is_the_one_reported(self) -> None:
+        # Deterministic, and it has to be: two identical lines inside one
+        # declared span would otherwise make the position depend on scan order.
+        at, _ = cited_lines(
+            "a = b + c;\na = b + c;\n",
+            Locator(file="f.sol", start_line=1, end_line=2),
+            "a = b + c;",
+        )
+        assert at is not None
+        assert (at.start_line, at.end_line) == (1, 1)
 
     def test_a_span_past_the_end_of_the_file_is_named_before_anything_else(self) -> None:
         assert self._check("anything at all here", 99, 120) == "citation_span_out_of_range"

@@ -116,19 +116,22 @@ six or more tokens (once **0.126**), generic whole-line statements at every
 published span. What is **not** at zero is an attack built on what the corpus
 publishes: the record gives you the function's *name*, so `function {F}()
 external {` is the right text for a zero-argument function's declaration line.
-Nine such slots score **0.0299** — thirteen records of 435 — and 0.0414 with
-their order tuned against corpus yield.
+Nine such slots score **0.0276**, and **0.0621** when they are declared over
+spans widened past the published end line.
 
 Read that as a measurement and not as a bound. This check has been rewritten
-four times, the first three published as zeroes, and each zero was exceeded by
-the next review.
+five times, the first three published as zeroes, and every one of them was
+exceeded by the next review. The size of what is left is clearest from the other
+side: a submitter who could name **one real line** of each published span would
+score 0.9885. The whole defence is that it cannot name one.
 
 What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
 builds the scorer's checkout from the same public coordinates you have. So a
 script that quotes the real span at each published locator scores **micro recall
-0.9977, precision 1.0 in all nine classes**, with every refusal counter at zero.
-Measured, not hypothesised.
+0.9908, precision 1.0 in every class it scores**. Measured, not hypothesised.
+(434 of 435 is the ceiling: one record's source resolves from no public
+coordinates, so any submission reaching it reports one unchecked citation.)
 
 That is a property of publishing the answer, not a defect in the checking. It
 means:
@@ -257,10 +260,19 @@ outcomes from how they happened to format a string:
   `for (uint256 i = 0; i <` is ten tokens, generic, and inside hundreds of
   spans, and a rule that accepted it scored 0.126 over the whole corpus reading
   no source.
-- **A quote must carry at least six tokens, one of them an identifier.** Below
-  that it is a line anybody can type — `} else {`, `msg.sender,`,
-  `address(this),`, `) internal {`. Quote the neighbouring line as well when
-  your statement is short.
+- **A quote must carry at least six tokens, one of them naming something the
+  language does not supply.** Below that it is a line anybody can type —
+  `} else {`, `msg.sender,`, `) internal {` — and a line of nothing but braces
+  and keywords, `} } return false; }`, is six tokens of the same thing: a review
+  scored 0.0138 over the whole corpus out of lines of that shape. One variable,
+  function or type name of your file's own is enough. Quote the neighbouring
+  line as well when your statement is short.
+- **Your prediction is scored at the lines your quote matched**, not at the span
+  you declared, so declaring a wide span buys nothing: a quote matched in
+  another function is a file match, not a function one. The flip side is that
+  locator slop is free in every direction — measured over the whole corpus, an
+  honest submission scores the same 0.9885 with its locator exact, one line
+  wider, five lines wider, wider above, or wider on both sides.
 - The lines have to be in the file's own order, and contiguous in it. Blank
   lines are dropped on both sides, so a blank line between two quoted lines does
   not matter; a line of *code* between them does.
