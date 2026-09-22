@@ -310,7 +310,21 @@ def code4rena_report(page: str) -> str | None:
 
 
 def _as_markdown(html: str) -> str:
-    """The generator's HTML, as the markdown it was rendered from."""
+    """The generator's HTML, as the markdown it was rendered from.
+
+    **Entities are unescaped exactly once, at the end, after every tag has been
+    stripped.** Nothing in here may unescape earlier, and the rule is not
+    stylistic. Solidity is full of `<` and `>`; the generator emits them as
+    `&lt;` and `&gt;`; and `_TAG` matches `<[^>]+>`. So an early unescape inside
+    a code block turns `require(slippage &lt;= max, "x");` into
+    `require(slippage <= max, "x");` while the strip is still to come, and the
+    strip then deletes from that `<` to the next `>` -- swallowing the operator,
+    the rest of the statement and, observed, the line after it.
+
+    Found by the corpus pipeline rather than by a test: three Code4rena findings
+    came back `quote_not_found` because the quote this produced was not the
+    source any more.
+    """
 
     def heading(match: re.Match[str]) -> str:
         hashes = "#" * int(match.group("level"))
@@ -325,8 +339,11 @@ def _as_markdown(html: str) -> str:
         return f"\n\n{hashes} {_text(inner)}\n\n"
 
     def code(match: re.Match[str]) -> str:
+        # Tags stripped, entities **left alone**. See `_as_markdown`'s docstring:
+        # unescaping here turns `&lt;` into `<` while the global tag strip is
+        # still to come, and that strip then eats from it to the next `>`.
         body = _TAG.sub("", match.group("code"))
-        return "\n\n```\n" + unescape(body).strip("\n") + "\n```\n\n"
+        return "\n\n```\n" + body.strip("\n") + "\n```\n\n"
 
     def link(match: re.Match[str]) -> str:
         return f"[{_text(match.group('text'))}]({match.group('href')})"
@@ -351,5 +368,10 @@ def _as_markdown(html: str) -> str:
 
 
 def _text(inner: str) -> str:
-    """One heading's or link's text, with its markup flattened."""
-    return " ".join(unescape(_TAG.sub("", inner)).split())
+    """One heading's or link's text, with its markup flattened.
+
+    Entities are left escaped for the single unescape at the end, for the reason
+    `_as_markdown` gives: a heading containing `&lt;` would otherwise become a
+    heading containing `<`, and the global tag strip would eat the rest of it.
+    """
+    return " ".join(_TAG.sub("", inner).split())

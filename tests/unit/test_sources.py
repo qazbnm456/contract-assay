@@ -386,6 +386,33 @@ class TestTheCode4renaPage:
         assert "maxDeposit & reverts" in markdown
         assert "&amp;" not in markdown
 
+    def test_an_angle_bracket_in_code_survives_the_tag_strip(self) -> None:
+        """The defect the corpus pipeline found, not a test.
+
+        Solidity is full of `<` and `>`, the generator emits them as entities,
+        and `_TAG` matches `<[^>]+>`. An unescape inside the code block turned
+        `&lt;` into `<` while the global strip was still to come, and the strip
+        then deleted from it to the next `>` -- swallowing the operator, the rest
+        of the statement, and the line after it. Three Code4rena findings came
+        back `quote_not_found` because of it.
+        """
+        report = (
+            '<h1 id="m">Medium Risk Findings (1)</h1>\n'
+            f'<h2 id="m-01"><a href="{SUBMISSION}">[M-01] Casting &lt;-&gt;</a></h2>\n'
+            "<pre><code>require(slippage &lt;= maxSlippage, &quot;too much&quot;);\n"
+            "if (a &gt; b &amp;&amp; c &lt; d) { revert(); }\n"
+            "uint256 x = 1;</code></pre>\n"
+        )
+        markdown = code4rena_report(a_page(report, duplicate=False))
+        assert markdown is not None
+        fence = markdown.split("```")[1]
+        assert 'require(slippage <= maxSlippage, "too much");' in fence
+        assert "if (a > b && c < d) { revert(); }" in fence
+        # The line after the first `<` is the one that used to vanish whole.
+        assert "uint256 x = 1;" in fence
+        # And the same in a heading, which unescaped early for the same reason.
+        assert "[M-01] Casting <->" in markdown
+
     def test_a_page_with_no_report_is_none_rather_than_empty(self) -> None:
         """Empty markdown would report zero findings for a contest that has some."""
         assert code4rena_report("<html><body>not a report</body></html>") is None
