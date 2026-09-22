@@ -22,6 +22,8 @@ The two load-bearing rules:
 from __future__ import annotations
 
 from enum import StrEnum
+from itertools import pairwise
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -523,6 +525,36 @@ class Finding(_Frozen):
     reasoning: str = Field(min_length=1, max_length=MAX_REASONING_CHARS)
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
+    score: Annotated[float, Field(allow_inf_nan=False)] | None = Field(
+        default=None,
+        description="How strongly this detector holds this finding. Higher is stronger.",
+    )
+    """How strongly the detector holds this finding. Higher is stronger.
+
+    **A score, not a rank, and the difference is the reason the field exists.**
+    A rank is ordinal inside the list it came from, so a rank-one in one unit
+    says nothing about a rank-one in another -- a detector confident here and
+    guessing there produces two rank-ones. A score is comparable across the
+    units of *one* submission, which is all any figure computed per submission
+    needs, and scores from different submissions never have to be comparable to
+    each other.
+
+    **It also records an invariant that was load-bearing and implicit.** The
+    per-unit cap consumes findings in list order and drops the tail
+    (`report/scoring.py`), so list position already decides which of a
+    submission's findings are scored and which are discarded -- `docs/rules.md`
+    §4 tells participants to order by certainty for exactly that reason. Nothing
+    recorded that the order meant anything. An ordering carried only by position
+    survives no set, no dict round-trip, no re-serialisation that does not
+    promise order, and the cap would then silently drop a different tail with no
+    test able to see it. Declared, it can be validated, and `DetectorRun` does.
+
+    Optional, because a deterministic detector with no notion of confidence
+    should not have to invent one. A round may require it -- see the arena's
+    `RoundConfig` -- and a figure that needs an ordering across units is
+    available only where it is supplied.
+    """
+
 
 class RejectionKind(StrEnum):
     """Why a check turned a finding away.
@@ -820,6 +852,51 @@ class DetectorRun(_Frozen):
     @property
     def has_citation_failure(self) -> bool:
         return any(f.has_citation_failure for f in self.findings)
+
+    @model_validator(mode="after")
+    def _an_ordering_that_is_claimed_is_honoured(self) -> DetectorRun:
+        """If the findings carry scores, the list order must agree with them.
+
+        The per-unit cap takes a prefix of this list and drops the tail, so
+        order decides which findings are scored. A list whose order contradicts
+        its own scores is a submission disagreeing with itself about which
+        finding is its best -- and the cap would resolve that disagreement in
+        favour of position, discarding the one the author scored highest. That
+        is a trap rather than a preference, so it is refused here.
+
+        Refused on the model rather than in the scorer, because a run crosses
+        several boundaries -- written by a runner, stored, re-read, ingested from
+        a participant, scored -- and the invariant is a property of the record at
+        every one of them.
+
+        A partially scored list is refused for the same reason: the order of the
+        unscored findings is then unconstrained, which is the ambiguity the
+        field exists to remove.
+        """
+        scored = [f.finding.score for f in self.findings]
+        given = [s for s in scored if s is not None]
+        if not given:
+            return self
+        if len(given) != len(scored):
+            raise ValueError(
+                f"{len(given)} of {len(scored)} findings carry a score: either every "
+                "finding in a run is scored or none is, because the cap takes a prefix "
+                "of this list and the order of an unscored finding would decide "
+                "nothing and mean nothing"
+            )
+        out_of_order = [
+            index for index, (earlier, later) in enumerate(pairwise(given)) if later > earlier
+        ]
+        if out_of_order:
+            first = out_of_order[0]
+            raise ValueError(
+                f"findings are not in non-increasing score order: position {first} "
+                f"scores {given[first]} and position {first + 1} scores "
+                f"{given[first + 1]}. The per-unit cap keeps a prefix of this list, so "
+                "a run ordered against its own scores would have its best finding "
+                "dropped by position"
+            )
+        return self
 
     @model_validator(mode="after")
     def _outcome_is_self_consistent(self) -> DetectorRun:

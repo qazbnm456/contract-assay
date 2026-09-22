@@ -252,6 +252,32 @@ Returning an error as a judgement converts infrastructure failures into model
 conclusions. Returning a judgement as an error throws away a measurement you
 earned.
 
+### Ordering your findings, and `score`
+
+**The order you return findings in already decides which of them are scored.**
+The per-unit cap takes a *prefix* of your list and drops the tail (§4 of the
+arena's rules, and `capped_predictions` in the score document so you can see it
+bite). A submission that returns its weakest finding first loses its best one.
+That has always been true; what is new is that you can now say so.
+
+`Finding.score` is an optional float, higher meaning stronger. When you supply
+it, **the harness refuses a run whose list order disagrees with its own
+scores** — because the cap would then resolve that disagreement in favour of
+position and discard the finding you scored highest, which is a trap rather
+than a preference. Either every finding in a run carries a score or none does:
+a partially scored list leaves the unscored ones in an order that means
+nothing.
+
+Why a score and not a rank. A rank is ordinal inside the list it came from, so
+a rank-one from a unit you were sure about and a rank-one from a unit you were
+guessing in are not the same claim, and no figure can interleave them. A score
+is comparable across the units of *one* submission, which is what any per-
+submission figure needs; scores from different submissions never have to be
+comparable to each other, and nothing here compares them.
+
+It is optional so that a deterministic detector with no notion of confidence
+need not invent one. A round may require it.
+
 ### What you do *not* control
 
 **Citation re-verification.** After your `verdict()` returns, the harness

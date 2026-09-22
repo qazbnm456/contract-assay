@@ -621,3 +621,89 @@ class TestIndeterminacyDoesNotBecomeAnError:
             ],
         )
         assert run.negative_is_established is True
+
+
+class TestAClaimedOrderingIsHonoured:
+    """`Finding.score`, and the invariant it turns from positional into checkable.
+
+    The per-unit cap takes a prefix of `findings` and drops the tail, so list
+    position already decides which of a submission's findings are scored --
+    `docs/rules.md` §4 tells participants to order by certainty for that reason.
+    Nothing recorded that the order meant anything, which makes it an ordering
+    no set, dict round-trip or order-indifferent serialisation would preserve,
+    and the cap would then drop a different tail with no test able to see it.
+
+    A score rather than a rank, because a rank is ordinal inside its own list: a
+    rank-one from a unit the detector was sure about and a rank-one from a unit
+    it was guessing in are not the same claim, and no interleaving of them is.
+    """
+
+    def scored(self, *scores: float | None) -> list[VerifiedFinding]:
+        return [
+            VerifiedFinding(
+                finding=a_finding().model_copy(update={"score": score}),
+                status=CitationStatus.VERIFIED,
+            )
+            for score in scores
+        ]
+
+    def test_descending_scores_are_accepted(self) -> None:
+        assert a_run(findings=self.scored(0.9, 0.4, 0.1)).findings[0].finding.score == 0.9
+
+    def test_equal_scores_are_accepted(self) -> None:
+        """Non-increasing, not strictly decreasing: a detector may hold two
+        findings equally and the cap's choice between them is then arbitrary by
+        the submission's own account, which is a different thing from wrong."""
+        assert len(a_run(findings=self.scored(0.5, 0.5, 0.5)).findings) == 3
+
+    def test_no_scores_at_all_is_accepted(self) -> None:
+        """Optional, so a deterministic detector need not invent a confidence."""
+        assert a_run(findings=self.scored(None, None)).findings[0].finding.score is None
+
+    def test_an_order_that_contradicts_its_own_scores_is_refused(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            a_run(findings=self.scored(0.1, 0.9))
+        said = str(refused.value)
+        assert "non-increasing score order" in said
+        # The refusal names the pair, because "not sorted" leaves the author
+        # looking through a list for which pair it meant.
+        assert "position 0 scores 0.1" in said
+        assert "0.9" in said
+        assert "best finding" in said
+
+    def test_the_first_inversion_is_the_one_reported(self) -> None:
+        """Two inversions, so first and last are different positions.
+
+        Written with one inversion first, where `out_of_order[0]` and
+        `out_of_order[-1]` are the same index and the test could not tell them
+        apart -- found by mutation testing.
+        """
+        with pytest.raises(ValidationError) as refused:
+            a_run(findings=self.scored(0.9, 0.1, 0.5, 0.2, 0.7))
+        said = str(refused.value)
+        assert "position 1 scores 0.1" in said
+        assert "position 3" not in said
+
+    def test_a_partially_scored_run_is_refused(self) -> None:
+        """The order of the unscored ones would be unconstrained, which is the
+        ambiguity the field exists to remove."""
+        with pytest.raises(ValidationError) as refused:
+            a_run(findings=self.scored(0.9, None))
+        assert "1 of 2 findings carry a score" in str(refused.value)
+
+    def test_a_score_that_is_not_a_number_is_refused(self) -> None:
+        """An infinity or a NaN orders against nothing."""
+        for bad in (float("inf"), float("-inf"), float("nan")):
+            with pytest.raises(ValidationError):
+                Finding.model_validate({**a_finding().model_dump(), "score": bad})
+
+    def test_the_invariant_is_checked_on_the_record_not_at_scoring(self) -> None:
+        """A run crosses several boundaries -- written, stored, re-read, ingested
+        from a participant, scored -- and the ordering is a property of the
+        record at every one of them, so re-reading a stored run re-checks it."""
+        good = a_run(findings=self.scored(0.9, 0.1))
+        assert DetectorRun.model_validate_json(good.model_dump_json()).findings[1].finding.score
+        broken = good.model_dump(mode="json")
+        broken["findings"] = list(reversed(broken["findings"]))
+        with pytest.raises(ValidationError, match="non-increasing score order"):
+            DetectorRun.model_validate(broken)
