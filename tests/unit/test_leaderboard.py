@@ -581,3 +581,43 @@ class TestARoundChoosesWhatItRanksOn:
         document = leaderboard_document(board, [])
         assert document["ranked_on"] == "f1"
         assert "f1_by_class" in document["ranked"][0]
+
+
+class TestWhatTheMinimumDoesAndDoesNotDo:
+    """`MINIMUM_RECORDS_PER_CLASS` is a label, not a gate.
+
+    Its docstring says so -- "a convention rather than a finding" -- and the
+    sentence it produced said the opposite: that thin classes "are not averaged
+    in". They were. These pin the computation and the sentence to each other, so
+    changing one without the other fails here rather than in a reader's head.
+    """
+
+    def test_a_thin_class_is_averaged_into_the_total(self) -> None:
+        """Measured: a two-record class at F1 0.0 beside twenty at 1.0 moved the
+        total from 1.0 to 0.4. That is the behaviour, and it is deliberate --
+        dropping thin classes would be an unannounced threshold on every total."""
+        fat = a_class_score(cls=CLS, records=20, predictions=20, judged=20, hits=20)
+        thin = a_class_score(
+            cls=VulnerabilityClass.SLIPPAGE, records=2, predictions=2, judged=2, hits=0
+        )
+        alone = score_submission("a", a_report(fat), weights=WEIGHTS).total()
+        with_thin = score_submission("a", a_report(fat, thin), weights=WEIGHTS).total()
+        assert thin.below_minimum
+        assert alone is not None and with_thin is not None
+        assert with_thin < alone
+
+    def test_the_statement_does_not_claim_the_opposite(self) -> None:
+        fat = a_class_score(cls=CLS, records=20, predictions=20, judged=20, hits=20)
+        thin = a_class_score(
+            cls=VulnerabilityClass.SLIPPAGE, records=2, predictions=2, judged=2, hits=0
+        )
+        said = a_report(fat, thin).statement()
+        assert "not averaged in" not in said
+        assert "averaged into the total" in said
+
+    def test_a_thin_class_is_still_rankable(self) -> None:
+        """Nothing refuses it. A round that ranks on a five-record class is
+        allowed, and carries the label rather than being stopped."""
+        thin = a_class_score(cls=CLS, records=5, predictions=5, judged=5, hits=3)
+        board = leaderboard([score_submission("a", a_report(thin), weights=WEIGHTS)])
+        assert len(board.ranked) == 1

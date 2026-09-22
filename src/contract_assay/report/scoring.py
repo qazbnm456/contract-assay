@@ -767,9 +767,22 @@ class ScoreReport:
         thin = self.thin_classes
         if thin:
             named = ", ".join(f"{cls.value} ({self.by_class[cls].records})" for cls in thin)
+            # **They are averaged in, and the sentence says so.** It used to say
+            # "are not averaged in" while `weighted_figure` never consulted
+            # `thin_classes` at all -- measured, a two-record class at F1 0.0
+            # beside a twenty-record class at 1.0 moved a total from 1.0 to 0.4.
+            # A reader who believed the sentence would think their thin class did
+            # not touch their rank, and it decided it.
+            #
+            # Fixed in the sentence rather than in the computation. Dropping thin
+            # classes from the mean would make "which classes count" a threshold
+            # applied silently to every total, which is the thing the class set
+            # being *announced* exists to prevent.
             parts.append(
                 f"Below the stated minimum of {MINIMUM_RECORDS_PER_CLASS}: {named} — "
-                "figures for these support no claim and are not averaged in."
+                "figures for these support no claim on their own, and they are averaged "
+                "into the total like any other class, so the total moves as much on one of "
+                "their records as on several of a larger class's."
             )
 
         unavailable_exact = sum(s.exact_unavailable for s in self.by_class.values())
