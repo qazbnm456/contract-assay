@@ -245,13 +245,19 @@ class TestADocumentSaysWhatItWasMeasuredAgainst:
         moved = a_record().model_copy(update={"split": CorpusSplit.PRIVATE_HOLDOUT})
         assert corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([moved])["digest"]
 
-    def test_the_digest_moves_when_an_asserted_label_is_added(self) -> None:
-        """`asserted_labels` caps the strength a match against the record can
-        reach, so a corpus that gained one measures something different: a
-        record labelled `function` cannot support an exact-location match."""
+    def test_the_digest_does_not_move_when_an_asserted_label_is_added(self) -> None:
+        """This test asserted the opposite, on a justification that was false.
+
+        `asserted_labels` was put in the basis with the reason that it caps the
+        strength a match can reach. Nothing in `report/` reads it -- it reaches
+        `CorpusRecord.independent_claims`, which no document publishes -- so by
+        the other half of the rule, a field nothing computes over must not
+        invalidate a comparison. It joins the moment a report reads it, and
+        `test_scoring.py`'s two-sided test is what will say so.
+        """
         labelled = a_record().model_copy(update={"asserted_labels": [LocatorLabel.FUNCTION]})
         assert (
-            corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([labelled])["digest"]
+            corpus_fingerprint([a_record()])["digest"] == corpus_fingerprint([labelled])["digest"]
         )
 
     def test_the_digest_moves_when_the_locators_provenance_changes(self) -> None:

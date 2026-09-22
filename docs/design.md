@@ -54,7 +54,50 @@ first, and an error quietly becomes a judgement. `FailedCheck` therefore carries
 a `RejectionKind`, and `DetectorRun` refuses to be `clean` over a finding nobody
 could check.
 
-### 1.3 An instrument cannot exceed its own source of truth
+### 1.3 A test that checks what you asked for is not one that checks what you got
+
+> **Verify at the layer where the property holds, not at the layer where you
+> requested it.**
+
+Eleven rounds of tests checked the sandbox's confinement flags as strings — that
+`container_argv` contained `--cap-drop=ALL`, `--read-only`, `--network=<name>`.
+Every one of those tests was real: remove a flag and they fail. **None of them
+noticed that the image had never built.** The Containerfile copied
+`pyproject.toml`, `src` and `vendor`, `pyproject.toml` declares
+`readme = "README.md"`, and hatchling failed metadata generation. Eleven rounds,
+all green, on an image that could not exist — so a confinement that could not
+exist either.
+
+The existing check in §1.2 — for each cause, one input that produced it — does
+not catch this, and neither does "what test fails if this guarantee is absent",
+because a flag's removal *does* fail those tests. They were correct tests of a
+real thing at the wrong layer.
+
+What the layer is, concretely. The request layer is the argv; the property layer
+is the kernel. So the confinement is now read from `/proc/self/status`:
+`CapEff` all zeros rather than `--cap-drop=ALL` matched in a list, `NoNewPrivs`
+1 rather than `--security-opt` present, a write that fails with `Read-only file
+system` rather than `--read-only` in a string, a TCP connect that times out
+rather than a network name. And every flag is removed in turn to confirm the
+suite fails — a test that still passed with the flag gone was testing the
+engine's defaults.
+
+It is seductive for the same reason the other instances in §1.2 are: checking
+the request is cheap, it looks like coverage, and it passes. The same mistake in
+miniature, caught the same day: the first version of the kill test drove
+`docker stop` by hand, which tested Docker rather than `SubprocessLauncher` —
+and the launcher is what enforces the wall clock.
+
+**A second instance, in scoring rather than in infrastructure.** The structural
+test for `corpus_fingerprint`'s basis first produced its document with a fixture
+`ScoreReport`, so the only path from a record to the document was
+`corpus_fingerprint` itself. It could detect a field only by way of the digest
+it was meant to be checking; removing `population` or `anchor_line` from the
+basis left it green. It now scores real runs against the record. The rule caught
+the test written to enforce the rule, which is the most this section can ask of
+itself.
+
+### 1.4 An instrument cannot exceed its own source of truth
 
 The general form of a failure this project keeps meeting:
 
@@ -488,7 +531,7 @@ return:
    and used to discard a true finding. The claim is still not admitted, because
    §2.2 keeps the verdict side strict and an undecided basis is not a
    confirmation; what changed is that the cause is accurate and counted apart.
-   Which is §1.3's cause rule, reaching a verdict predicate.
+   Which is §1.4's cause rule, reaching a verdict predicate.
 
 **The semantic tier does not close indeterminacy, and that is not a gap in the
 tier.** Full def-use, control flow and a call graph over the pinned unit still
@@ -637,7 +680,7 @@ So the semantic tier stays unbuilt **on measurement rather than on cost**, which
 is the more durable answer: nothing in the corpus currently needs it that has
 been checked, and it could serve two records if it existed.
 
-The general form, and it is §1.3's rule pointed at this document rather than at
+The general form, and it is §1.4's rule pointed at this document rather than at
 a parser: **a capability column written from reasoning is a claim about whoever
 reasoned.** It had been steering the build for weeks, and half a day of fixtures
 moved five rows.
@@ -1490,7 +1533,7 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
     that says no.** An unreadable metadata block now has its own skip cause,
     separate from an out-of-scope report type. The counts had been complete and
     honest the whole time; every document had exactly one outcome and nothing
-    was hidden. They were still *wrong about the cause* -- §1.3's third rule,
+    was hidden. They were still *wrong about the cause* -- §1.4's third rule,
     whose first three instances were all harvest losses and which has since
     turned up in verification and in a detector's account of its own limits.
   - **A tolerance that is never exercised is not tolerance.** The date parser
@@ -1842,7 +1885,7 @@ where the declaration index can parse and name them unambiguously.
 Assembly-heavy contracts, generated code and heavily overloaded interfaces are
 thinner in it than they are in the world.
 
-This is §1.3's third instance, and the one where the answer is not a fix.
+This is §1.4's third instance, and the one where the answer is not a fix.
 Admitting what cannot be verified would give up the property the corpus exists
 to have. So the bias is measured instead: `verify_all` returns a
 `VerificationReport` carrying the rejection count per `CheckFailure` and per
@@ -1917,7 +1960,7 @@ labels the *report* supplied — rather than read off the provenance. A finished
 record cannot recover that distinction otherwise: once the index has filled a
 label in, nothing about the record tells it apart from one the report stated.
 
-This was found by turning §1.3's own question on code written after §1.3 was.
+This was found by turning §1.4's own question on code written after §1.3 was.
 Nothing protects new code from a rule in an old section except somebody pointing
 the question at it again.
 
@@ -1949,7 +1992,7 @@ claimed class fire at the derived span: a report saying "reentrancy in
 looks like independent confirmation, and it addresses precisely the residual
 trust named above.
 
-It is §1.3's first instance in a new costume. Corroboration as an admission
+It is §1.4's first instance in a new costume. Corroboration as an admission
 criterion caps derived-locator admission at predicate coverage, so derived
 records survive for the classes the predicates can see and die for the classes
 they cannot — the `Q` classes — reintroducing the era bias that derivation exists

@@ -82,12 +82,13 @@ def _record_basis(record: CorpusRecord) -> str:
             record.record_id,
             record.pin.source_id,
             record.pin.sha256 or "",
+            record.population.value,
             record.split.value,
             "" if record.locator_provenance is None else record.locator_provenance.value,
-            ",".join(sorted(label.value for label in record.asserted_labels)),
             ",".join(sorted(cls.value for cls in record.classes)),
             ",".join(sorted(cls.value for cls in record.negative_for)),
             "" if locator is None else f"{locator.file}#{locator.start_line}-{locator.end_line}",
+            "" if record.anchor_line is None else str(record.anchor_line),
         ]
     )
 
@@ -116,9 +117,43 @@ def corpus_fingerprint(records: Iterable[CorpusRecord]) -> dict[str, Any]:
     identity; `locator`, because it decides what counts as a match and at what
     strength; `classes`, because it is recall's denominator; `negative_for`,
     because it is what precision rests on; `split`, because a record moving
-    between splits leaves one corpus and joins another;
-    `locator_provenance` and `asserted_labels`, because they cap the strength a
-    match against that record can reach.
+    between splits leaves one corpus and joins another; `locator_provenance` and
+    `population`, because the score document publishes `corpus.by_population`;
+    `anchor_line`, because `scoring.py` reads it when deciding whether a
+    prediction's span contains the one line the report actually stated.
+
+    **Two named exceptions, and they are exceptions rather than instances of
+    the rule:** `record_id` and `split`. No published figure reads either. They
+    are here for *identity* -- they say which records a figure was measured
+    over, where every other field says what those records claim. A digest that
+    ignored them would call two corpora identical when one had renamed a record
+    or moved it between splits, and nothing else distinguishes those. Recorded
+    as exceptions, and listed as such in `test_scoring.py`, so that the next
+    person does not have to reconstruct why they are here and so that the
+    upper-bound test below does not have to be weakened to accommodate them.
+
+    Out, by the other half of the rule -- a field nothing computes over must not
+    invalidate a comparison: `notes`, `provenance`, `vulnerable_to`,
+    `derived_from`, and `asserted_labels`.
+
+    `asserted_labels` was in, with the justification that it caps the strength a
+    match can reach. **That was false**: nothing in `report/` reads it. It
+    reaches `CorpusRecord.independent_claims`, which no document publishes. It
+    was written into this list by hand in the same commit that stated the rule
+    about not writing the list by hand, and the test below is what caught it.
+
+    **The rule, rather than the list, is what prevents the next one of these:
+    the digest must cover every field a published figure can depend on, and the
+    way to know that set is to derive it from what the scorer reads.**
+    `test_wire.py` holds that as a test over every field of `CorpusRecord` --
+    mutate one, and either the digest moves or no published document does. A
+    field added to the model that a report comes to read fails there until it is
+    named here, which is the only version of this check that survives somebody
+    else's change.
+
+    Out, and for the reason the rule gives rather than by preference:
+    `vulnerable_to`, which nothing outside `records.py`'s own validators reads,
+    so no published figure depends on it. It joins the moment one does.
 
     Out, deliberately: `notes` and `provenance`. Editing a note changes no
     figure, and a digest that moved when somebody improved a note would group

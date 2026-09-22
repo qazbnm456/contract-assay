@@ -8,9 +8,10 @@ looks exactly like a figure that does not have the problem.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -33,6 +34,7 @@ from contract_assay.models import (
     CitationStatus,
     DeclaredLimit,
     DetectorRun,
+    DifficultyLevel,
     EvidenceTier,
     FailedCheck,
     Finding,
@@ -45,6 +47,7 @@ from contract_assay.models import (
     VerifiedFinding,
     VulnerabilityClass,
 )
+from contract_assay.report.leaderboard import score_submission
 from contract_assay.report.scoring import (
     MINIMUM_RECORDS_PER_CLASS,
     MatchStrength,
@@ -52,6 +55,7 @@ from contract_assay.report.scoring import (
     recheck_citations,
     score,
 )
+from contract_assay.report.wire import score_document
 
 pytestmark = pytest.mark.offline
 
@@ -1764,3 +1768,120 @@ class TestTheScorerTakesNobodysWordForACitation:
         report = score([self.a_submitted_run(_at(4, 7), span=(4, 7))], [a_record()], resolver())
         assert (report.refuted_citations, report.unchecked_citations) == (0, 0)
         assert only(report).predictions == 1
+
+
+class TestTheDigestCoversWhatAFigureDependsOn:
+    """The rule under `corpus_fingerprint`, held as a test rather than a list.
+
+        The digest must cover every field a published figure can depend on, and
+        the way to know that set is to derive it from what the scorer reads.
+
+    Two hand-written versions of that field list each missed a field the scorer
+    reads -- the first missed every claim a record makes, the second missed
+    `anchor_line`. So the method is what this replaces: mutate each field of a
+    record in turn and require that **either the digest moves or no published
+    document does.**
+
+    **It lives here, not in `test_wire.py`, and that is the point of it.** The
+    first attempt called `score_document` with a fixture `ScoreReport`, so the
+    only path from a record to the document was `corpus_fingerprint` itself --
+    the test could detect a field only by way of the digest it was meant to be
+    checking, and removing `population` or `anchor_line` from the basis left it
+    green. It was a test of what it had asked for rather than of what it got,
+    which is exactly the failure it exists to prevent. The document is now
+    produced by scoring real runs against the record.
+    """
+
+    def document_for(self, record: CorpusRecord) -> dict[str, Any]:
+        """A published score document, produced through the scorer.
+
+        The run's prediction spans 4-5 while the record spans 4-7, so a mutation
+        that moves the record out of reach, or that sets an `anchor_line`
+        outside 4-5, changes what matches and therefore changes the document.
+        A prediction identical to the record's span made the `anchor_line`
+        mutation invisible -- the anchor stayed inside the prediction whatever
+        it was set to, so the match never changed and the test passed with the
+        field removed from the basis.
+        """
+        report = score([a_run([(4, 5)])], [record], resolver())
+        submission = score_submission("alice", report, weights={DifficultyLevel.M: 1.0})
+        return score_document(submission, [record])
+
+    def elide_digest(self, document: dict[str, Any]) -> str:
+        copy = json.loads(json.dumps(document))
+        copy["corpus"]["digest"] = "<elided>"
+        return json.dumps(copy, sort_keys=True)
+
+    MUTATIONS: ClassVar[dict[str, dict[str, Any]]] = {
+        "record_id": {"record_id": "somewhere-else"},
+        "population": {"population": Population.EXPLOITED_INCIDENT},
+        "split": {"split": CorpusSplit.PRIVATE_HOLDOUT},
+        "classes": {"classes": [VulnerabilityClass.ACCESS_CONTROL]},
+        "negative_for": {"negative_for": [VulnerabilityClass.SLIPPAGE]},
+        "locator": {
+            "locator": Locator(
+                file=PATH, contract="Vault", function="withdraw", start_line=9, end_line=10
+            )
+        },
+        "locator_provenance": {"locator_provenance": LocatorProvenance.DERIVED},
+        "asserted_labels": {"asserted_labels": [LocatorLabel.FUNCTION]},
+        "anchor_line": {"anchor_line": 7},
+        "notes": {"notes": "an improved note"},
+        "vulnerable_to": {"vulnerable_to": [VulnerabilityClass.SLIPPAGE]},
+        "derived_from": {"derived_from": "a-parent-record"},
+    }
+
+    @pytest.mark.parametrize("field", sorted(MUTATIONS))
+    def test_either_the_digest_moves_or_the_document_does_not(self, field: str) -> None:
+        before = self.document_for(a_record())
+        after = self.document_for(a_record().model_copy(update=self.MUTATIONS[field]))
+        digest_moved = before["corpus"]["digest"] != after["corpus"]["digest"]
+        document_moved = self.elide_digest(before) != self.elide_digest(after)
+        assert digest_moved or not document_moved, (
+            f"changing {field!r} changed a published figure while the digest said the "
+            "corpus was unchanged, so `results.compare` would put the two totals in one "
+            "column. Either name the field in `_record_basis` or establish that nothing "
+            "published reads it."
+        )
+
+    # Fields in the basis for **identity** rather than for computation: they
+    # say which records a figure was measured over, not what those records
+    # claim, so no published figure reads them and the upper bound below would
+    # otherwise reject them. Each needs its reason stated in `_record_basis`;
+    # being listed here is what makes the exception a decision rather than an
+    # omission.
+    BASIS_EXCEPTIONS: ClassVar[set[str]] = {"record_id", "split"}
+
+    @pytest.mark.parametrize("field", sorted(MUTATIONS))
+    def test_a_field_no_figure_reads_does_not_move_the_digest(self, field: str) -> None:
+        """The other half of the rule, and the half a one-sided test cannot see.
+
+        A field nothing computes over must not invalidate a comparison: results
+        that differ only in it would be grouped apart for a reason that is not a
+        measurement. Without this, adding any field to the basis "to be safe"
+        passes -- and `asserted_labels` was added exactly that way, on a
+        justification that turned out to be false.
+        """
+        if field in self.BASIS_EXCEPTIONS:
+            pytest.skip(f"{field} is a named exception; see `_record_basis`")
+        before = self.document_for(a_record())
+        after = self.document_for(a_record().model_copy(update=self.MUTATIONS[field]))
+        if self.elide_digest(before) != self.elide_digest(after):
+            return  # a figure depends on it, so the other test governs
+        assert before["corpus"]["digest"] == after["corpus"]["digest"], (
+            f"{field!r} changes the digest but changes no published figure, so two "
+            "results differing only in it are grouped apart for a reason that is not a "
+            "measurement. Remove it from `_record_basis`, or name it in "
+            "`BASIS_EXCEPTIONS` with its reason."
+        )
+
+    def test_every_field_of_the_model_is_varied(self) -> None:
+        """So the table cannot fall behind the model in silence.
+
+        The exemptions are fields a record cannot vary without becoming a
+        different kind of record: `pin` has its own coverage, `provenance` is
+        required structure, and `negative_kind` is constrained by `negative_for`.
+        """
+        exempt = {"pin", "provenance", "negative_kind"}
+        missing = set(CorpusRecord.model_fields) - set(self.MUTATIONS) - exempt
+        assert not missing, f"CorpusRecord fields this table does not vary: {sorted(missing)}"
