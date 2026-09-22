@@ -48,27 +48,71 @@ from contract_assay.corpus.sources import code4rena_report
 
 REPORT = "https://code4rena.com/reports/{slug}"
 
-# Solidity-dominant reports published after the public corpus's newest contest.
-# `2024-08-basin` and `2024-08-phi` are Solidity too and are **not** here: the
-# corpus already pins them, and a holdout record must not share a source with
-# the split participants develop against.
+# Every published report after the public corpus's newest pinned contest, minus
+# the three the corpus already pins -- `2024-08-basin`, `2024-08-phi` and
+# `2024-08-chakra` -- because a holdout record must not share a source with the
+# split participants develop against.
+#
+# **Not filtered by language.** An earlier version kept only repositories that
+# GitHub's language count put at 60% Solidity or more, which was a threshold
+# picked rather than measured and cost real records: it excluded
+# `2024-10-ramses-exchange` at 52%, a Solidity DEX, and DEXes are where slippage
+# findings live. The filter was also redundant -- both adapters accept only
+# Solidity permalinks, so a Move or Rust contest yields nothing and costs one
+# fetch.
 CONTESTS: tuple[str, ...] = (
+    "2024-08-axelar-network",
+    "2024-08-superposition",
     "2024-08-wildcat",
+    "2024-09-fenix-finance",
+    "2024-09-kakarot",
     "2024-09-panoptic",
+    "2024-10-coded-estate",
     "2024-10-kleidi",
     "2024-10-loopfi",
+    "2024-10-ramses-exchange",
+    "2024-10-ronin",
+    "2024-10-superposition",
     "2024-11-ethena-labs",
+    "2024-11-mantra-dex",
+    "2024-11-nibiru",
     "2024-12-flex-perpetuals",
+    "2024-12-lambowin",
+    "2024-12-secondswap",
+    "2025-01-initia-move",
+    "2025-01-iq-ai",
+    "2025-01-liquid-ron",
+    "2025-01-next-generation",
+    "2025-01-pump-science",
+    "2025-02-initia-cosmos",
+    "2025-02-recall",
+    "2025-02-thorwallet",
+    "2025-03-nudgexyz",
     "2025-03-silo-finance",
+    "2025-04-bitvault",
+    "2025-04-kinetiq",
+    "2025-04-virtuals-protocol",
+    "2025-05-blackhole",
+    "2025-05-upside",
     "2025-07-lido-finance",
+    "2025-08-morpheus",
+    "2025-08-solana-foundation",
+    "2025-09-monad",
+    "2025-09-succinct",
     "2025-10-covenant",
     "2025-10-hybra-finance",
     "2025-10-sequence",
     "2025-11-brix-money",
     "2025-11-ekubo",
+    "2025-11-garden",
+    "2025-11-megapot",
     "2025-11-merkl",
     "2025-11-sukukfi",
+    "2025-11-swafe",
+    "2026-01-olas",
+    "2026-02-jupiter-lend",
     "2026-03-intuition",
+    "2026-04-k2",
     "2026-04-monetrix",
 )
 
