@@ -1,32 +1,32 @@
 {
- "record_id": "2024-07-karak-denial-of-service-73911101",
- "population": "audit_review",
- "split": "public",
- "pin": {
-  "path": "src/entities/SlasherLib.sol",
-  "sha256": "45a2088eb399c95a6ba52bff72c2b77c4f7a37a4f951db3a0c1ca4aa9820e65f",
-  "kind": "commit",
-  "repo_url": "https://github.com/code-423n4/2024-07-karak",
-  "commit": "f5e52fdcb4c20c4318d532a9f08f7876e9afb321"
- },
- "locator": {
-  "file": "src/entities/SlasherLib.sol",
-  "contract": "SlasherLib",
-  "function": "finalizeSlashing",
-  "start_line": 126,
-  "end_line": 151
- },
- "classes": [
-  "denial_of_service"
- ],
- "negative_for": [],
- "vulnerable_to": [],
- "locator_provenance": "quoted",
- "asserted_labels": [],
- "provenance": {
-  "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2024-07-karak-findings/issues/7",
-  "reported_severity": "medium"
- },
- "notes": ""
+  "record_id": "2024-07-karak-denial-of-service-73911101",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/Vault.sol",
+    "sha256": "b1e475a396df93a437a89d71be945a16ba505e2edb62df5c79f8f960af6eebe4",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-07-karak",
+    "commit": "f5e52fdcb4c20c4318d532a9f08f7876e9afb321"
+  },
+  "locator": {
+    "file": "src/Vault.sol",
+    "contract": "Vault",
+    "function": "slashAssets",
+    "start_line": 193,
+    "end_line": 205
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-07-karak-findings/issues/7",
+    "reported_severity": "medium"
+  },
+  "notes": "Flagged by tools/audit_locators.py because the pinned file is not the one the report's own `# Lines of code` names, then read against the source at the record's pinned commit. Adjudicated by reading: the record pinned SlasherLib.finalizeSlashing 126-151, which the report names in prose but none of its three nominated files contains. The report's Lines of code is Core.sol#L220, Vault.sol#L193 and SlashingHandler.sol#L52; Vault.slashAssets (193-205) takes Math.min(totalAssets(), totalAssetsToSlash) at 198 and hands it to handleSlashing at 202 with no guard, which is where the revert that blocks the batch originates. Medium confidence: the batch loop in finalizeSlashing, with no per-vault isolation, is a defensible second reading, but the report never proposes tolerating a failed vault, and the containing function is where it points."
 }

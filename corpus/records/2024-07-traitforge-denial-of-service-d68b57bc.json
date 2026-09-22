@@ -1,32 +1,32 @@
 {
- "record_id": "2024-07-traitforge-denial-of-service-d68b57bc",
- "population": "audit_review",
- "split": "public",
- "pin": {
-  "path": "contracts/TraitForgeNft/TraitForgeNft.sol",
-  "sha256": "0a4b89ec6efbf1cd18c8a77700b85e877c75ddbe5c5ece8e72720bdc04496de1",
-  "kind": "commit",
-  "repo_url": "https://github.com/code-423n4/2024-07-traitforge",
-  "commit": "279b2887e3d38bc219a05d332cbcb0655b2dc644"
- },
- "locator": {
-  "file": "contracts/TraitForgeNft/TraitForgeNft.sol",
-  "contract": "TraitForgeNft",
-  "function": "_beforeTokenTransfer",
-  "start_line": 367,
-  "end_line": 395
- },
- "classes": [
-  "denial_of_service"
- ],
- "negative_for": [],
- "vulnerable_to": [],
- "locator_provenance": "quoted",
- "asserted_labels": [],
- "provenance": {
-  "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2024-07-traitforge-findings/issues/172",
-  "reported_severity": "medium"
- },
- "notes": ""
+  "record_id": "2024-07-traitforge-denial-of-service-d68b57bc",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/TraitForgeNft/TraitForgeNft.sol",
+    "sha256": "0a4b89ec6efbf1cd18c8a77700b85e877c75ddbe5c5ece8e72720bdc04496de1",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-07-traitforge",
+    "commit": "279b2887e3d38bc219a05d332cbcb0655b2dc644"
+  },
+  "locator": {
+    "file": "contracts/TraitForgeNft/TraitForgeNft.sol",
+    "contract": "TraitForgeNft",
+    "function": "_beforeTokenTransfer",
+    "start_line": 367,
+    "end_line": 395
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-07-traitforge-findings/issues/172",
+    "reported_severity": "medium"
+  },
+  "notes": "Flagged by tools/audit_locators.py because the pinned file is not the one the report's own `# Lines of code` names, then read against the source at the record's pinned commit. Adjudicated by reading, and kept where it is: the report nominates NukeFund.sol, where nuke() requires the token's age to reach minimumDaysHeld and reverts. That check is correct on its own; what makes it revert is TraitForgeNft._beforeTokenTransfer (377-379) resetting lastTokenTransferredTimestamp on every transfer, which the pin names. NukeFund is where the denial is observed, not where it is caused."
 }

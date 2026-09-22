@@ -1,32 +1,32 @@
 {
- "record_id": "smart-contracts-denial-of-service-6821551b",
- "population": "audit_review",
- "split": "public",
- "pin": {
-  "path": "src/policies/Stop.sol",
-  "sha256": "f07b604714ae060544d1d5a0954d6520dd5bba49a6a7e239aca77734baf553e9",
-  "kind": "commit",
-  "repo_url": "https://github.com/re-nft/smart-contracts",
-  "commit": "3ddd32455a849c3c6dc3c3aad7a33a6c9b44c291"
- },
- "locator": {
-  "file": "src/policies/Stop.sol",
-  "contract": "Stop",
-  "function": "_removeHooks",
-  "start_line": 210,
-  "end_line": 212
- },
- "classes": [
-  "denial_of_service"
- ],
- "negative_for": [],
- "vulnerable_to": [],
- "locator_provenance": "stated",
- "asserted_labels": [],
- "provenance": {
-  "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2024-01-renft-findings/issues/501",
-  "reported_severity": "medium"
- },
- "notes": ""
+  "record_id": "smart-contracts-denial-of-service-6821551b",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/policies/Stop.sol",
+    "sha256": "f07b604714ae060544d1d5a0954d6520dd5bba49a6a7e239aca77734baf553e9",
+    "kind": "commit",
+    "repo_url": "https://github.com/re-nft/smart-contracts",
+    "commit": "3ddd32455a849c3c6dc3c3aad7a33a6c9b44c291"
+  },
+  "locator": {
+    "file": "src/policies/Stop.sol",
+    "contract": "Stop",
+    "function": "_removeHooks",
+    "start_line": 210,
+    "end_line": 212
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-01-renft-findings/issues/501",
+    "reported_severity": "medium"
+  },
+  "notes": "Flagged by tools/audit_locators.py because the pinned file is not the one the report's own `# Lines of code` names, then read against the source at the record's pinned commit. Adjudicated by reading, and kept where it is: the report's Lines of code is Guard.sol#L377, the body of updateHookStatus, an admin setter doing what it says. Its body then quotes and links Stop.sol#L210-L212, the check in _removeHooks that reverts with Shared_DisabledHook once the onStop bit is cleared, reached from stopRent and stopRentBatch -- the revert that strands rented assets, and the location its mitigation targets."
 }

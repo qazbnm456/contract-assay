@@ -54,3 +54,39 @@ class TestWhichPathsAFindingCites:
         under, everywhere = audit.cited_paths(f"text {BLOB}#L3")
         assert under == []
         assert everywhere == ["repo/src/Stake.sol"]
+
+
+class TestClassifying:
+    """The outcome order, pinned because it was wrong once."""
+
+    def test_a_pin_the_finding_nominated_is_a_match(self) -> None:
+        assert audit.classify("a.sol", "", ["a.sol"], ["a.sol"]) == (
+            "the pin is what the finding nominated",
+            None,
+        )
+
+    def test_a_repinned_record_counts_as_a_match_not_as_dismissed(self) -> None:
+        """The regression. A record this audit repinned carries the marker and
+        now matches; checking the marker first counted it as dismissed."""
+        notes = f"{audit.ADJUDICATED} ... repinned"
+        outcome, flag = audit.classify("a.sol", notes, ["a.sol"], ["a.sol"])
+        assert outcome == "the pin is what the finding nominated"
+        assert flag is None
+
+    def test_an_adjudicated_mismatch_is_not_flagged_again(self) -> None:
+        notes = f"{audit.ADJUDICATED} ... kept where it is"
+        outcome, flag = audit.classify("a.sol", notes, ["b.sol"], ["b.sol"])
+        assert outcome == "mismatch already adjudicated; reasoning in notes"
+        assert flag is None
+
+    def test_an_unadjudicated_mismatch_is_flagged(self) -> None:
+        assert audit.classify("a.sol", "", ["b.sol"], ["b.sol"])[1] == "never linked"
+        assert audit.classify("a.sol", "", ["b.sol"], ["b.sol", "a.sol"])[1] == (
+            "linked elsewhere in the body"
+        )
+
+    def test_other_notes_do_not_dismiss_a_mismatch(self) -> None:
+        """Only this audit's marker counts; a record's unrelated notes do not
+        silence it."""
+        _, flag = audit.classify("a.sol", "Adjudicated by reading.", ["b.sol"], ["b.sol"])
+        assert flag == "never linked"

@@ -1,33 +1,32 @@
 {
- "record_id": "2024-07-loopfi-denial-of-service-470032eb",
- "population": "audit_review",
- "split": "public",
- "pin": {
-  "path": "src/proxy/PositionAction.sol",
-  "sha256": "69aa4bdca778cf40cdf41a87ed2c792077ca38d791896ffec714998f9a61a74a",
-  "resolved_from": "the commit the report's own citations of this repository name most often",
-  "kind": "commit",
-  "repo_url": "https://github.com/code-423n4/2024-07-loopfi",
-  "commit": "57871f64bdea450c1f04c9a53dc1a78223719164"
- },
- "locator": {
-  "file": "src/proxy/PositionAction.sol",
-  "contract": "PositionAction",
-  "function": "onFlashLoan",
-  "start_line": 416,
-  "end_line": 422
- },
- "classes": [
-  "denial_of_service"
- ],
- "negative_for": [],
- "vulnerable_to": [],
- "locator_provenance": "stated",
- "asserted_labels": [],
- "provenance": {
-  "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2024-07-loopfi-findings/issues/245",
-  "reported_severity": "medium"
- },
- "notes": ""
+  "record_id": "2024-07-loopfi-denial-of-service-470032eb",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/proxy/PositionAction4626.sol",
+    "sha256": "aaf8156cca2e3c29e7aa5b2b59dfaa686d131ceabe3226e80c493384801010f5",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-07-loopfi",
+    "commit": "57871f64bdea450c1f04c9a53dc1a78223719164"
+  },
+  "locator": {
+    "file": "src/proxy/PositionAction4626.sol",
+    "contract": "PositionAction4626",
+    "function": "_onIncreaseLever",
+    "start_line": 128,
+    "end_line": 129
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2024-07-loopfi-findings/issues/245",
+    "reported_severity": "medium"
+  },
+  "notes": "Flagged by tools/audit_locators.py because the pinned file is not the one the report's own `# Lines of code` names, then read against the source at the record's pinned commit. Adjudicated by reading: the record pinned PositionAction.onFlashLoan 416-422, the base contract's correct code, which the report links inline as the place the second deposit happens; it is where the revert surfaces and is untouched by the fix. The report's Lines of code is PositionAction4626.sol#L129, the override _onIncreaseLever that approves and deposits into the CDP vault itself (128-129) before returning, so the base contract deposits again and the call reverts. A detector citing the base contract would be citing the consumer of the hook, not the override that breaks its contract."
 }

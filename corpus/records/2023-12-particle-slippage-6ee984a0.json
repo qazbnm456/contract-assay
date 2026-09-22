@@ -1,32 +1,32 @@
 {
- "record_id": "2023-12-particle-slippage-6ee984a0",
- "population": "audit_review",
- "split": "public",
- "pin": {
-  "path": "contracts/libraries/Base.sol",
-  "sha256": "ca4d3550b1b4c829eb5c7b327710647760dda179a3f7f8b9eab53dd11335044f",
-  "kind": "commit",
-  "repo_url": "https://github.com/code-423n4/2023-12-particle",
-  "commit": "a3af40839b24aa13f5764d4f84933dbfa8bc8134"
- },
- "locator": {
-  "file": "contracts/libraries/Base.sol",
-  "contract": "Base",
-  "function": "getOwedFee",
-  "start_line": 354,
-  "end_line": 371
- },
- "classes": [
-  "slippage"
- ],
- "negative_for": [],
- "vulnerable_to": [],
- "locator_provenance": "quoted",
- "asserted_labels": [],
- "provenance": {
-  "platform": "code4rena",
-  "report_url": "https://github.com/code-423n4/2023-12-particle-findings/issues/2",
-  "reported_severity": "medium"
- },
- "notes": ""
+  "record_id": "2023-12-particle-slippage-6ee984a0",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/libraries/LiquidityPosition.sol",
+    "sha256": "e2c34b4422db88e28ab769dd181a13761cfdec7c314ec946e028d19dd273344d",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2023-12-particle",
+    "commit": "a3af40839b24aa13f5764d4f84933dbfa8bc8134"
+  },
+  "locator": {
+    "file": "contracts/libraries/LiquidityPosition.sol",
+    "contract": "LiquidityPosition",
+    "function": "increaseLiquidity",
+    "start_line": 178,
+    "end_line": 204
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://github.com/code-423n4/2023-12-particle-findings/issues/2",
+    "reported_severity": "medium"
+  },
+  "notes": "Flagged by tools/audit_locators.py because the pinned file is not the one the report's own `# Lines of code` names, then read against the source at the record's pinned commit. Adjudicated by reading: the record pinned Base.getOwedFee (Base.sol 354-371), internal pure fee-accrual arithmetic with no slippage parameter, no external call and no call edge to or from the defect, and the report never names it. The report cites LiquidityPosition.sol#L195 and #L258: the NonfungiblePositionManager calls built with `amount0Min: 0, amount1Min: 0` at 195-196 in increaseLiquidity(address,address,uint256,uint256,uint256) and at 258-259 in decreaseLiquidity(uint256,uint128). Repinned to the first, which the report lists first; the second is the same defect and is named here rather than recorded twice."
 }

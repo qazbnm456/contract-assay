@@ -60,6 +60,14 @@ _BLOB = re.compile(
 # query in the path made four records whose report cites their own file read as
 # "never linked" -- a false accusation of exactly the defect this tool exists to
 # find, which is the costly direction for it to be wrong in.
+ADJUDICATED = "Flagged by tools/audit_locators.py"
+"""The phrase a record's `notes` opens with once this audit's flag has been read.
+
+A marker in prose rather than a field, because the decision it records is a
+curator's reasoning and the reasoning is what a later reader needs; a boolean
+would say the flag was dismissed and not why.
+"""
+
 _HEADING = re.compile(r"^#+\s*Lines of code\s*$", re.M | re.I)
 _C4 = re.compile(r"code4rena\.com/(?:reports|audits)/(?P<slug>[\w-]+)")
 _REPORT = "https://code4rena.com/reports/{slug}"
@@ -179,6 +187,30 @@ def c4_body(url: str, cache: Path) -> str | None:
     return None
 
 
+def classify(
+    pinned: str, notes: str, under: list[str], everywhere: list[str]
+) -> tuple[str, str | None]:
+    """One record's outcome, and the flag to print if it has to be read.
+
+    Pure, so the ordering can be tested -- it was wrong once. The adjudication
+    check sits after the match tests, not before: a record repinned *by* this
+    audit carries the marker in its notes and now matches, and checking the
+    marker first counted it as a dismissed mismatch instead of a match.
+    """
+    if pinned in under:
+        return "the pin is what the finding nominated", None
+    if not under and pinned in everywhere:
+        return "no nomination; the pin is linked somewhere", None
+    if ADJUDICATED in notes:
+        # Read, decided, and the reasoning is on the record. Flagging it on
+        # every run turns a converging audit into a standing list a curator
+        # learns to skip -- and the next genuine mismatch is skipped with it.
+        return "mismatch already adjudicated; reasoning in notes", None
+    if pinned in everywhere:
+        return "linked, but not what the finding nominated", "linked elsewhere in the body"
+    return "the report never links this file", "never linked"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--records", type=Path, required=True)
@@ -202,16 +234,10 @@ def main(argv: list[str] | None = None) -> int:
         if not everywhere:
             outcomes["the report links no source"] += 1
             continue
-        if pin.path in under:
-            outcomes["the pin is what the finding nominated"] += 1
-        elif not under and pin.path in everywhere:
-            outcomes["no nomination; the pin is linked somewhere"] += 1
-        elif pin.path in everywhere:
-            outcomes["linked, but not what the finding nominated"] += 1
-            mismatched.append((record.record_id, pin.path, "linked elsewhere in the body", under))
-        else:
-            outcomes["the report never links this file"] += 1
-            mismatched.append((record.record_id, pin.path, "never linked", under or everywhere))
+        outcome, flag = classify(pin.path, record.notes or "", under, everywhere)
+        outcomes[outcome] += 1
+        if flag is not None:
+            mismatched.append((record.record_id, pin.path, flag, under or everywhere))
 
     print(f"{len(records)} record(s)\n")
     for outcome, count in outcomes.most_common():
