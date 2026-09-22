@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from contract_assay.models import DifficultyLevel, VulnerabilityClass
 from contract_assay.report.scoring import MatchStrength, ScoreReport
@@ -57,6 +58,30 @@ def _f1(precision: float | None, recall: float | None) -> float | None:
     return 2 * precision * recall / (precision + recall)
 
 
+class Measure(StrEnum):
+    """Which per-class figure a board ranks on. Announced by the exercise.
+
+    **Two measures, and they are not interchangeable**, which is why the choice
+    is named in the document rather than inferred from which figures happen to
+    exist.
+
+    - `F1` is the harmonic mean of precision and recall. Precision is
+      all-or-nothing -- one unjudged prediction and the class has none -- so an
+      F1 board cannot exist while adjudication is outstanding.
+    - `BPREF` ignores unjudged predictions instead of counting them either way,
+      so it exists during judging. It is a ranking measure over judged
+      predictions, not a precision, and a board built on it answers a different
+      question from an F1 board.
+
+    A round ranked on one is **not comparable** with a round ranked on the
+    other, and the boards say so rather than leaving a reader to notice that
+    one column is called something else.
+    """
+
+    F1 = "f1"
+    BPREF = "bpref"
+
+
 @dataclass(frozen=True, slots=True)
 class SubmissionScore:
     """What one submission earned, and what could not be computed for it."""
@@ -65,6 +90,14 @@ class SubmissionScore:
     report: ScoreReport
     at_least: MatchStrength
     weights: Mapping[DifficultyLevel, float]
+    measure: Measure = Measure.F1
+    """Which figure this submission is ranked on. See `Measure`.
+
+    Defaults to `F1`, which is the measure this benchmark has always ranked on
+    and the one with the stronger claim: it accounts for every prediction, and
+    a board that has it does not need a weaker one.
+    """
+
     class_weights: Mapping[VulnerabilityClass, float] | None = None
     """A weight per class, when the exercise measured one, overriding `weights`.
 
@@ -96,9 +129,17 @@ class SubmissionScore:
             return None
         return _f1(score.precision(self.at_least), score.recall(self.at_least))
 
+    def bpref(self, cls: VulnerabilityClass) -> float | None:
+        score = self.report.by_class.get(cls)
+        return None if score is None else score.bpref(self.at_least)
+
+    def figure(self, cls: VulnerabilityClass) -> float | None:
+        """The figure this submission is ranked on, whichever that is."""
+        return self.bpref(cls) if self.measure is Measure.BPREF else self.f1(cls)
+
     @property
     def unavailable(self) -> Mapping[VulnerabilityClass, str]:
-        """Why each class without an F1 does not have one.
+        """Why each class without the ranking figure does not have one.
 
         A reason per class rather than one aggregate absence, because the two
         causes call for different work: an unjudged pool is adjudication owed,
@@ -106,12 +147,29 @@ class SubmissionScore:
         """
         out: dict[VulnerabilityClass, str] = {}
         for cls, score in sorted(self.report.by_class.items()):
-            if self.f1(cls) is not None:
+            if self.figure(cls) is not None:
                 continue
             if not score.records:
                 out[cls] = "the corpus holds no positive record of this class"
             elif not score.predictions:
                 out[cls] = "the submission claimed nothing in this class"
+            elif self.measure is Measure.BPREF:
+                # bpref's two absences are different people's work, and saying
+                # "not yet adjudicated" for the first would send the round to do
+                # judging that would not produce the figure.
+                records, non_relevant = score.bpref_basis(self.at_least)
+                if score.ranked_judgements is None:
+                    out[cls] = (
+                        "the submission declared no ordering, and bpref needs a score "
+                        "on every finding of the class"
+                    )
+                elif not non_relevant:
+                    out[cls] = (
+                        "nothing here was judged not-an-instance, so bpref would be "
+                        "recall under another name"
+                    )
+                else:
+                    out[cls] = f"bpref is unavailable over R={records}, N={non_relevant}"
             elif not score.pool_is_fully_judged:
                 out[cls] = (
                     f"{score.unjudged_predictions} of its predictions are not yet "
@@ -140,8 +198,14 @@ class SubmissionScore:
             return self.class_weights.get(cls)
         return self.weights.get(cls.level)
 
-    def weighted_f1(self, over: Sequence[VulnerabilityClass] | None = None) -> float | None:
-        """Difficulty-weighted mean F1, or nothing if any requested class lacks one.
+    def weighted_figure(self, over: Sequence[VulnerabilityClass] | None = None) -> float | None:
+        """Difficulty-weighted mean of the ranking figure, or nothing if a class lacks it.
+
+        Named for what it holds rather than for F1, because it holds whichever
+        measure the round announced. It was `weighted_f1`, and a mean of bprefs
+        returned from a method with that name is the same error this project
+        refuses one level down, where a bpref must never sit in a field called
+        precision.
 
         `over` is the class set the exercise ranks on, and defaults to every
         class the report covers. Requiring all of them is the point: a mean over
@@ -155,7 +219,7 @@ class SubmissionScore:
         numerator = 0.0
         denominator = 0.0
         for cls in wanted:
-            value = self.f1(cls)
+            value = self.figure(cls)
             if value is None:
                 return None
             weight = self._weight_for(cls)
@@ -166,8 +230,8 @@ class SubmissionScore:
         return numerator / denominator if denominator else None
 
     def total(self, over: Sequence[VulnerabilityClass] | None = None) -> float | None:
-        """The one number, when it exists: weighted F1 times completion rate."""
-        weighted = self.weighted_f1(over)
+        """The one number, when it exists: the weighted figure times completion rate."""
+        weighted = self.weighted_figure(over)
         rate = self.completion_rate
         if weighted is None or rate is None:
             return None
@@ -266,6 +330,7 @@ def score_submission(
     weights: Mapping[DifficultyLevel, float],
     at_least: MatchStrength = MatchStrength.FUNCTION,
     class_weights: Mapping[VulnerabilityClass, float] | None = None,
+    measure: Measure = Measure.F1,
 ) -> SubmissionScore:
     """Wrap one submission's score report for ranking."""
     return SubmissionScore(
@@ -274,6 +339,7 @@ def score_submission(
         at_least=at_least,
         weights=dict(weights),
         class_weights=None if class_weights is None else dict(class_weights),
+        measure=measure,
     )
 
 
@@ -377,6 +443,25 @@ def leaderboard(
         reason = (
             f"these submissions were scored under different per-unit prediction caps ({stated}), "
             "so their precisions are over different pools"
+        )
+        return Leaderboard(
+            unrankable=tuple(sorted(scores, key=lambda s: s.submission_id)),
+            incomparable={score.submission_id: reason for score in scores},
+            over=wanted,
+            at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
+        )
+
+    measures = {score.measure for score in scores}
+    if len(measures) > 1:
+        # The same argument again, on the figure itself rather than on a
+        # parameter of it. An F1 and a bpref are not two precisions of the same
+        # thing: one accounts for every prediction and the other ignores the
+        # unjudged, so a column holding both would be ranking submissions on
+        # which measure their round happened to announce.
+        reason = (
+            "these submissions were ranked on different measures ("
+            + ", ".join(sorted(m.value for m in measures))
+            + "), which answer different questions over different denominators"
         )
         return Leaderboard(
             unrankable=tuple(sorted(scores, key=lambda s: s.submission_id)),

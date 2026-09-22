@@ -37,7 +37,7 @@ from typing import Any
 from contract_assay import __version__
 from contract_assay.corpus.records import CorpusRecord
 from contract_assay.models import ModelRole, VulnerabilityClass
-from contract_assay.report.leaderboard import Leaderboard, SubmissionScore
+from contract_assay.report.leaderboard import Leaderboard, Measure, SubmissionScore
 from contract_assay.report.scoring import (
     MINIMUM_JUDGED_FOR_BPREF,
     ClassScore,
@@ -469,6 +469,16 @@ def score_document(
     }
 
 
+def _measure_of(board: Leaderboard) -> Measure:
+    """The measure the rows agree on. `leaderboard` refuses a board that mixes
+    them, so any row answers -- and an empty board reports the default."""
+    for row in board.ranked:
+        return row.score.measure
+    for score in board.unrankable:
+        return score.measure
+    return Measure.F1
+
+
 def leaderboard_document(
     board: Leaderboard,
     records: Sequence[CorpusRecord],
@@ -495,6 +505,11 @@ def leaderboard_document(
             (row.score.report.predictions_per_unit for row in board.ranked), None
         ),
         "over_classes": [cls.value for cls in board.over],
+        # Which figure the rows were ranked on. Named at the document level
+        # because the per-class key below is named after it, and a reader who
+        # looked for `f1_by_class` on a bpref board should find the answer here
+        # rather than conclude the figures are missing.
+        "ranked_on": _measure_of(board).value,
         "corpus": corpus_fingerprint(records),
         "baseline": baseline,
         "statement": board.statement(),
@@ -505,8 +520,11 @@ def leaderboard_document(
                 "total": row.total,
                 "completion_rate": row.score.completion_rate,
                 "models": _models(row.score.report),
-                "f1_by_class": {
-                    cls.value: _figure(row.score.f1(cls), row.score.unavailable.get(cls))
+                # **Keyed by the measure, not by F1.** Putting a bpref under
+                # `f1_by_class` is the same error as putting one in a field
+                # named precision: everyone who reads it compares it with F1s.
+                f"{row.score.measure.value}_by_class": {
+                    cls.value: _figure(row.score.figure(cls), row.score.unavailable.get(cls))
                     for cls in board.over
                 },
                 "report": (documents or {}).get(row.score.submission_id),

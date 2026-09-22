@@ -32,7 +32,7 @@ from contract_assay.models import (
     DifficultyLevel,
     VulnerabilityClass,
 )
-from contract_assay.report.leaderboard import leaderboard, score_submission
+from contract_assay.report.leaderboard import Measure, leaderboard, score_submission
 from contract_assay.report.scoring import score
 from contract_assay.report.wire import leaderboard_document, score_document
 from contract_assay.results import compare, load_pointers
@@ -610,6 +610,14 @@ def rank_command(
             "the reports share is required.",
         ),
     ] = None,
+    rank_on: Annotated[
+        str,
+        typer.Option(
+            "--rank-on",
+            help="Which per-class figure to rank on: f1, or bpref. An f1 board needs "
+            "every prediction adjudicated; a bpref board does not.",
+        ),
+    ] = Measure.F1.value,
     out: Annotated[
         Path | None, typer.Option("--out", help="Write the leaderboard here instead of stdout.")
     ] = None,
@@ -631,6 +639,14 @@ def rank_command(
     """
     held = _records_from(records)
     resolve = _local_resolver(source_root)
+    try:
+        measure = Measure(rank_on)
+    except ValueError:
+        typer.secho(
+            f"--rank-on takes one of {', '.join(m.value for m in Measure)}, not {rank_on!r}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2) from None
     weighting = _weights_from(weights)
     scores = []
     documents: dict[str, dict[str, object]] = {}
@@ -644,7 +660,7 @@ def rank_command(
             typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)
         report = score(_runs_from(path), held, resolve, predictions_per_unit=predictions_per_unit)
-        submission = score_submission(submission_id, report, weights=weighting)
+        submission = score_submission(submission_id, report, weights=weighting, measure=measure)
         scores.append(submission)
         documents[submission_id] = score_document(submission, held)
     # Stated, not inferred. Omitted, `leaderboard` requires every class the

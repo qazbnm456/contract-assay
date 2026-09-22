@@ -15,9 +15,14 @@ from contract_assay.models import (
     ModelUse,
     VulnerabilityClass,
 )
-from contract_assay.report.leaderboard import leaderboard, score_submission
-from contract_assay.report.scoring import ClassScore, MatchStrength, ScoreReport
-from contract_assay.report.wire import score_document
+from contract_assay.report.leaderboard import Measure, leaderboard, score_submission
+from contract_assay.report.scoring import (
+    ClassScore,
+    JudgedPrediction,
+    MatchStrength,
+    ScoreReport,
+)
+from contract_assay.report.wire import leaderboard_document, score_document
 
 pytestmark = pytest.mark.offline
 
@@ -101,7 +106,7 @@ class TestNoAggregateOverAPartialClassSet:
             a_class_score(),
             a_class_score(cls=VulnerabilityClass.REENTRANCY, judged=1),
         )
-        assert got.weighted_f1() is None
+        assert got.weighted_figure() is None
         assert got.total() is None
 
     def test_an_explicit_class_set_is_honoured(self) -> None:
@@ -110,7 +115,7 @@ class TestNoAggregateOverAPartialClassSet:
             a_class_score(),
             a_class_score(cls=VulnerabilityClass.REENTRANCY, judged=1),
         )
-        assert got.weighted_f1([CLS]) == pytest.approx(0.5)
+        assert got.weighted_figure([CLS]) == pytest.approx(0.5)
 
     def test_weighting_follows_difficulty(self) -> None:
         # The levels are read rather than assumed: hard-coding them here would
@@ -119,7 +124,7 @@ class TestNoAggregateOverAPartialClassSet:
         got = a_submission("alice", a_class_score(), a_class_score(cls=deep, hits=4))
         near, far = WEIGHTS[CLS.level], WEIGHTS[deep.level]
         assert near != far, "the two classes must differ in level for this to test anything"
-        assert got.weighted_f1() == pytest.approx((near * 0.5 + far * 1.0) / (near + far))
+        assert got.weighted_figure() == pytest.approx((near * 0.5 + far * 1.0) / (near + far))
 
 
 class TestNoBuiltInWeights:
@@ -129,7 +134,7 @@ class TestNoBuiltInWeights:
         got = score_submission(
             "alice", a_report(a_class_score()), weights={}, at_least=MatchStrength.EXACT
         )
-        assert got.weighted_f1() is None
+        assert got.weighted_figure() is None
         assert "no weight was supplied" in got.statement()
 
 
@@ -419,7 +424,7 @@ class TestAClassWeightingIsTheGeneralCase:
             weights=WEIGHTS,
             class_weights={CLS: 1.0, VulnerabilityClass.ORACLE_INTEGRITY: 9.0},
         )
-        assert by_level.weighted_f1() != pytest.approx(by_class.weighted_f1())
+        assert by_level.weighted_figure() != pytest.approx(by_class.weighted_figure())
 
     def test_leaning_on_the_harder_class_lowers_a_submission_that_misses_it(self) -> None:
         """The property the whole field is for: a class few can do is worth
@@ -432,7 +437,7 @@ class TestAClassWeightingIsTheGeneralCase:
         leaning = score_submission(
             "alice", report, weights=WEIGHTS, class_weights={CLS: 1.0, weak.cls: 9.0}
         )
-        even_total, leaning_total = even.weighted_f1(), leaning.weighted_f1()
+        even_total, leaning_total = even.weighted_figure(), leaning.weighted_figure()
         assert even_total is not None and leaning_total is not None
         assert leaning_total < even_total
 
@@ -443,7 +448,7 @@ class TestAClassWeightingIsTheGeneralCase:
         partial = score_submission(
             "alice", a_report(weak, strong), weights=WEIGHTS, class_weights={CLS: 1.0}
         )
-        assert partial.weighted_f1() is None
+        assert partial.weighted_figure() is None
         assert partial.total() is None
 
     def test_the_gap_is_named_by_class_in_the_document(self) -> None:
@@ -475,3 +480,104 @@ class TestAClassWeightingIsTheGeneralCase:
         another empty one and call two level-weighted results class-weighted."""
         document = score_document(a_submission(), [])
         assert document["class_weights"] is None
+
+
+class TestARoundChoosesWhatItRanksOn:
+    """F1 accounts for every prediction; bpref exists while judging is not done.
+
+    The trade is real and it is the round's to make, so the choice is carried
+    on the submission and named in the document rather than inferred from which
+    figures happen to exist -- a board that ranked on whatever was available
+    would be ranking on how much adjudication it had finished.
+    """
+
+    def ordered(self, *, judged_non_relevant: int = 2) -> ClassScore:
+        """A class with a declared ordering, so bpref exists and F1 does not."""
+        judged = [
+            JudgedPrediction(score=0.9 - i / 10, strength=MatchStrength.EXACT) for i in range(2)
+        ]
+        judged += [
+            JudgedPrediction(score=0.5 - i / 10, strength=None) for i in range(judged_non_relevant)
+        ]
+        return ClassScore(
+            cls=CLS,
+            records=4,
+            # More predictions than judged ones, so precision has no figure.
+            predictions=10,
+            judged_predictions=len(judged),
+            by_strength={MatchStrength.EXACT: 2},
+            judged_by_strength={MatchStrength.EXACT: 2},
+            ranked_judgements=tuple(judged),
+            measured_runs=4,
+        )
+
+    def test_an_f1_board_cannot_rank_an_unadjudicated_submission(self) -> None:
+        score = self.ordered()
+        submission = score_submission("alice", a_report(score), weights=WEIGHTS)
+        assert submission.f1(CLS) is None
+        assert submission.total() is None
+        assert "not yet" in submission.unavailable[CLS]
+
+    def test_a_bpref_board_ranks_the_same_submission(self) -> None:
+        """The property the option exists for."""
+        score = self.ordered()
+        submission = score_submission(
+            "alice", a_report(score), weights=WEIGHTS, measure=Measure.BPREF
+        )
+        assert submission.figure(CLS) is not None
+        assert submission.total() is not None
+
+    def test_the_figure_is_the_bpref_and_not_the_f1(self) -> None:
+        score = self.ordered()
+        submission = score_submission(
+            "alice", a_report(score), weights=WEIGHTS, measure=Measure.BPREF
+        )
+        assert submission.figure(CLS) == pytest.approx(score.bpref(MatchStrength.FUNCTION))
+
+    def test_a_bpref_board_says_whose_work_is_missing(self) -> None:
+        """An unordered submission is the submission's gap, not the round's, and
+        telling the round to adjudicate would be sending it to do work that
+        would not produce the figure."""
+        unordered = ClassScore(
+            cls=CLS, records=4, predictions=4, judged_predictions=2, measured_runs=4
+        )
+        submission = score_submission(
+            "alice", a_report(unordered), weights=WEIGHTS, measure=Measure.BPREF
+        )
+        assert "declared no ordering" in submission.unavailable[CLS]
+
+    def test_two_measures_in_one_board_are_refused(self) -> None:
+        """The same refusal as two prediction caps, on the figure itself.
+
+        An F1 and a bpref are not two precisions of one thing, so a column
+        holding both would rank submissions on which measure their round
+        announced.
+        """
+        score = self.ordered()
+        board = leaderboard(
+            [
+                score_submission("alice", a_report(score), weights=WEIGHTS),
+                score_submission("bob", a_report(score), weights=WEIGHTS, measure=Measure.BPREF),
+            ]
+        )
+        assert board.ranked == ()
+        assert "different measures" in board.incomparable["alice"]
+
+    def test_the_board_names_the_measure_and_keys_the_column_by_it(self) -> None:
+        """Putting a bpref under `f1_by_class` is the error this project refuses
+        one level down, where a bpref must never sit in a field called
+        precision."""
+        score = self.ordered()
+        board = leaderboard(
+            [score_submission("alice", a_report(score), weights=WEIGHTS, measure=Measure.BPREF)]
+        )
+        document = leaderboard_document(board, [])
+        assert document["ranked_on"] == "bpref"
+        assert "bpref_by_class" in document["ranked"][0]
+        assert "f1_by_class" not in document["ranked"][0]
+
+    def test_an_f1_board_still_keys_its_column_f1(self) -> None:
+        board = leaderboard([a_submission()])
+        document = leaderboard_document(board, [])
+        assert document["ranked_on"] == "f1"
+        assert "f1_by_class" in document["ranked"][0]
