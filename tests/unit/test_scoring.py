@@ -1797,7 +1797,7 @@ class TestTheDigestCoversWhatAFigureDependsOn:
     produced by scoring real runs against the record.
     """
 
-    def document_for(self, record: CorpusRecord) -> dict[str, Any]:
+    def document_for(self, record: CorpusRecord, *extra: CorpusRecord) -> dict[str, Any]:
         """A published score document, produced through the scorer.
 
         The run's prediction spans 4-5 while the record spans 4-7, so a mutation
@@ -1808,9 +1808,10 @@ class TestTheDigestCoversWhatAFigureDependsOn:
         it was set to, so the match never changed and the test passed with the
         field removed from the basis.
         """
-        report = score([a_run([(4, 5)])], [record], resolver())
+        records = [record, *extra]
+        report = score([a_run([(4, 5)])], records, resolver())
         submission = score_submission("alice", report, weights={DifficultyLevel.M: 1.0})
-        return score_document(submission, [record])
+        return score_document(submission, records)
 
     def elide_digest(self, document: dict[str, Any]) -> str:
         copy = json.loads(json.dumps(document))
@@ -1883,10 +1884,44 @@ class TestTheDigestCoversWhatAFigureDependsOn:
     def test_every_field_of_the_model_is_varied(self) -> None:
         """So the table cannot fall behind the model in silence.
 
-        The exemptions are fields a record cannot vary without becoming a
-        different kind of record: `pin` has its own coverage, `provenance` is
-        required structure, and `negative_kind` is constrained by `negative_for`.
+        The exemptions are fields a **positive** record cannot vary without
+        becoming a different kind of record, because this table mutates one:
+        `pin` has its own coverage, `provenance` is required structure, and
+        `negative_kind` cannot vary on its own at all.
+
+        The stated ground used to be that it "is constrained by
+        `negative_for`", which is true and is not the question -- the kind
+        independently decides `licenses_completeness`, so it decides precision.
+        What makes the exemption sound is the test below: every other kind
+        requires a field this record does not have, and two of those fields are
+        in the basis themselves.
         """
         exempt = {"pin", "provenance", "negative_kind"}
         missing = set(CorpusRecord.model_fields) - set(self.MUTATIONS) - exempt
         assert not missing, f"CorpusRecord fields this table does not vary: {sorted(missing)}"
+
+    def test_no_negative_kind_can_vary_on_its_own(self) -> None:
+        """What actually makes the exemption above sound, rather than its wording.
+
+        `negative_kind` decides `licenses_completeness`, so a kind change moves
+        precision -- which looks like a hole in the basis, and is not one:
+        every other kind requires a field the record does not have, and
+        `pin.commit` and `locator` are themselves in the basis. So a kind
+        change that alters what is licensed cannot reach a published figure
+        without moving the digest through something else.
+
+        Asserted because the reasoning is the load-bearing part and it was
+        wrong in the docstring for a while. It was also **measured wrongly
+        once**: `model_copy` does not re-validate, so copying a
+        `confirmed_clean` into a `post_fix` produces a record that could never
+        be loaded from disk -- and the identical digests that record showed were
+        a property of an impossible corpus.
+        """
+        clean = a_negative()
+        body = clean.model_dump(mode="json", exclude_none=True)
+        assert clean.negative_kind is NegativeKind.CONFIRMED_CLEAN
+        for kind in NegativeKind:
+            if kind is clean.negative_kind:
+                continue
+            with pytest.raises(ValidationError):
+                CorpusRecord.model_validate({**body, "negative_kind": kind.value})

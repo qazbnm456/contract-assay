@@ -269,9 +269,35 @@ class NegativeKind(StrEnum):
     """
 
     CONFIRMED_CLEAN = "confirmed_clean"
-    """Manually verified as carrying no instance of this class.
+    """Verified as carrying no instance of this class, by enumeration.
 
-    A human asserts completeness directly and records how they confirmed it.
+    **The axis is enumeration, not who did it.** This said "a human asserts
+    completeness directly" and the emphasis was in the wrong place: a reader
+    who scans a file and sees nothing has not established a universal claim,
+    and that is equally true of a person and of a model. What licenses this
+    record is that every declaration in the file was *enumerated* and each one
+    decided -- and the enumeration half is deterministic, because
+    `declarations` produces it from the source with its line ranges.
+
+    So the record must say **what established it**, and `notes` is where. Name
+    the reader, what it was given, and what it was held to: a person and the
+    definition they read against, or a model, its budget, and how many
+    independent readings agreed. A figure resting on this kind is only as
+    strong as what that sentence says, and nothing downstream can recover it
+    from the kind alone.
+
+    Two constraints that are not about the reader's species:
+
+    - **The reader must not be the thing being measured.** A negative
+      established by the round's baseline model scores that model against its
+      own blind spots: a defect it cannot see becomes "clean", so its own miss
+      goes unpunished while another submission finding it is charged a false
+      positive. That is the worst available direction, and it is the one
+      circularity to actually avoid.
+    - **A single reading is weak whoever produced it.** Absence of evidence is
+      what this benchmark measures, so one pass that reports nothing is a
+      measurement of the reader. Independent readings that disagree are not a
+      failed negative -- they are a candidate positive the corpus is missing.
     """
 
     ADJUDICATED = "adjudicated"
