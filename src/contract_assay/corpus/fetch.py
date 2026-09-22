@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import ssl
 import sys
 import threading
 import unicodedata
@@ -60,6 +61,7 @@ __all__ = [
     "fetch_records",
     "raw_url",
     "revisioned_name",
+    "ssl_context",
     "urllib_fetcher",
 ]
 
@@ -194,6 +196,51 @@ def raw_url(pin: CommitPin) -> str:
     return f"https://raw.githubusercontent.com/{owner_repo}/{pin.commit}/{pin.path}"
 
 
+def ssl_context() -> ssl.SSLContext | None:
+    """The TLS context every outward call in this project should use.
+
+    **Public, and shared, because the alternative kept being rebuilt wrongly.**
+    This logic used to live inside `urllib_fetcher`'s body, where only a GET of
+    a pin could reach it, and the consequence is measured rather than feared:
+    three separate callers have since written their own request and every one
+    failed with `CERTIFICATE_VERIFY_FAILED` on the first run -- a harvest tool,
+    then a second harvest tool, then a JSON-RPC caller whose author wrote a
+    paragraph explaining why it would not happen to a POST.
+
+    It fails that way because Python's `urllib` does not consult the system
+    trust store on macOS, so a default context fails to verify **every** host,
+    and the failure arrives as one `URLError` per call -- which reads as "the
+    host is unreachable" rather than "this machine has no CA bundle wired in".
+    The first reading sends someone to check their network; the second is the
+    fix. Measured twice at 141 of 141 pins failing from both documented
+    installs on a machine without `certifi`, which is why it is a declared
+    dependency.
+
+    A caller that needs something `Fetcher` cannot express -- a POST, a header,
+    a JSON-RPC body -- should take this and write its own request. What it must
+    not do is build its own context.
+
+    The import stays guarded so that an installed-but-broken `certifi` degrades
+    to the system store instead of aborting, and the fallback says so where the
+    operator reads it.
+    """
+    context: ssl.SSLContext | None = None
+    try:
+        import certifi
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:  # pragma: no cover - a declared dependency
+        # Named where the operator will look, because the bare `URLError` this
+        # produces per call is the one the docstring above says is misread.
+        print(
+            "certifi is not importable, so TLS verification falls back to this "
+            "machine's system store. On macOS that store is not wired to Python and "
+            "every pin will fail to verify: `pip install certifi` is the fix.",
+            file=sys.stderr,
+        )
+    return context
+
+
 def urllib_fetcher(timeout: float = 30.0) -> Fetcher:
     """The default fetcher. Separated so a caller can supply a cache or a mirror.
 
@@ -211,24 +258,9 @@ def urllib_fetcher(timeout: float = 30.0) -> Fetcher:
     degrades to the system store instead of aborting a fetch, and the fallback
     says so where the operator reads it.
     """
-    import ssl
     import urllib.request
 
-    context: ssl.SSLContext | None = None
-    try:
-        import certifi
-
-        context = ssl.create_default_context(cafile=certifi.where())
-    except ImportError:  # pragma: no cover - a declared dependency
-        # Named where the operator will look, because the bare `URLError` this
-        # produces per file is the one the docstring above says is misread.
-        print(
-            "certifi is not importable, so TLS verification falls back to this "
-            "machine's system store. On macOS that store is not wired to Python and "
-            "every pin will fail to verify: `pip install certifi` is the fix.",
-            file=sys.stderr,
-        )
-        context = None
+    context = ssl_context()
 
     def fetch(url: str) -> bytes:
         request = urllib.request.Request(url, headers={"User-Agent": "contract-assay"})

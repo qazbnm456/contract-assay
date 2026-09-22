@@ -10,13 +10,20 @@ the wrong source.
 from __future__ import annotations
 
 import hashlib
+import ssl
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from contract_assay.corpus.fetch import checkout_file, fetch_records, raw_url, urllib_fetcher
+from contract_assay.corpus.fetch import (
+    checkout_file,
+    fetch_records,
+    raw_url,
+    ssl_context,
+    urllib_fetcher,
+)
 from contract_assay.corpus.records import (
     AddressPin,
     CommitPin,
@@ -594,3 +601,49 @@ class TestTheDefaultFetcherTrustsTheRightStore:
         assert any(
             requirement.startswith("certifi") for requirement in declared["project"]["dependencies"]
         )
+
+
+class TestTheTlsContextIsBuiltInOnePlace:
+    """A structural invariant, because three callers got it wrong separately.
+
+    Each one wrote its own request, none built a context, and each failed with
+    `CERTIFICATE_VERIFY_FAILED` on its first run. The third did it under a
+    docstring asserting that a POST would not hit the problem. Asserting that
+    `ssl_context` exists would not have caught any of them -- what catches them
+    is asserting that nobody else builds one.
+    """
+
+    def test_only_fetch_builds_an_ssl_context(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        builders = sorted(
+            path.relative_to(root).as_posix()
+            for directory in ("src", "tools")
+            for path in (root / directory).rglob("*.py")
+            if "create_default_context" in path.read_text(encoding="utf-8")
+        )
+        assert builders == ["src/contract_assay/corpus/fetch.py"], (
+            "a module other than `fetch` builds its own TLS context. Call "
+            "`fetch.ssl_context()` instead: it is public for this reason, and a "
+            "second copy is how this failed three times."
+        )
+
+    def test_every_urlopen_outside_fetch_passes_a_context(self) -> None:
+        """The other half. Importing `ssl_context` and not passing it fails the
+        same way as never importing it, and the import alone looks correct."""
+        root = Path(__file__).resolve().parents[2]
+        offenders: list[str] = []
+        for directory in ("src", "tools"):
+            for path in (root / directory).rglob("*.py"):
+                if path.name == "fetch.py":
+                    continue
+                text = path.read_text(encoding="utf-8")
+                for line in text.splitlines():
+                    if "urlopen(" in line and "context=" not in line:
+                        offenders.append(f"{path.relative_to(root).as_posix()}: {line.strip()}")
+        assert not offenders, offenders
+
+    def test_the_context_verifies(self) -> None:
+        context = ssl_context()
+        assert context is not None
+        assert context.verify_mode is ssl.CERT_REQUIRED
+        assert context.check_hostname is True
