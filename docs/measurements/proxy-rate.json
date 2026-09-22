@@ -1,0 +1,26 @@
+{
+  "archive": "https://github.com/SunWeb3Sec/DeFiHackLabs",
+  "archive_commit": "cb457812eacd4dad09bbd1b62a1fe2fcff1a8669",
+  "artefacts": 874,
+  "code_size_bytes": {
+    "largest": 24563,
+    "median": 10895,
+    "smallest": 45
+  },
+  "delegatecall_upper_bound": 142,
+  "distinct_chain_victim_pairs": 475,
+  "examined": 475,
+  "minimal_stub_lower_bound": 16,
+  "no_endpoint_for": {
+    "fantom": 1,
+    "sei": 1
+  },
+  "outcomes": {
+    "callcode only: not a proxy's shape": 32,
+    "delegatecall: may be a proxy": 142,
+    "no code at this address now": 4,
+    "no delegatecall: not a proxy": 297
+  },
+  "read_at": "latest",
+  "readable_code": 471
+}

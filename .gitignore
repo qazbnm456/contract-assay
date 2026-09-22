@@ -32,3 +32,12 @@ runs/
 # how the module that pins the published figures went missing from its own
 # commit.
 /checkout/
+
+# Tool caches. Anchored, for the reason `/checkout/` is: an unanchored rule
+# here would also ignore a directory of the same name under `tests/`.
+# The measurements in `docs/measurements/` are tracked; the thousands of cached
+# HTTP and JSON-RPC responses they were computed from are not.
+/.harvest-cache/
+/.c4-cache/
+/.incident-cache/
+/.proxy-cache/

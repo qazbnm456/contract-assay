@@ -1412,12 +1412,50 @@ proxy status read from the chain (an implementation storage slot, or a
 `delegatecall` in the runtime code) rather than from a verification repository,
 and a victim identified from the exploit's call targets rather than from a name.
 
-**Half of that is now available.** The victim is read from the archive's own
-header annotation for 492 of 874 artefacts, which is a better instrument than
-either name-matching or call targets and cost nothing to obtain — the annotation
-was in the file the whole time. What remains is proxy status from the chain over
-those 492, and the rate it produces still decides only engineering effort:
-`AddressPin` already settles which address the pin names.
+**Both halves are now available, and the measurement has been taken.** The
+victim comes from the archive's own header annotation for 492 of 874 artefacts —
+a better instrument than either name-matching or call targets, and it cost
+nothing, because the annotation was in the file the whole time. Proxy status
+comes from the runtime bytecode, where a `DELEGATECALL` cannot be hidden by not
+implementing a standard. `docs/measurements/proxy-rate.json` records the result
+and `tools/measure_proxy_rate.py` reproduces it.
+
+Read over 471 exploited contracts whose code could be read, on ten chains:
+
+- **At least 16 are proxies.** 16 contracts are 45 bytes long, every one of them
+  delegating. A contract that size cannot hold business logic; it can only
+  forward. This is a lower bound rather than a threshold — the length is read
+  off the distribution each run, not remembered, and the distribution offers no
+  cutoff to pick in any case: every contract below 1200 bytes delegates, with
+  no gap anywhere in between.
+- **At most 142 are proxies, 30%.** A `DELEGATECALL` is an upper bound, because
+  a contract that links a library, dispatches to facets or batches calls has one
+  too.
+- **At least 329 are conclusively not, 70%.** No `DELEGATECALL` means no proxy.
+  There is no other instruction that runs another contract's code against your
+  own storage. 32 of those use only `CALLCODE`, which keeps the caller's address
+  but not its storage and so is not the shape a pin has to worry about.
+
+Two conclusions, of different weight.
+
+**"No proxies at all" was an instrument artefact, as suspected.** There are at
+least 16 and possibly 142, and the instrument that reported zero was asking a
+verification repository which reports a *recognised* standard.
+
+**The hypothesis that a proxy upgrade is the dominant shape is refuted, not
+merely untested.** At most 30% of exploited contracts can be proxies, so a
+proxy upgrade cannot be the dominant form of a "fixed" state. That was the
+hypothesis under which one enum member would have been enough, and it is gone:
+the four situations really are four, and the approximation stays refused.
+
+What the range does **not** settle is the effort question `AddressPin` poses — a
+few per cent is resolved by hand, a third needs automated resolution in the
+harvest path — because 3% to 30% straddles exactly that line. Tightening it
+means reading an implementation storage slot, which needs a `keccak256` to
+derive the slot from its name and is otherwise unblocked: the slot reads fine at
+`latest`, and only the implementation that stood behind a proxy *at the fork
+point* needs archive state, which public endpoints refuse. That is a measurement
+worth taking before the harvest path is written and not before the resolver is.
 
 ### 6.3 Pipeline
 
