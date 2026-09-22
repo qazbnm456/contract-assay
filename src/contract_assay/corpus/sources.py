@@ -48,17 +48,22 @@ finding's severity. Putting the real one first makes it the one that matches.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from html import unescape
 
 from contract_assay.corpus.adapters.markdown import permalinks
 from contract_assay.corpus.harvest import RawReport
 
 __all__ = [
     "JudgingSection",
+    "code4rena_report",
     "dominant_commits",
+    "rsc_payload",
+    "rsc_text_blob",
     "sections_of_sherlock_judging",
     "split_sherlock_judging",
 ]
@@ -217,3 +222,134 @@ def dominant_commits(texts: Sequence[str] | Iterator[str]) -> Mapping[str, str]:
         for repo_url, tally in counted.items()
         if tally
     }
+
+
+# --------------------------------------------------------------------------
+# Code4rena: the report is a web page now
+# --------------------------------------------------------------------------
+#
+# `Code4renaAdapter` takes one whole contest report as markdown and reads five
+# things out of it: `# High Risk Findings (n)` for the platform's own count,
+# `## [[H-01] Title](url)` per finding, `### Lines of code` where present,
+# fenced blocks for `quoted_source`, and every GitHub permalink for
+# `reviewed_repository`, `contest_snapshot` and `dominant_commit`.
+#
+# Code4rena's last `-findings` repository was published 2024-11-29. Since then a
+# report exists only at `code4rena.com/reports/<slug>`, as pre-rendered HTML
+# inside a Next.js RSC payload -- and the markdown files that *are* in recent
+# contest repositories are pre-contest automated scan reports handed to
+# participants, which say "Not all issues are guaranteed to be correct" and
+# carry a contract and a function but no line numbers.
+#
+# The HTML is that same markdown skeleton rendered by one generator, heading for
+# heading. So this converts it back rather than parsing HTML as a new format:
+# the adapter keeps deciding what a Code4rena finding is, and its external count
+# check keeps working, which is the thing that would be lost by writing a second
+# reader.
+
+_RSC_BLOB = re.compile(r"(?P<id>\w+):T(?P<length>[0-9a-f]+),")
+_PUSH = re.compile(r'self\.__next_f\.push\(\[1,\s*(?P<chunk>".*?")\]\)', re.S)
+_SELF_ANCHOR = re.compile(r'<a href="#[^"]*"[^>]*>.*?</a>', re.S)
+_HEADING_TAG = re.compile(r"<h(?P<level>[1-6])\b[^>]*>(?P<inner>.*?)</h\1>", re.S)
+_LINK = re.compile(r'<a\b[^>]*?href="(?P<href>[^"]*)"[^>]*>(?P<text>.*?)</a>', re.S)
+_CODE_BLOCK = re.compile(
+    r"<pre\b[^>]*>(?:\s*<code\b[^>]*>)?(?P<code>.*?)(?:</code>\s*)?</pre>", re.S
+)
+_TAG = re.compile(r"<[^>]+>")
+_BLANKS = re.compile(r"\n{3,}")
+
+
+def rsc_payload(page: str) -> str:
+    """The concatenated RSC stream of a Next.js page.
+
+    The chunks are JSON string literals inside `self.__next_f.push`, so they are
+    decoded with `json.loads` rather than by unescaping by hand: the stream
+    carries `\\u003c` for every `<`, and a hand-written unescape that missed one
+    escape form would silently truncate a report.
+    """
+    return "".join(json.loads(match.group("chunk")) for match in _PUSH.finditer(page))
+
+
+def rsc_text_blob(payload: str, *, containing: str) -> str | None:
+    """The longest `id:T<hexlen>,` text blob that contains a marker.
+
+    Length-prefixed rather than delimited, so the blob is sliced by its declared
+    length instead of by looking for where it ends. A page carries the report
+    twice -- server render and client payload -- and both blobs are identical,
+    so the longest match is the report either way and picking one is not a
+    choice about content.
+    """
+    found: list[str] = []
+    for match in _RSC_BLOB.finditer(payload):
+        body = payload[match.end() : match.end() + int(match.group("length"), 16)]
+        if containing in body:
+            found.append(body)
+    return max(found, key=len) if found else None
+
+
+def code4rena_report(page: str) -> str | None:
+    """A published Code4rena report page, back as the markdown its adapter reads.
+
+    `None` when the page holds no report: a 404, a redirect, or a contest whose
+    report is not published. Returning empty markdown instead would let the
+    adapter report zero findings for a contest that has some, which is a loss
+    with no symptom.
+
+    Deliberately not a general HTML-to-markdown converter. It handles the tags
+    this one generator emits -- headings with a self-anchor, links, `<pre><code>`
+    with syntax-highlighting spans, paragraphs and lists -- and flattens
+    everything else to its text. Anything it does not handle degrades to text
+    rather than to nothing, which keeps a permalink readable by `permalinks()`
+    even inside a construct this has never seen.
+    """
+    payload = rsc_payload(page) or page
+    report = rsc_text_blob(payload, containing="Risk Findings")
+    if report is None or "<h1" not in report:
+        return None
+    return _as_markdown(report)
+
+
+def _as_markdown(html: str) -> str:
+    """The generator's HTML, as the markdown it was rendered from."""
+
+    def heading(match: re.Match[str]) -> str:
+        hashes = "#" * int(match.group("level"))
+        # The self-anchor is a permalink widget, not content: it wraps an svg and
+        # points at the heading's own id. Left in, its `href="#m-01-..."` becomes
+        # a markdown link and the finding heading no longer matches.
+        inner = _SELF_ANCHOR.sub("", match.group("inner"))
+        link = _LINK.search(inner)
+        if link is not None:
+            text = _text(link.group("text"))
+            return f"\n\n{hashes} [{text}]({link.group('href')})\n\n"
+        return f"\n\n{hashes} {_text(inner)}\n\n"
+
+    def code(match: re.Match[str]) -> str:
+        body = _TAG.sub("", match.group("code"))
+        return "\n\n```\n" + unescape(body).strip("\n") + "\n```\n\n"
+
+    def link(match: re.Match[str]) -> str:
+        return f"[{_text(match.group('text'))}]({match.group('href')})"
+
+    text = _CODE_BLOCK.sub(code, html)
+    text = _HEADING_TAG.sub(heading, text)
+    text = _LINK.sub(link, text)
+    for tag, replacement in (
+        ("</p>", "\n\n"),
+        ("<br>", "\n"),
+        ("<br/>", "\n"),
+        ("<br />", "\n"),
+        ("</li>", "\n"),
+        ("</tr>", "\n"),
+        ("</ul>", "\n"),
+        ("</ol>", "\n"),
+        ("</blockquote>", "\n\n"),
+    ):
+        text = text.replace(tag, replacement)
+    text = _TAG.sub("", text)
+    return _BLANKS.sub("\n\n", unescape(text)).strip() + "\n"
+
+
+def _text(inner: str) -> str:
+    """One heading's or link's text, with its markup flattened."""
+    return " ".join(unescape(_TAG.sub("", inner)).split())

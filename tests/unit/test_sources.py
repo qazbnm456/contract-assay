@@ -16,12 +16,19 @@ by whichever came first in the text.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from contract_assay.corpus.adapters.code4rena import Code4renaEnumerator
+from contract_assay.corpus.adapters.markdown import contest_snapshot, reviewed_repository
 from contract_assay.corpus.adapters.sherlock import SherlockAdapter, SherlockEnumerator
 from contract_assay.corpus.harvest import harvest
 from contract_assay.corpus.sources import (
+    code4rena_report,
     dominant_commits,
+    rsc_payload,
+    rsc_text_blob,
     sections_of_sherlock_judging,
     split_sherlock_judging,
 )
@@ -265,3 +272,182 @@ class TestDominantCommits:
         assert dominant_commits(
             [f"{SOURCE}/blob/{SHA}/a.sol#L1", f"{SOURCE}/blob/{SHA}/b.sol#L2"]
         ) == {SOURCE: SHA}
+
+
+# --------------------------------------------------------------------------
+# Code4rena: the report is a web page now
+# --------------------------------------------------------------------------
+
+C4 = "https://github.com/code-423n4/2025-03-silo-finance"
+SUBMISSION = "https://code4rena.com/audits/2025-03-silo-finance/submissions/F-17"
+
+
+def a_page(report_html: str, *, duplicate: bool = True) -> str:
+    """A Next.js page carrying `report_html` as a length-prefixed RSC blob.
+
+    Duplicated by default because a real page carries the report twice -- once
+    for the server render and once in the client payload -- and a converter that
+    concatenated both would emit every finding twice.
+    """
+    blob = f"16:T{len(report_html):x},{report_html}"
+    stream = blob + (f"1c:T{len(report_html):x},{report_html}" if duplicate else "")
+    return (
+        f"<html><body><script>self.__next_f.push([1,{json.dumps(stream)}])</script></body></html>"
+    )
+
+
+def a_report(*, findings: int = 1, declared: int | None = None) -> str:
+    heading = declared if declared is not None else findings
+    body = "".join(
+        f'<h2 id="m-{n:02d}-x" style="position:relative;">'
+        f'<a href="#m-{n:02d}-x" aria-label="permalink" class="anchor before">'
+        f'<svg aria-hidden="true"><path d="M4 9h1v1H4"></path></svg></a>'
+        f'<a href="{SUBMISSION}">[M-{n:02d}] A finding about maxDeposit</a></h2>\n'
+        f'<p><em>Submitted by <a href="{SUBMISSION}">warden</a></em></p>\n'
+        f'<p><a href="{C4}/blob/{SHA}/silo-vaults/contracts/SiloVault.sol#L136-L150">'
+        f"SiloVault.sol#L136-L150</a></p>\n"
+        f"<p>The supply function ignores maxDeposit &amp; reverts.</p>\n"
+        f'<pre><code class="language-solidity">'
+        f'<span class="grvsc-line"><span class="grvsc-source">'
+        f"function supply(uint256 assets) internal {{</span></span>\n"
+        f"</code></pre>\n"
+        for n in range(1, findings + 1)
+    )
+    return (
+        '<h1 id="overview" style="position:relative;">Overview</h1>\n'
+        f'<h1 id="medium">Medium Risk Findings ({heading})</h1>\n{body}'
+    )
+
+
+class TestTheCode4renaPage:
+    def test_the_adapter_reads_what_the_converter_produces(self) -> None:
+        markdown = code4rena_report(a_page(a_report(findings=2)))
+        assert markdown is not None
+        enumerator = Code4renaEnumerator()
+        assert enumerator.declared_total(markdown) == 2
+        found = enumerator.findings(markdown)
+        assert len(found) == 2
+        assert found[0].title == "A finding about maxDeposit"
+        assert found[0].issue_url == SUBMISSION
+
+    def test_the_report_is_not_emitted_twice(self) -> None:
+        """A real page carries it twice; two of every finding would double a corpus."""
+        once = code4rena_report(a_page(a_report(findings=3), duplicate=False))
+        twice = code4rena_report(a_page(a_report(findings=3), duplicate=True))
+        assert once == twice
+        assert twice is not None
+        assert twice.count("[M-01]") == 1
+
+    def test_the_headings_self_anchor_is_dropped(self) -> None:
+        """Left in, its `href="#m-01-x"` becomes the finding's link."""
+        markdown = code4rena_report(a_page(a_report()))
+        assert markdown is not None
+        assert "#m-01-x" not in markdown
+        assert f"## [[M-01] A finding about maxDeposit]({SUBMISSION})" in markdown
+
+    def test_the_permalink_survives_for_the_helpers_that_need_it(self) -> None:
+        markdown = code4rena_report(a_page(a_report()))
+        assert markdown is not None
+        assert reviewed_repository(markdown) == C4
+        assert contest_snapshot(markdown) == (C4, SHA)
+
+    def test_a_code_block_becomes_a_fence_with_its_spans_flattened(self) -> None:
+        markdown = code4rena_report(a_page(a_report()))
+        assert markdown is not None
+        assert "```" in markdown
+        assert "grvsc" not in markdown
+        assert "function supply(uint256 assets) internal {" in markdown
+
+    def test_a_code_blocks_content_is_not_reinterpreted_as_markup(self) -> None:
+        """The reason the fence's content is flattened before the link pass.
+
+        The outer tag strip would remove the tag either way, so this looked
+        redundant until a code block held an `<a>`: without the inner flatten,
+        the link pass rewrites it as a markdown link *inside* a fence, and a
+        fenced block is meant to be source rather than markup.
+        """
+        report = (
+            '<h1 id="m">Medium Risk Findings (1)</h1>\n'
+            '<h2 id="m-01-x"><a href="' + SUBMISSION + '">[M-01] A finding</a></h2>\n'
+            "<pre><code>// see "
+            '<a href="https://example.invalid/doc">the docs</a>'
+            " for why\nuint256 x = 1;</code></pre>\n"
+        )
+        markdown = code4rena_report(a_page(report, duplicate=False))
+        assert markdown is not None
+        fence = markdown.split("```")[1]
+        assert "the docs" in fence
+        assert "](https://example.invalid/doc)" not in fence
+        assert "<a href" not in fence
+
+    def test_entities_are_unescaped(self) -> None:
+        markdown = code4rena_report(a_page(a_report()))
+        assert markdown is not None
+        assert "maxDeposit & reverts" in markdown
+        assert "&amp;" not in markdown
+
+    def test_a_page_with_no_report_is_none_rather_than_empty(self) -> None:
+        """Empty markdown would report zero findings for a contest that has some."""
+        assert code4rena_report("<html><body>not a report</body></html>") is None
+        assert code4rena_report(a_page("<p>no findings here</p>")) is None
+
+    def test_a_blob_without_a_heading_is_not_a_report(self) -> None:
+        """The table of contents mentions `Risk Findings` too, and is not the report."""
+        toc = '<ul><li><a href="#medium-risk-findings-6">Medium Risk Findings (6)</a></li></ul>'
+        assert code4rena_report(a_page(toc)) is None
+
+    def test_the_longest_matching_blob_wins_over_the_contents(self) -> None:
+        toc = '<ul><li><a href="#m">Medium Risk Findings (1)</a></li></ul>'
+        page = a_page(toc + a_report(), duplicate=False)
+        markdown = code4rena_report(page)
+        assert markdown is not None
+        assert Code4renaEnumerator().declared_total(markdown) == 1
+
+    def test_a_declared_count_that_disagrees_is_reported_not_corrected(self) -> None:
+        """Observed: `2025-11-merkl` declares 4 medium findings and publishes 3.
+
+        The converter does not reconcile them. The adapter's external count is
+        the check that catches a conversion dropping a finding, and silently
+        making the two agree would disable it.
+        """
+        markdown = code4rena_report(a_page(a_report(findings=3, declared=4)))
+        assert markdown is not None
+        enumerator = Code4renaEnumerator()
+        assert enumerator.declared_total(markdown) == 4
+        assert len(enumerator.findings(markdown)) == 3
+
+    def test_a_blob_is_sliced_by_its_declared_length(self) -> None:
+        """Not by looking for where it ends, which nothing in the stream marks."""
+        report = a_report()
+        trailing = "TRAILING STREAM DATA"
+        page = (
+            "<script>"
+            + f"self.__next_f.push([1,{json.dumps(f'16:T{len(report):x},{report}{trailing}')}])"
+            + "</script>"
+        )
+        markdown = code4rena_report(page)
+        assert markdown is not None
+        assert trailing not in markdown
+
+    def test_the_payload_is_json_decoded_rather_than_unescaped_by_hand(self) -> None:
+        """The stream carries `\\u003c` for every `<`."""
+        report = a_report()
+        escaped = json.dumps(f"16:T{len(report):x},{report}").replace("<", "\\u003c")
+        page = f"<script>self.__next_f.push([1,{escaped}])</script>"
+        markdown = code4rena_report(page)
+        assert markdown is not None
+        assert "[M-01]" in markdown
+
+
+class TestTheRscHelpers:
+    def test_a_page_with_no_push_calls_falls_back_to_its_own_text(self) -> None:
+        """A server-rendered page with the report in the HTML still converts."""
+        assert rsc_payload("<html>nothing</html>") == ""
+        report = a_report()
+        plain = f"<html>16:T{len(report):x},{report}</html>"
+        markdown = code4rena_report(plain)
+        assert markdown is not None
+        assert "[M-01]" in markdown
+
+    def test_no_blob_containing_the_marker_is_none(self) -> None:
+        assert rsc_text_blob("14:T5,hello", containing="absent") is None
