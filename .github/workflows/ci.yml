@@ -41,6 +41,14 @@ jobs:
       - name: Types
         run: mypy
 
+      - name: Types (tools)
+        # `tools/` is outside the package and so outside `packages = [...]`, but
+        # it is what built the corpus: `harvest_sherlock.py` reuses one loop
+        # variable for `SkipCause` and `NormalizeCause`, which mypy caught and
+        # which would have printed one stage's losses under the other's name.
+        # A script that produced records is not a scratch file.
+        run: mypy tools
+
       - name: Tests
         run: pytest -m offline --cov=contract_assay --cov-report=term-missing --cov-fail-under=90
       - name: Published result pointers
