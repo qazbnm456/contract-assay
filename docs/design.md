@@ -187,6 +187,26 @@ false and is acted on.
   here attributed a predicate's silence to one shape when two conditions were
   independently sufficient (§7.3). Same rule, arriving from the instrument's
   side rather than the input's.
+- **A field's own docstring.** `ClassScore.judged_predictions` is reached three
+  ways — a file-wide negative covering the prediction's file, an adjudication
+  overlapping the prediction's own lines, or a match against a positive record
+  — and three docstrings described only the first, while
+  `unjudged_predictions` said the count was large "because the corpus holds no
+  negative records". That names the expensive lever as the only one. The
+  construction two hundred lines away had the cheap one and its comment said so.
+
+That last instance is worth its own paragraph, because **documentation is the
+surface where nothing downstream will ever contradict a wrong cause.** A wrong
+number eventually meets a measurement that disagrees with it; a wrong
+explanation meets only readers. Its cost here was measured rather than
+imagined: reviewing that file, this project's own author read those three
+one-liners and concluded twice that precision was not pooled, before reading
+the call site and finding that it is — and a supervising session reading the
+same documents reached the same wrong picture and spent a page of reasoning
+recommending a construction that was already built. The check that catches it
+is the same one as everywhere else, applied to prose: **for each claim, the
+line of code that makes it true.** A docstring that describes a mechanism the
+reader cannot reach from it is a cause recorded wrongly.
 
 The corollary is the dangerous part: **the accounting being complete is what
 makes a wrong cause invisible.** Every instance above had honest, complete
