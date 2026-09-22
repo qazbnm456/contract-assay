@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-11-sukukfi-denial-of-service-02fefd1d",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/ShareTokenUpgradeable.sol",
+    "sha256": "ee90d63d01df1e815335cf54606b53529b54c99a5bc3fd0d0d03fbf44a17c871",
+    "resolved_from": "the commit the report's own citations of this repository name most often",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-11-sukukfi",
+    "commit": "18fe2578cf1c6203dac7ff21513533010f3dda3e"
+  },
+  "locator": {
+    "file": "src/ShareTokenUpgradeable.sol",
+    "contract": "ShareTokenUpgradeable",
+    "function": "unregisterVault",
+    "start_line": 282,
+    "end_line": 327
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-11-sukukfi/submissions/F-2",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

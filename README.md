@@ -9,7 +9,7 @@ labelled vulnerable.
 
 > **Status: usable, narrow, and honest about which.** Built: the data contract,
 > the corpus pipeline (harvest accounting, normalize, verify), adapters for
-> three audit platforms, a corpus of 442 verified records across nine classes,
+> three audit platforms, a corpus of 478 verified records across nine classes,
 > the syntactic analysis backend and its shape queries, the public detector
 > interface with its loader and runner, the predicate library, eight reference
 > detectors, scoring with its stratifications and refusals, a leaderboard, and
@@ -136,7 +136,7 @@ same method gets on a corpus it has not read.
 
 The corpus lives in this repository, so the flow below starts from a clone. The
 engine is not on PyPI yet, so install it from the clone; when it is published,
-`pip install contract-assay` will get you the engine alone — the 442 records
+`pip install contract-assay` will get you the engine alone — the 478 records
 under `corpus/records` and the pointers under `results/` are not in the wheel,
 and a `--records` path is how you point the engine at them (or at your own).
 
@@ -145,7 +145,7 @@ $ cd contract-assay          # your clone of this repository
 $ pip install -e .
 
 $ contract-assay fetch corpus/records --source-root ./checkout
-140 of 141 pinned file(s) available. 140 matched their recorded digest. ...
+173 of 174 pinned file(s) available. 173 matched their recorded digest. ...
 
 $ contract-assay run --manifest my-detector.json --records corpus/records \
     --source-root ./checkout --out runs.jsonl

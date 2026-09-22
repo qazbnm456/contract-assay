@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-04-virtuals-protocol-slippage-be3c2390",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/tax/BondingTax.sol",
+    "sha256": "dc8fd4ea192f6636719f4655c009c582d5334b4adcaa30e27c3d5cef00f0fc63",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-04-virtuals-protocol",
+    "commit": "28e93273daec5a9c73c438e216dde04c084be452"
+  },
+  "locator": {
+    "file": "contracts/tax/BondingTax.sol",
+    "contract": "BondingTax",
+    "function": "swapForAsset",
+    "start_line": 122,
+    "end_line": 154
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-04-virtuals-protocol/submissions/F-7",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

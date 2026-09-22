@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-01-iq-ai-access-control-f9ec70bf",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/LiquidityManager.sol",
+    "sha256": "9a68efe4b6664f8c14dda0b4efb05f2c4cd57b8e34476b1cddfae5782eb2a874",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-01-iq-ai",
+    "commit": "b16b866d4c8d3e4a69b37a02c4e396d4b294537e"
+  },
+  "locator": {
+    "file": "src/LiquidityManager.sol",
+    "contract": "LiquidityManager",
+    "function": "addLiquidityToFraxswap",
+    "start_line": 133,
+    "end_line": 221
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 137,
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-01-iq-ai/submissions/F-9",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

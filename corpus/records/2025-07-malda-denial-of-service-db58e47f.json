@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-07-malda-denial-of-service-db58e47f",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "malda-lending/src/utils/WrapAndSupply.sol",
+    "sha256": "6a7fa5768a351e48c5d596dd481f3aa174f58bebb9763f2021eda0485f28bc16",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-malda",
+    "commit": "798d00b879b8412ca4049ba09dba5ae42464cfe7"
+  },
+  "locator": {
+    "file": "malda-lending/src/utils/WrapAndSupply.sol",
+    "contract": "WrapAndSupply",
+    "function": "_wrap",
+    "start_line": 94,
+    "end_line": 97
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-malda-judging/issues/741",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

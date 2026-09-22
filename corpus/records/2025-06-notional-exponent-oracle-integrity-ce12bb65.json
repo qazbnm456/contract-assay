@@ -1,0 +1,34 @@
+{
+  "record_id": "2025-06-notional-exponent-oracle-integrity-ce12bb65",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "notional-v4/src/AbstractYieldStrategy.sol",
+    "sha256": "f9fc0bb6642c4dd8b555672c906c68e7620600e57792d8455658537617fac207",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-06-notional-exponent",
+    "commit": "82c87105f6b32bb362d7523356f235b5b07509f9"
+  },
+  "locator": {
+    "file": "notional-v4/src/AbstractYieldStrategy.sol",
+    "contract": "AbstractYieldStrategy",
+    "function": "price",
+    "start_line": 118,
+    "end_line": 120
+  },
+  "classes": [
+    "oracle_integrity"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [
+    "function"
+  ],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-06-notional-exponent-judging/issues/214",
+    "reported_severity": "high"
+  },
+  "notes": "Adjudicated by reading AbstractYieldStrategy.sol at the pinned commit. `price()` at L118-120 is what the Morpho market calls to value this collateral, and it returns `convertToAssets(SHARE_PRECISION)` scaled. `effectiveSupply()` at L149-151 is `totalSupply() - s_escrowedShares + VIRTUAL_SHARES`, and `initiateWithdraw` raises `s_escrowedShares` **without burning shares**, so a holder can shrink the effective supply in one transaction and inflate the per-share value this returns. The price a lending decision rests on is therefore movable by the account the decision is about, which is the manipulability property in a stronger form than the usual spot read: it needs no flash loan, only the attacker's own shares. The class and the reading are this adjudication's; the span is the report's stated one."
+}

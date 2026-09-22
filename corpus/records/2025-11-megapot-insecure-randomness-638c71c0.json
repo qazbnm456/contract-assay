@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-11-megapot-insecure-randomness-638c71c0",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/ScaledEntropyProvider.sol",
+    "sha256": "c707c56a25caf7fcf23ef5fe4ed0d8062a6e5f153e698d639d5ce9bdc11bbd9b",
+    "resolved_from": "the commit the report's own citations of this repository name most often",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-11-megapot",
+    "commit": "f0a7297d59c376e38b287b2c56740617dbbfbdc7"
+  },
+  "locator": {
+    "file": "contracts/ScaledEntropyProvider.sol",
+    "contract": "ScaledEntropyProvider",
+    "function": "entropyCallback",
+    "start_line": 245,
+    "end_line": 257
+  },
+  "classes": [
+    "insecure_randomness"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-11-megapot/submissions/F-262",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

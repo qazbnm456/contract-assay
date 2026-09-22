@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-05-blackhole-denial-of-service-3e72856b",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/factories/PairFactory.sol",
+    "sha256": "bc4655a36b12fe851b6f2e38ebbb8721a3b834122ef1e8577aac952e879d7574",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-05-blackhole",
+    "commit": "92fff849d3b266e609e6d63478c4164d9f608e91"
+  },
+  "locator": {
+    "file": "contracts/factories/PairFactory.sol",
+    "contract": "PairFactory",
+    "function": "createPair",
+    "start_line": 139,
+    "end_line": 151
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-05-blackhole/submissions/F-166",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-07-malda-slippage-0955b96e",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "malda-lending/src/migration/Migrator.sol",
+    "sha256": "ad0f6b368cec2a8d99c8b624c78485418a6e6b2f73fe088ed00da07d45bce441",
+    "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-malda",
+    "commit": "798d00b879b8412ca4049ba09dba5ae42464cfe7"
+  },
+  "locator": {
+    "file": "malda-lending/src/migration/Migrator.sol",
+    "contract": "Migrator",
+    "function": "migrateAllPositions",
+    "start_line": 90,
+    "end_line": 100
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-malda-judging/issues/91",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

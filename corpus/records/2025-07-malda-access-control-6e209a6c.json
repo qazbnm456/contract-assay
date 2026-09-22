@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-07-malda-access-control-6e209a6c",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "malda-lending/src/mToken/host/mErc20Host.sol",
+    "sha256": "daae054dea69212b132e38a5bcc2432f09c997baab056036ffd470b882832d6b",
+    "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-malda",
+    "commit": "798d00b879b8412ca4049ba09dba5ae42464cfe7"
+  },
+  "locator": {
+    "file": "malda-lending/src/mToken/host/mErc20Host.sol",
+    "contract": "mErc20Host",
+    "function": "_verifyProof",
+    "start_line": 378,
+    "end_line": 399
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-malda-judging/issues/264",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

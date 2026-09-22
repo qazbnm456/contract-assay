@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-08-morpheus-oracle-integrity-2e2e3cc5",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/capital-protocol/ChainLinkDataConsumer.sol",
+    "sha256": "9e5aa4c989152b1ac3ffa2961e8e904d28cc8884404578b985da88335ffabd10",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-08-morpheus",
+    "commit": "d275e9035b7e703efe26cdee6543e78f452774bb"
+  },
+  "locator": {
+    "file": "contracts/capital-protocol/ChainLinkDataConsumer.sol",
+    "contract": "ChainLinkDataConsumer",
+    "function": "getChainLinkDataFeedLatestAnswer",
+    "start_line": 78,
+    "end_line": 107
+  },
+  "classes": [
+    "oracle_integrity"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 91,
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-08-morpheus/submissions/F-22",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

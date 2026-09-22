@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-07-malda-oracle-integrity-5205397c",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "malda-lending/src/oracles/MixedPriceOracleV4.sol",
+    "sha256": "f29badf03e698a52830ff380bbf067e544f98956d7ebea8fe591f3fc051cc566",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-malda",
+    "commit": "798d00b879b8412ca4049ba09dba5ae42464cfe7"
+  },
+  "locator": {
+    "file": "malda-lending/src/oracles/MixedPriceOracleV4.sol",
+    "contract": "MixedPriceOracleV4",
+    "function": "_getLatestPrice",
+    "start_line": 130,
+    "end_line": 167
+  },
+  "classes": [
+    "oracle_integrity"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-malda-judging/issues/945",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

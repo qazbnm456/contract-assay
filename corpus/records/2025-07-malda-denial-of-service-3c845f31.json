@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-07-malda-denial-of-service-3c845f31",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "malda-lending/src/rebalancer/Rebalancer.sol",
+    "sha256": "4f9b883a8704a7ab0b4d1134042b6851824ae611f3c583118863751afd9b3bbb",
+    "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-malda",
+    "commit": "798d00b879b8412ca4049ba09dba5ae42464cfe7"
+  },
+  "locator": {
+    "file": "malda-lending/src/rebalancer/Rebalancer.sol",
+    "contract": "Rebalancer",
+    "function": "sendMsg",
+    "start_line": 141,
+    "end_line": 152
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-malda-judging/issues/234",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

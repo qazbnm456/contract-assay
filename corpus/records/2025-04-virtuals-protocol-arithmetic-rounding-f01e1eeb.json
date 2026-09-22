@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-04-virtuals-protocol-arithmetic-rounding-f01e1eeb",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/virtualPersona/EloCalculator.sol",
+    "sha256": "8898845a4977a3d6f590b1dec767ab1c5a3c8b75126dc7528a8d1ae03e944860",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-04-virtuals-protocol",
+    "commit": "28e93273daec5a9c73c438e216dde04c084be452"
+  },
+  "locator": {
+    "file": "contracts/virtualPersona/EloCalculator.sol",
+    "contract": "EloCalculator",
+    "function": "battleElo",
+    "start_line": 39,
+    "end_line": 55
+  },
+  "classes": [
+    "arithmetic_rounding"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-04-virtuals-protocol/submissions/F-165",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

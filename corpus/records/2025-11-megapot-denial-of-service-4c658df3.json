@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-11-megapot-denial-of-service-4c658df3",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/Jackpot.sol",
+    "sha256": "f3bb967b8d88c93389fdcd33138aee6928a567db7e40d64909887403df30c53b",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-11-megapot",
+    "commit": "f0a7297d59c376e38b287b2c56740617dbbfbdc7"
+  },
+  "locator": {
+    "file": "contracts/Jackpot.sol",
+    "contract": "Jackpot",
+    "function": "claimWinnings",
+    "start_line": 418,
+    "end_line": 452
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-11-megapot/submissions/F-261",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

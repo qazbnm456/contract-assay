@@ -1,0 +1,34 @@
+{
+  "record_id": "2025-11-sukukfi-access-control-4dc30851",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/WERC7575Vault.sol",
+    "sha256": "1fd03a2479568596449cd4c0c1791aeec316dbeb3395b133379d4e4aef4ff5af",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-11-sukukfi",
+    "commit": "163216500a54627afc6abaac3bffdc3a830051fa"
+  },
+  "locator": {
+    "file": "src/WERC7575Vault.sol",
+    "contract": "WERC7575Vault",
+    "function": "withdraw",
+    "start_line": 434,
+    "end_line": 437
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [
+    "function"
+  ],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/reports/2025-11-sukukfi#H-01",
+    "reported_severity": "high"
+  },
+  "notes": "Adjudicated by reading WERC7575Vault.sol at the pinned commit. `withdraw` is `public`, takes an `owner` parameter, previews, and calls `_withdraw(..., owner)` -- which burns that owner's shares and sends the assets to a `receiver` the caller chose. **Nothing between the entry point and the write establishes the caller's right to spend the owner's shares:** no `msg.sender == owner`, and no allowance of `owner -> msg.sender`. The file's own doc comment for the sibling function states the intended rule -- \"msg.sender must be owner OR have allowance for the shares\" -- so the omission is against the contract's stated design, not against a convention. `_withdraw` spends the allowance the owner gave the **vault**, which is what lets the vault burn at all and authorises nothing about who asked. The class and the reading are this adjudication's; the span is the report's stated one, and it cited both this function and its sibling as two locations."
+}

@@ -1,0 +1,33 @@
+{
+  "record_id": "2024-12-secondswap-access-control-970d168c",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/SecondSwap_VestingManager.sol",
+    "sha256": "f4197fda8b8c40493e6d6294b8e6c6582e1622330438f64d566d0183704af08b",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-12-secondswap",
+    "commit": "b9497bcf5100046a169276cb6b351ebc0eddc2cc"
+  },
+  "locator": {
+    "file": "contracts/SecondSwap_VestingManager.sol",
+    "contract": "SecondSwap_VestingManager",
+    "function": "setSellable",
+    "start_line": 173,
+    "end_line": 186
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 179,
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/reports/2024-12-secondswap#M-12",
+    "reported_severity": "medium"
+  },
+  "notes": "Adjudicated by reading SecondSwap_VestingManager.sol at the pinned commit. `setSellable` admits `s2Admin` or `vestingDeployer` (L174), and at L179-183, when `maxSellPercent` is 0 and the vesting is being made sellable, it writes `maxSellPercent = 2000`. That setting is reserved to a different principal by the contract itself: `setMaxSellPercent` at L194-198 requires `tokenIssuer() == msg.sender`. So an admin or deployer takes a state-changing path the contract reserves to the token issuer, and a issuer who set 0 to forbid selling has it silently set to 20%. Both principals are named in this file, so the source establishes the mismatch without any outside documentation. The class and the reading are this adjudication's; the line is the report's stated one, widened by the pipeline to the declaration containing it."
+}

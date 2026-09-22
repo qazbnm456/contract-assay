@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-07-cap-oracle-integrity-f11b41c0",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "cap-contracts/contracts/oracle/libraries/VaultAdapter.sol",
+    "sha256": "b822113ba876335b1d22424e6b4ca67b8bebd3b2789810541dd33e978f0377de",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-cap",
+    "commit": "2bd34fa369d36af8ecc377090d3292ea74ccc669"
+  },
+  "locator": {
+    "file": "cap-contracts/contracts/oracle/libraries/VaultAdapter.sol",
+    "contract": "VaultAdapter",
+    "function": "_applySlopes",
+    "start_line": 86,
+    "end_line": 105
+  },
+  "classes": [
+    "oracle_integrity"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-cap-judging/issues/148",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

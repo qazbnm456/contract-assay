@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-10-hybra-finance-denial-of-service-8be18eba",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "ve33/contracts/VoterV3.sol",
+    "sha256": "0d6e15956dc8c2ce6cd6b2e349c0ff005483dfb70ca9911dae21076528323a67",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-10-hybra-finance",
+    "commit": "6299bfbc089158221e5c645d4aaceceea474f5be"
+  },
+  "locator": {
+    "file": "ve33/contracts/VoterV3.sol",
+    "contract": "VoterV3",
+    "function": "_vote",
+    "start_line": 208,
+    "end_line": 211
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-10-hybra-finance/submissions/S-118",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

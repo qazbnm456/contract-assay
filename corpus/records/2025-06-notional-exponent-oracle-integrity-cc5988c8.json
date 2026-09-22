@@ -1,0 +1,34 @@
+{
+  "record_id": "2025-06-notional-exponent-oracle-integrity-cc5988c8",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "notional-v4/src/single-sided-lp/AbstractSingleSidedLP.sol",
+    "sha256": "17f2aa8fdefccff821776517209f094028a7fd281764dfdd3ca9dd8eccb669ae",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-06-notional-exponent",
+    "commit": "82c87105f6b32bb362d7523356f235b5b07509f9"
+  },
+  "locator": {
+    "file": "notional-v4/src/single-sided-lp/AbstractSingleSidedLP.sol",
+    "contract": "AbstractSingleSidedLP",
+    "function": "convertToAssets",
+    "start_line": 300,
+    "end_line": 303
+  },
+  "classes": [
+    "oracle_integrity"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [
+    "function"
+  ],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-06-notional-exponent-judging/issues/450",
+    "reported_severity": "medium"
+  },
+  "notes": "Adjudicated by reading AbstractSingleSidedLP.sol at the pinned commit. `convertToAssets` returns the withdraw-request value only when `t_CurrentAccount` is set **and** a request is pending (L301-302); otherwise it falls through to `super.convertToAssets(shares)` at L305, which prices by yield-token holdings. `t_CurrentAccount` is set by the lending router, so a borrow taken directly against the Morpho market never sets it -- and an account with a pending withdrawal holds no yield tokens, so its collateral is valued as if it did. A value used in a borrowing decision without establishing that it describes the position. The class and the reading are this adjudication's; the span is the report's stated one, and L301 is the guard a fix changes."
+}

@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-06-notional-exponent-slippage-06cca5e9",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "notional-v4/src/staking/PendlePTLib.sol",
+    "sha256": "4a230cbda873ead6088606bcdfc96c0cb16ca5328b1eccd2d86900dad812adeb",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-06-notional-exponent",
+    "commit": "82c87105f6b32bb362d7523356f235b5b07509f9"
+  },
+  "locator": {
+    "file": "notional-v4/src/staking/PendlePTLib.sol",
+    "contract": "PendlePTLib",
+    "function": "redeemExpiredPT",
+    "start_line": 77,
+    "end_line": 88
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 87,
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-06-notional-exponent-judging/issues/874",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

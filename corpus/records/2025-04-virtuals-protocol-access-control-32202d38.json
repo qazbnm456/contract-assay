@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-04-virtuals-protocol-access-control-32202d38",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/virtualPersona/AgentNftV2.sol",
+    "sha256": "fa8c1e437e3966bb6d4e66589711ff78e8179a8588f20bea9581a9c89e66f5d7",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-04-virtuals-protocol",
+    "commit": "28e93273daec5a9c73c438e216dde04c084be452"
+  },
+  "locator": {
+    "file": "contracts/virtualPersona/AgentNftV2.sol",
+    "contract": "AgentNftV2",
+    "function": "addValidator",
+    "start_line": 133,
+    "end_line": 139
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-04-virtuals-protocol/submissions/F-3",
+    "reported_severity": "high"
+  },
+  "notes": ""
+}

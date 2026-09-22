@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-05-blackhole-denial-of-service-f16bcba0",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/governance/Governor.sol",
+    "sha256": "83141ed622f549083d4d502a488e22b5a344f2e19066b29d248c106c7e589571",
+    "resolved_from": "the commit the report's own citations of this repository name most often",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-05-blackhole",
+    "commit": "92fff849d3b266e609e6d63478c4164d9f608e91"
+  },
+  "locator": {
+    "file": "contracts/governance/Governor.sol",
+    "contract": "L2Governor",
+    "function": "_proposal",
+    "start_line": 262,
+    "end_line": 271
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-05-blackhole/submissions/F-163",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

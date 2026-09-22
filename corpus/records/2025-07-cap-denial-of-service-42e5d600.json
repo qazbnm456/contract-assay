@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-07-cap-denial-of-service-42e5d600",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "cap-contracts/contracts/lendingPool/libraries/BorrowLogic.sol",
+    "sha256": "256690dd3d1fd008cc39324fbebdc58918757b80e4c832a91f3925b996a5d028",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-cap",
+    "commit": "2bd34fa369d36af8ecc377090d3292ea74ccc669"
+  },
+  "locator": {
+    "file": "cap-contracts/contracts/lendingPool/libraries/BorrowLogic.sol",
+    "contract": "BorrowLogic",
+    "function": "realizeRestakerInterest",
+    "start_line": 201,
+    "end_line": 219
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-cap-judging/issues/150",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

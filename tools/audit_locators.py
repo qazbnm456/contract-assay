@@ -48,6 +48,9 @@ from contract_assay.corpus.records import CommitPin, load_records
 from contract_assay.corpus.sources import code4rena_report
 
 _ISSUE = re.compile(r"github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/issues/(?P<number>\d+)")
+_JUDGING_FILE = re.compile(
+    r"github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/blob/(?P<ref>[^/]+)/(?P<path>[^#?\s]+\.md)"
+)
 _BLOB = re.compile(
     r"github\.com/[\w.-]+/(?P<repo>[\w.-]+)/blob/(?P<ref>[^/\s]+)/(?P<path>[^\s#)\"']+)"
     r"(?:#L(?P<line>\d+))?"
@@ -65,23 +68,36 @@ def report_body(url: str, cache: Path) -> str | None:
     a loop nobody runs twice.
     """
     found = _ISSUE.search(url)
-    if found is None:
-        return None
-    key = f"{found['owner']}--{found['repo']}--{found['number']}.md"
-    held = cache / key
-    if held.is_file():
-        return held.read_text(encoding="utf-8")
-    done = subprocess.run(
-        [
+    judging = None if found else _JUDGING_FILE.search(url)
+    if found is not None:
+        key = f"{found['owner']}--{found['repo']}--{found['number']}.md"
+        call = [
             "gh",
             "api",
             f"repos/{found['owner']}/{found['repo']}/issues/{found['number']}",
             "--jq",
             ".body",
-        ],
-        capture_output=True,
-        text=True,
-    )
+        ]
+    elif judging is not None:
+        # A Sherlock judging repository holds one markdown file per issue, and
+        # 397 of 478 public records cite one. The first version of this audit
+        # matched issues only and counted all 397 as "not fetched" -- coverage of
+        # 81 of 478, which would have read as an audit of the corpus.
+        key = f"{judging['owner']}--{judging['repo']}--{judging['path'].replace('/', '__')}"
+        call = [
+            "gh",
+            "api",
+            "-H",
+            "Accept: application/vnd.github.raw",
+            f"repos/{judging['owner']}/{judging['repo']}/contents/{judging['path']}"
+            f"?ref={judging['ref']}",
+        ]
+    else:
+        return None
+    held = cache / key
+    if held.is_file():
+        return held.read_text(encoding="utf-8")
+    done = subprocess.run(call, capture_output=True, text=True)
     if done.returncode != 0:
         return None
     cache.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,35 @@
+{
+  "record_id": "2024-10-loopfi-slippage-4fa05cd7",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/proxy/PositionActionPendle.sol",
+    "sha256": "00231009a38021efdbd536396a517e556f84dd995f589ff4747696f25b28b318",
+    "resolved_from": "the commit this report's own citations name most often",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-10-loopfi",
+    "commit": "d219f0132005b00a68f505edc22b34f9a8b49766"
+  },
+  "locator": {
+    "file": "src/proxy/PositionActionPendle.sol",
+    "contract": "PositionActionPendle",
+    "function": "_onWithdraw",
+    "start_line": 55,
+    "end_line": 84
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "derived",
+  "asserted_labels": [
+    "function"
+  ],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/reports/2024-10-loopfi#M-04",
+    "reported_severity": "medium"
+  },
+  "notes": "Adjudicated by reading PositionActionPendle.sol at the pinned commit. `_onWithdraw` builds `PoolActionParams` with `minOut: 0` at L67 and exits the Pendle pool through a delegate call at L76-79, then overwrites `collateralWithdrawn` with whatever came back at L81 and returns it unchecked. A literal zero minimum on a user-reachable exit is the first idiom of this class. The report named the file and the function in its title and quoted the block; it cited no line, so the span is derived from the function it named and L67 is the argument a fix changes."
+}

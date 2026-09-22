@@ -1,0 +1,32 @@
+{
+  "record_id": "2024-12-secondswap-denial-of-service-0e5a1cc2",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/SecondSwap_StepVesting.sol",
+    "sha256": "7bb97e99fd09a78ea16943029c661277cdcfa61cc5330a9e57db1fae9be3d67f",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-12-secondswap",
+    "commit": "214849c3517eb26b31fe194bceae65cb0f52d2c0"
+  },
+  "locator": {
+    "file": "contracts/SecondSwap_StepVesting.sol",
+    "contract": "SecondSwap_StepVesting",
+    "function": "transferVesting",
+    "start_line": 216,
+    "end_line": 235
+  },
+  "classes": [
+    "denial_of_service"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2024-12-secondswap/submissions/F-26",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

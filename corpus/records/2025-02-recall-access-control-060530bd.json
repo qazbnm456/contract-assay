@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-02-recall-access-control-060530bd",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/contracts/gateway/GatewayManagerFacet.sol",
+    "sha256": "c7d3eb554bd4b7490f506f0170eee0c3f21ad7869a811927d34127aa4f75cbb2",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-02-recall",
+    "commit": "ab5f90b9b0322016ecce6dd71c528a935544bec5"
+  },
+  "locator": {
+    "file": "contracts/contracts/gateway/GatewayManagerFacet.sol",
+    "contract": "GatewayManagerFacet",
+    "function": "register",
+    "start_line": 35,
+    "end_line": 63
+  },
+  "classes": [
+    "access_control"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 35,
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/reports/2025-02-recall#H-08",
+    "reported_severity": "high"
+  },
+  "notes": "Adjudicated by reading GatewayManagerFacet.sol at the pinned commit. `register` is `external payable` and writes shared gateway state at L49-55 -- the subnet's stake and circulating supply, the gateway's subnet key set and its total. The only guards are a tree-depth limit (L38) and an already-registered check (L45); **neither establishes who may call.** Weighed against the exclusion for a permissionless-by-design function: this writes the gateway's own accounting, which the report describes as an omnibus account shared with every other subnet, so it is not state belonging to the caller. Stated plainly so a reader can disagree: the claim that registration was *meant* to be restricted comes from the contest's documentation, not from this file -- what the file establishes is that nothing restricts it. The class and the reading are this adjudication's; the line is the report's stated one, widened by the pipeline."
+}

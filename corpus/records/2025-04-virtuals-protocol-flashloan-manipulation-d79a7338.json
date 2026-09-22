@@ -1,0 +1,32 @@
+{
+  "record_id": "2025-04-virtuals-protocol-flashloan-manipulation-d79a7338",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/fun/Bonding.sol",
+    "sha256": "a59b2c71a651266d3c2dc55248a19e3707b0fd6e766eba53c4b7ba9e97aed75a",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-04-virtuals-protocol",
+    "commit": "084a1b46749e2a9924ecc8c06982a40cc8b3dd5a"
+  },
+  "locator": {
+    "file": "contracts/fun/Bonding.sol",
+    "contract": "Bonding",
+    "function": "unwrapToken",
+    "start_line": 405,
+    "end_line": 420
+  },
+  "classes": [
+    "flashloan_manipulation"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "quoted",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-04-virtuals-protocol/submissions/F-12",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

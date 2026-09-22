@@ -2840,6 +2840,29 @@ target is not a gap in this pipeline either: `AddressPin` exists for exactly it,
 and what is missing is verified source at an address, which is a fetching
 capability rather than a parsing one.
 
+**Thirty-six records added from a held-out split, 2026-09-23.** A held-out
+split had been harvested for ranked rounds from contests newer than anything
+here -- Code4rena reports published 2024-10 to 2026-04 and Sherlock judging
+repositories from 2025-06 and 2025-07 -- and it was cut to ten units when a
+classroom round needed one sweep to fit inside it. What was not kept came here
+rather than being discarded: 23 records from Code4rena and 13 from Sherlock, 14
+contests, 11 of them placed by reading the source and carrying the reasoning in
+`notes`. The corpus went from 442 to 478, and the gain is concentrated where it
+was thinnest: `arithmetic_rounding` +5, `access_control` +7, `slippage` +7, and
+the first additions to `flashloan_manipulation` and `insecure_randomness` in
+some time. The cut was made at repository granularity, so no contest is split
+between the two.
+
+Two records did not come across, and why is worth keeping. One pinned
+`WildcatMarket.closeMarket` for a finding whose own `# Lines of code` section
+names `AccessControlHooks.sol#L812` and whose every paragraph is about
+`onQueueWithdrawal` -- the pair §7.3 names as the draft `normalize` refuses
+under `location_contradicts_name`. That refusal is implemented, and did not
+fire because it needs a function name extracted from the prose; where none is
+extracted there is nothing to compare. `tools/audit_locators.py` now checks the
+thing an extractor cannot miss, the URL a finding puts at the top of itself.
+The other record's source returns 404, so nobody can check it.
+
 **Composition is now part of the report.** 81% of one harvest came from a single
 platform, and every figure over it was mostly a statement about that platform's
 submission style with nothing saying so. `by_platform` and `by_repository` sit

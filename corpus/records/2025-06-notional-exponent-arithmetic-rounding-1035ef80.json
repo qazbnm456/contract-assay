@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-06-notional-exponent-arithmetic-rounding-1035ef80",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "notional-v4/src/routers/MorphoLendingRouter.sol",
+    "sha256": "1a5271bc1f05bb588e802cde77cdde24ab5ee8b1e2507b725165ee3704763775",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-06-notional-exponent",
+    "commit": "82c87105f6b32bb362d7523356f235b5b07509f9"
+  },
+  "locator": {
+    "file": "notional-v4/src/routers/MorphoLendingRouter.sol",
+    "contract": "MorphoLendingRouter",
+    "function": "healthFactor",
+    "start_line": 270,
+    "end_line": 285
+  },
+  "classes": [
+    "arithmetic_rounding"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 279,
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-06-notional-exponent-judging/issues/417",
+    "reported_severity": "medium"
+  },
+  "notes": "Adjudicated by reading MorphoLendingRouter.sol at the pinned commit. L279 computes `borrowed = (borrowShares * totalBorrowAssets) / totalBorrowShares`, which rounds **down**, while the Morpho contract this router must agree with computes the same quantity with `toAssetsUp` in `_isHealthy` and in `repay`. Family two of this class: rounding down what a user owes the protocol, so this router's health factor understates the debt that Morpho will actually enforce. Family two usually needs the protocol's own intent, and here it is available without guessing -- the required direction is fixed by the counterparty whose accounting this must match, and the report cites both of its lines. The class and the reading are this adjudication's; the line is the report's stated one. Pinned to the code under review; the two morpho-blue citations are a different repository and are not recorded."
+}

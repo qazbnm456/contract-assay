@@ -1,0 +1,32 @@
+{
+  "record_id": "2024-12-flex-perpetuals-slippage-1bf333a2",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "src/extensions/dexters/AerodromeDexter.sol",
+    "sha256": "f634d55fcdc6e96000497bff13089c6d33f55a648825e191ec4377ee2b9ca668",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2024-12-flex-perpetuals",
+    "commit": "b84a0812c3368866964b8a16e7c36f6e7a50b655"
+  },
+  "locator": {
+    "file": "src/extensions/dexters/AerodromeDexter.sol",
+    "contract": "AerodromeDexter",
+    "function": "run",
+    "start_line": 54,
+    "end_line": 56
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2024-12-flex-perpetuals/submissions/F-26",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

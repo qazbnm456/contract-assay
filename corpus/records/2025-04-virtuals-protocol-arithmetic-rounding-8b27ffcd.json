@@ -1,0 +1,34 @@
+{
+  "record_id": "2025-04-virtuals-protocol-arithmetic-rounding-8b27ffcd",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "contracts/fun/FPair.sol",
+    "sha256": "89669f76c4a14fb1b7b5c1fa10f11dc4f344fde1028b2a7ad25c0462cdb1a304",
+    "resolved_from": "the commit the report's own citations of this repository name most often",
+    "kind": "commit",
+    "repo_url": "https://github.com/code-423n4/2025-04-virtuals-protocol",
+    "commit": "28e93273daec5a9c73c438e216dde04c084be452"
+  },
+  "locator": {
+    "file": "contracts/fun/FPair.sol",
+    "contract": "FPair",
+    "function": "priceALast",
+    "start_line": 102,
+    "end_line": 104
+  },
+  "classes": [
+    "arithmetic_rounding"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "anchored",
+  "asserted_labels": [],
+  "anchor_line": 103,
+  "provenance": {
+    "platform": "code4rena",
+    "report_url": "https://code4rena.com/audits/2025-04-virtuals-protocol/submissions/F-196",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}

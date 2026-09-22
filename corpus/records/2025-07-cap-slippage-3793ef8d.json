@@ -1,0 +1,33 @@
+{
+  "record_id": "2025-07-cap-slippage-3793ef8d",
+  "population": "audit_review",
+  "split": "public",
+  "pin": {
+    "path": "cap-contracts/contracts/lendingPool/libraries/LiquidationLogic.sol",
+    "sha256": "6e6f55a0202af0f3089cb0ba3bdae19a96d04ff275357b2de9e702ba5d437157",
+    "resolved_from": "the commit this contest's own submissions cite most often for this repository",
+    "kind": "commit",
+    "repo_url": "https://github.com/sherlock-audit/2025-07-cap",
+    "commit": "2bd34fa369d36af8ecc377090d3292ea74ccc669"
+  },
+  "locator": {
+    "file": "cap-contracts/contracts/lendingPool/libraries/LiquidationLogic.sol",
+    "contract": "LiquidationLogic",
+    "function": "liquidate",
+    "start_line": 61,
+    "end_line": 96
+  },
+  "classes": [
+    "slippage"
+  ],
+  "negative_for": [],
+  "vulnerable_to": [],
+  "locator_provenance": "stated",
+  "asserted_labels": [],
+  "provenance": {
+    "platform": "sherlock",
+    "report_url": "https://github.com/sherlock-audit/2025-07-cap-judging/issues/542",
+    "reported_severity": "medium"
+  },
+  "notes": ""
+}
