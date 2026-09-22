@@ -413,6 +413,13 @@ class _Pin(BaseModel):
             "How the pin's coordinates were obtained when the source did not state them, "
             "in prose. None means the source stated them outright."
         ),
+        # Not a coordinate. It says how we came to know one, which an audit
+        # needs and a participant running a harness does not -- so a unit
+        # manifest leaves it out. Marked here rather than listed in
+        # `corpus/units.py`, so the decision sits beside the field: a reader
+        # adding a pin field decides once, where they are standing, and a
+        # manifest built from a hand-kept list would have carried it silently.
+        json_schema_extra={"provenance_only": True},
     )
 
     @property

@@ -16,8 +16,14 @@ import typer
 from pydantic import ValidationError
 
 from contract_assay import __version__
-from contract_assay.corpus.fetch import checkout_file, fetch_records, urllib_fetcher
+from contract_assay.corpus.fetch import (
+    checkout_file,
+    fetch_pins,
+    fetch_records,
+    urllib_fetcher,
+)
 from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
+from contract_assay.corpus.units import read_manifest, unit_manifest
 from contract_assay.corpus.verify import verify_all
 from contract_assay.detectors.base import Detector
 from contract_assay.detectors.loading import (
@@ -26,7 +32,12 @@ from contract_assay.detectors.loading import (
     load_detector,
 )
 from contract_assay.evidence.solidity import index_source
-from contract_assay.harness import load_caller, run_submission, units_from
+from contract_assay.harness import (
+    load_caller,
+    run_submission,
+    units_from,
+    units_from_pins,
+)
 from contract_assay.models import (
     DEFAULT_PREDICTIONS_PER_UNIT,
     DetectorRun,
@@ -298,11 +309,23 @@ def _class_weights_from(path: Path | None) -> dict[VulnerabilityClass, float] | 
 
 @app.command("fetch")
 def fetch_command(
-    records: Annotated[Path, typer.Argument(exists=True, help="Corpus record file or directory.")],
     source_root: Annotated[
         Path, typer.Option("--source-root", help="Where the checkout is built.")
     ],
+    records: Annotated[
+        Path | None,
+        typer.Argument(exists=True, help="Corpus record file or directory."),
+    ] = None,
     workers: Annotated[int, typer.Option("--workers", min=1, max=32)] = 8,
+    units: Annotated[
+        Path | None,
+        typer.Option(
+            "--units",
+            exists=True,
+            dir_okay=False,
+            help="A unit manifest, for a split whose records you do not have.",
+        ),
+    ] = None,
 ) -> None:
     """Build a source checkout from the records' pins, verifying every digest.
 
@@ -315,9 +338,26 @@ def fetch_command(
     lines that have moved, so a score over it would be a real number about the
     wrong source.
     """
-    report = fetch_records(
-        _records_from(records), source_root, workers=workers, fetch=urllib_fetcher()
-    )
+    if (records is None) == (units is None):
+        typer.secho(
+            "pass exactly one of a records path (you hold the answers) or --units "
+            "(you were given a manifest)",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+    if units is not None:
+        try:
+            pins = read_manifest(units.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as bad:
+            typer.secho(f"{units}: {bad}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from bad
+        report = fetch_pins(list(pins), source_root, workers=workers, fetch=urllib_fetcher())
+    else:
+        assert records is not None
+        report = fetch_records(
+            _records_from(records), source_root, workers=workers, fetch=urllib_fetcher()
+        )
     for outcome in report.by_state("mismatched") + report.by_state("unavailable"):
         typer.secho(
             f"  {outcome.state:<12} {outcome.path}: {outcome.detail}", fg=typer.colors.RED, err=True
@@ -337,6 +377,36 @@ def fetch_command(
         raise typer.Exit(1)
 
 
+@app.command("units")
+def units_command(
+    records: Annotated[
+        Path,
+        typer.Argument(exists=True, help="Corpus record file or directory."),
+    ],
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Where the manifest is written.")
+    ] = None,
+) -> None:
+    """Publish a split's units without its answers, as a manifest.
+
+    What a **held-out** split gives a participant. A record carries the answer
+    -- its locator says where the defect is, and its classes say what kind --
+    so a holdout cannot be handed out as records. The manifest is the pins and
+    nothing else: enough to fetch the source, name a unit, and produce runs a
+    scorer can match.
+
+    `run --units` takes the result. Scoring still happens against the records,
+    which stay with whoever holds them.
+    """
+    document = unit_manifest(_records_from(records))
+    text = json.dumps(document, indent=1) + "\n"
+    if out is None:
+        typer.echo(text)
+        return
+    out.write_text(text, encoding="utf-8")
+    typer.echo(f"wrote {out}: {len(document['units'])} unit(s), pins only")
+
+
 @app.command("run")
 def run_command(
     manifest: Annotated[
@@ -345,14 +415,24 @@ def run_command(
             "--manifest", exists=True, dir_okay=False, help="Submission manifest. Repeatable."
         ),
     ],
-    records: Annotated[
-        Path, typer.Option("--records", exists=True, help="Corpus record file or directory.")
-    ],
     source_root: Annotated[
         Path,
         typer.Option("--source-root", exists=True, file_okay=False, help="Checkout to read."),
     ],
     out: Annotated[Path, typer.Option("--out", help="Where the runs are written, as JSON Lines.")],
+    records: Annotated[
+        Path | None,
+        typer.Option("--records", exists=True, help="Corpus record file or directory."),
+    ] = None,
+    units: Annotated[
+        Path | None,
+        typer.Option(
+            "--units",
+            exists=True,
+            dir_okay=False,
+            help="A unit manifest, for a split whose records you do not have.",
+        ),
+    ] = None,
     model_caller: Annotated[
         str | None,
         typer.Option(
@@ -417,21 +497,42 @@ def run_command(
             typer.secho(str(bad), fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from bad
 
-    units, missing = units_from(_records_from(records), source_root)
+    # Exactly one. Both would be two answers to "which units", and a caller
+    # that passed both has a belief about which wins that this command should
+    # not confirm by picking. Neither is the missing-argument case typer used
+    # to report for `--records` alone.
+    if (records is None) == (units is None):
+        typer.secho(
+            "pass exactly one of --records (you hold the answers) or --units "
+            "(you were given a manifest)",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+    if units is not None:
+        try:
+            pins = read_manifest(units.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as bad:
+            typer.secho(f"{units}: {bad}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from bad
+        analysed, missing = units_from_pins(pins, source_root)
+    else:
+        assert records is not None
+        analysed, missing = units_from(_records_from(records), source_root)
     if missing:
         # Said out loud, never counted over. A unit absent from a checkout
         # scores as a submission that missed it.
         typer.secho(
             f"{len(missing)} unit(s) are not in {source_root} and were not run; "
             "`contract-assay fetch` builds the checkout. Figures from this run are "
-            "over the units that are present.",
+            "over the analysed that are present.",
             fg=typer.colors.YELLOW,
         )
-    if not units:
+    if not analysed:
         typer.secho(f"no source units found under {source_root}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
     if limit:
-        units = units[:limit]
+        analysed = analysed[:limit]
 
     out.parent.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -440,16 +541,16 @@ def run_command(
     with out.open("w", encoding="utf-8") as handle:
         for run in run_submission(
             detectors,
-            units,
+            analysed,
             model=caller,
             wall_seconds=wall_seconds,
             max_calls=max_calls,
             max_tokens=max_tokens,
             predictions_per_unit=predictions_per_unit,
-            on_unit=lambda i, u: typer.echo(f"  [{i + 1}/{len(units)}] {u.path}", err=True),
+            on_unit=lambda i, u: typer.echo(f"  [{i + 1}/{len(analysed)}] {u.path}", err=True),
         ):
             # Flushed per run, so a sweep that dies at unit 90 of 141 leaves 90
-            # units of runs behind it rather than nothing.
+            # analysed of runs behind it rather than nothing.
             handle.write(json.dumps(run.model_dump(mode="json")) + "\n")
             handle.flush()
             written += 1
@@ -457,7 +558,7 @@ def run_command(
             if run.invalid_reason is not None:
                 causes[run.invalid_reason] += 1
 
-    typer.echo(f"wrote {out}: {written} run(s) over {len(units)} unit(s)")
+    typer.echo(f"wrote {out}: {written} run(s) over {len(analysed)} unit(s)")
     # **The losses, not just the count.** A sweep that wrote 140 runs of which
     # 130 were invalid printed the same line as one that worked, and the first
     # thing a newcomer does is read that line and believe it. Measured: the
@@ -483,10 +584,21 @@ def run_command(
                 fg=typer.colors.YELLOW,
                 err=True,
             )
-    typer.echo(
-        f"  contract-assay score {out} --records {records} --source-root {source_root} "
-        "--submission-id <id> --out score.json"
-    )
+    if records is not None:
+        typer.echo(
+            f"  contract-assay score {out} --records {records} --source-root {source_root} "
+            "--submission-id <id> --out score.json"
+        )
+    else:
+        # **Not the same next step.** A manifest run has no records to score
+        # against -- that is what a holdout is -- and printing the score command
+        # with `--records None` in it sends a participant to run something that
+        # cannot work, at the moment they are most likely to copy a line
+        # verbatim.
+        typer.echo(
+            f"  {out} is what you submit. Scoring it needs the records, which the "
+            "exercise holds; score against the public split to measure yourself."
+        )
 
 
 @app.command("results")

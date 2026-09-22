@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Protocol
 
 from contract_assay.corpus.fetch import checkout_file
-from contract_assay.corpus.records import CorpusRecord
+from contract_assay.corpus.records import CorpusRecord, SourcePin
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, SubmissionLimits
 from contract_assay.detectors.loading import SubmissionFault, call_evidence, call_plan
 from contract_assay.detectors.runner import run_detector
@@ -107,17 +107,33 @@ def units_from(
     builds the checkout; a caller that ignores this list is reporting recall
     over a subset nobody chose.
     """
-    found: dict[str, SourceUnit] = {}
-    missing: list[str] = []
     # A pin carrying a digest first, then by `record_id`. Sorting by id alone
     # meant a digest-less record named earlier than its digest-bearing sibling
     # decided the unit -- and a pin with no digest is a unit read without a
-    # check. `recheck_citations` and `_pins` apply the same rule; three
-    # different answers to "which pin represents this unit" is how one of them
-    # ends up wrong.
+    # check. `recheck_citations`, `_pins` and `corpus/units.unit_manifest` apply
+    # the same rule; four different answers to "which pin represents this unit"
+    # is how one of them ends up wrong.
     ordered = sorted(records, key=lambda r: (r.pin.sha256 is None, r.record_id))
-    for record in ordered:
-        pin = record.pin
+    return units_from_pins([record.pin for record in ordered], source_root)
+
+
+def units_from_pins(
+    pins: Iterable[SourcePin], source_root: Path
+) -> tuple[list[SourceUnit], list[str]]:
+    """The same, from pins alone: what a **unit manifest** carries.
+
+    Split out so a holdout can be published as questions without answers. A
+    record's locator is the answer and its `classes` is the answer at one
+    remove, so a participant running against a held-out split is handed pins and
+    reads the source; nothing they receive says what is wrong with it.
+
+    Order is the caller's. `units_from` sorts first, because which of two pins
+    for one file wins is its rule to apply, and a manifest has already applied
+    it by the time it is written.
+    """
+    found: dict[str, SourceUnit] = {}
+    missing: list[str] = []
+    for pin in pins:
         if pin.source_id in found or pin.source_id in missing:
             continue
         if not pin.is_filesystem_path:

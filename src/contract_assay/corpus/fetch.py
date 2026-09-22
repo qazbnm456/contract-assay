@@ -272,14 +272,19 @@ def urllib_fetcher(timeout: float = 30.0) -> Fetcher:
 
 
 def _pins(records: Iterable[CorpusRecord]) -> list[tuple[str, SourcePin]]:
+    """One entry per distinct pinned file, in a stable order. See `_pins_of`."""
+    return _pins_of(record.pin for record in records)
+
+
+def _pins_of(pins: Iterable[SourcePin]) -> list[tuple[str, SourcePin]]:
     """One entry per distinct pinned file, in a stable order.
 
     Distinct, because a file holding six records is one download. Stable, so two
     runs report in the same order.
     """
     seen: dict[str, SourcePin] = {}
-    for record in records:
-        held = seen.get(record.pin.source_id)
+    for pin in pins:
+        held = seen.get(pin.source_id)
         # A pin carrying a digest wins, whatever position it arrives in.
         # `setdefault` took the first in load order, so a digest-less record
         # named earlier than its digest-bearing sibling turned the digest check
@@ -291,8 +296,8 @@ def _pins(records: Iterable[CorpusRecord]) -> list[tuple[str, SourcePin]]:
         # `alchemix-v2-dao-*.json` happens to sort before the four
         # `*-adjudicated-*` files. `recheck_citations` has had this rule since
         # the forged `--source-root` review; the other two sites kept their own.
-        if held is None or (held.sha256 is None and record.pin.sha256 is not None):
-            seen[record.pin.source_id] = record.pin
+        if held is None or (held.sha256 is None and pin.sha256 is not None):
+            seen[pin.source_id] = pin
     return sorted(seen.items())
 
 
@@ -481,6 +486,24 @@ def fetch_records(
     fetch: Fetcher | None = None,
     workers: int = 8,
 ) -> FetchReport:
+    """Build a checkout from records' pins. See `fetch_pins`.
+
+    **One pin per record, not per file.** The collision tiebreak inside weighs a
+    revision by how many records pin it, so deduplicating here would give a file
+    holding six records the same weight as one holding one -- and the plain path
+    would then hold whichever revision sorted first rather than the one the
+    corpus mostly means.
+    """
+    return fetch_pins([record.pin for record in records], root, fetch=fetch, workers=workers)
+
+
+def fetch_pins(
+    pins: Sequence[SourcePin],
+    root: Path,
+    *,
+    fetch: Fetcher | None = None,
+    workers: int = 8,
+) -> FetchReport:
     """Build a source checkout under `root`, verifying every digest.
 
     Idempotent: a file already present with a matching digest is left alone, so
@@ -492,7 +515,7 @@ def fetch_records(
     get = fetch or urllib_fetcher()
     root.mkdir(parents=True, exist_ok=True)
     report = FetchReport()
-    pin_of = {record.pin.source_id: record.pin for record in records}
+    pin_of = {pin.source_id: pin for pin in pins}
 
     # One lock per target file. Seven paths in this corpus are pinned by two
     # `source_id`s carrying the **same** digest, so `collisions` -- which keys on
@@ -629,7 +652,7 @@ def fetch_records(
             detail="" if expected is not None else "no digest recorded",
         )
 
-    entries = _pins(records)
+    entries = _pins_of(pins)
 
     # Keyed on the path as a *filesystem* would see it, not as the record spells
     # it. Two pins differing only in case, or in Unicode normal form, land on one
@@ -674,9 +697,9 @@ def fetch_records(
     # rather than scored against bytes their locators do not describe.
     for path in collisions:
         weight: Counter[str] = Counter()
-        for record in records:
-            if isinstance(record.pin, CommitPin) and record.pin.path == path:
-                weight[record.pin.commit] += 1
+        for pin in pins:
+            if isinstance(pin, CommitPin) and pin.path == path:
+                weight[pin.commit] += 1
         for commit, _ in sorted(weight.items(), key=lambda kv: (-kv[1], kv[0]))[:1]:
             for _, pin in entries:
                 if isinstance(pin, CommitPin) and pin.path == path and pin.commit == commit:
