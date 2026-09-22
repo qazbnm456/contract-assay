@@ -640,6 +640,13 @@ confidence you withheld. See "Ordering your findings, and `score`" above.
 adjudication moves the figure between 0 and 1. `below_minimum` says when it is
 under the stated threshold.
 
+**A board can be built on it.** `contract-assay rank --rank-on bpref` ranks on
+bpref instead of F1, which is how an exercise gets a board before its judging is
+finished. The document then says `"ranked_on": "bpref"` and each row's per-class
+column is `bpref_by_class` rather than `f1_by_class` — keyed by what it holds,
+for the same reason the field is not called precision. Submissions ranked on
+different measures are refused a shared board.
+
 `bpref` is **not** precision and is never reported in a field named precision;
 the two answer different questions over different denominators. `value` is
 `null` with a reason when you declared no ordering, or when nothing in the class

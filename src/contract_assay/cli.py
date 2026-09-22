@@ -637,8 +637,10 @@ def rank_command(
     detects it: a result's corpus digest is over the *records*, not over the
     resolved sources. Rank from a checkout nobody is writing to.
     """
-    held = _records_from(records)
-    resolve = _local_resolver(source_root)
+    # First, before anything is read. A mistyped flag costs nothing to detect
+    # and everything to detect late: loading a corpus and every submission's
+    # runs before saying "that is not a measure" spends a minute to report a
+    # typo, and does it after the operator has walked away.
     try:
         measure = Measure(rank_on)
     except ValueError:
@@ -647,6 +649,8 @@ def rank_command(
             fg=typer.colors.RED,
         )
         raise typer.Exit(2) from None
+    held = _records_from(records)
+    resolve = _local_resolver(source_root)
     weighting = _weights_from(weights)
     scores = []
     documents: dict[str, dict[str, object]] = {}
