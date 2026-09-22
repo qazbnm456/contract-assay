@@ -609,6 +609,29 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
+### `--class-weights`, when a level weighting is too coarse
+
+`--weights` is keyed by difficulty level — `S`, `M`, `Q` — and nine classes
+share those three, so it says four of them are equally hard. `--class-weights`
+takes a weight per class instead and replaces the level weighting entirely:
+
+```console
+$ contract-assay rank --submission team-alpha=alpha.jsonl \
+    --records corpus/records --source-root ./checkout \
+    --weights weights.json --class-weights measured.json \
+    --baseline the-agreed-model --out board.json
+```
+
+It must name **every class being ranked**. A gap is refused with the uncovered
+classes listed, because falling back to the level weight for the rest would mix
+two weightings inside one mean and the total would have no stated basis. It is
+published in the score document and it is part of the comparability basis, so
+two results weighted differently per class are never called comparable.
+
+This engine still supplies no weights and computes none. A class weighting
+arrived at by measuring a cohort and one arrived at by opinion are the same
+thing here; what the flag adds is granularity, not policy.
+
 ### `bpref`, the figure that exists while judging is outstanding
 
 That message — `110 prediction(s) await adjudication before precision exists` —

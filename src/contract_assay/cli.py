@@ -267,6 +267,32 @@ def _weights_from(path: Path | None) -> dict[DifficultyLevel, float]:
     return weights
 
 
+def _class_weights_from(path: Path | None) -> dict[VulnerabilityClass, float] | None:
+    """A weight per vulnerability class, when the exercise measured one.
+
+    `None` rather than `{}` when absent, because the two mean different things
+    to the scorer: `None` is "weight by difficulty level", and an empty mapping
+    is "weight by class, and name no class" -- which covers nothing and refuses
+    every total. Returning the second for a missing file would turn a forgotten
+    flag into a board with no rows and a reason nobody would connect to it.
+    """
+    if path is None:
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    weights: dict[VulnerabilityClass, float] = {}
+    for key, value in raw.items():
+        try:
+            weights[VulnerabilityClass(key)] = float(value)
+        except (ValueError, TypeError) as bad:
+            typer.secho(
+                f"{path.name}: {key!r} is not a vulnerability class",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(1) from bad
+    return weights
+
+
 @app.command("fetch")
 def fetch_command(
     records: Annotated[Path, typer.Argument(exists=True, help="Corpus record file or directory.")],
@@ -516,6 +542,16 @@ def score_command(
         Path | None,
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
     ] = None,
+    class_weights: Annotated[
+        Path | None,
+        typer.Option(
+            "--class-weights",
+            exists=True,
+            dir_okay=False,
+            help="A weight per class, as JSON. Replaces --weights when given, and must "
+            "name every class scored.",
+        ),
+    ] = None,
     predictions_per_unit: Annotated[
         int,
         typer.Option(
@@ -543,10 +579,21 @@ def score_command(
     # without source it can establish none of them -- so `score` with no
     # checkout used to return figures and now correctly returns nothing. An
     # option that is optional and useless is worse than one that is required.
+    # Both weightings first, before the corpus and the runs are read. Parsing
+    # them at the point of use put a mistyped class name after the whole scoring
+    # run, which is the same late-refusal `--rank-on` had one command over: the
+    # cheapest check to make reported last.
+    weighting = _weights_from(weights)
+    by_class = _class_weights_from(class_weights)
     resolve = _local_resolver(source_root)
     held = _records_from(records)
     report = score(_runs_from(runs), held, resolve, predictions_per_unit=predictions_per_unit)
-    submission = score_submission(submission_id, report, weights=_weights_from(weights))
+    submission = score_submission(
+        submission_id,
+        report,
+        weights=weighting,
+        class_weights=by_class,
+    )
     document = json.dumps(score_document(submission, held), indent=1, ensure_ascii=False)
     if out is None:
         typer.echo(document)
@@ -610,6 +657,16 @@ def rank_command(
             "the reports share is required.",
         ),
     ] = None,
+    class_weights: Annotated[
+        Path | None,
+        typer.Option(
+            "--class-weights",
+            exists=True,
+            dir_okay=False,
+            help="A weight per class, as JSON. Replaces --weights when given, and "
+            "must name every class being ranked.",
+        ),
+    ] = None,
     rank_on: Annotated[
         str,
         typer.Option(
@@ -649,9 +706,10 @@ def rank_command(
             fg=typer.colors.RED,
         )
         raise typer.Exit(2) from None
+    weighting = _weights_from(weights)
+    by_class = _class_weights_from(class_weights)
     held = _records_from(records)
     resolve = _local_resolver(source_root)
-    weighting = _weights_from(weights)
     scores = []
     documents: dict[str, dict[str, object]] = {}
     for entry in submissions:
@@ -664,7 +722,13 @@ def rank_command(
             typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)
         report = score(_runs_from(path), held, resolve, predictions_per_unit=predictions_per_unit)
-        submission = score_submission(submission_id, report, weights=weighting, measure=measure)
+        submission = score_submission(
+            submission_id,
+            report,
+            weights=weighting,
+            class_weights=by_class,
+            measure=measure,
+        )
         scores.append(submission)
         documents[submission_id] = score_document(submission, held)
     # Stated, not inferred. Omitted, `leaderboard` requires every class the
