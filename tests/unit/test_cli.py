@@ -559,3 +559,123 @@ class TestTheCapIsTheSameOnBothSurfaces:
             DEFAULT_PREDICTIONS_PER_UNIT,
             3,
         )
+
+
+class TestASweepReportsItsLossesAndNotJustItsCount:
+    """`wrote 140 run(s)` was printed by a sweep where 130 were invalid.
+
+    A newcomer reads that line and believes it, then finds out from the score
+    document that every class is empty -- two steps later, and phrased as a
+    property of the corpus rather than of their own invocation. The reference
+    runner without `--model-caller` produces exactly this: 130 of 140 invalid,
+    and nothing said so.
+    """
+
+    def a_submission(self, workspace: Path, *, needs_model: bool, name: str) -> Path:
+        """A one-detector harness, optionally one that asks for a model.
+
+        `name` is the module's, and it has to differ per test. The loader
+        imports by module name and Python caches `sys.modules`, so a fixture
+        that always wrote `submission.py` handed the second test the first
+        test's class -- and, worse, poisoned `test_example_submission.py`, which
+        imports the **real** example under that name. Measured: seven errors and
+        a failure in a module this file does not touch.
+        """
+        plan = (
+            "    def plan(self, ctx, evidence):\n"
+            "        return ModelTaskSpec(instruction='look at it', max_steps=1)\n"
+            if needs_model
+            else ""
+        )
+        # Three declarations is the smallest working submission, as
+        # `examples/reference_runner/submission.py` says at the top. Overriding
+        # `plan` is the only thing this fixture adds, and only when the test is
+        # about a detector that asks for a model.
+        (workspace / f"{name}.py").write_text(
+            "from contract_assay.detectors.base import ModelTaskSpec\n"
+            "from contract_assay.harness import Detector\n"
+            "from contract_assay.models import VulnerabilityClass\n"
+            "\n"
+            "class D(Detector):\n"
+            "    detector_id = 'd'\n"
+            "    class_id = VulnerabilityClass.ACCESS_CONTROL\n"
+            "    api_version = '1.1'\n" + plan,
+            encoding="utf-8",
+        )
+        manifest = workspace / "manifest.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "submission_id": "s-1",
+                    "api_version": "1.0",
+                    "entry_point": f"{name}:D",
+                    "author": "a test",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return manifest
+
+    def test_invalid_runs_are_counted_and_their_cause_named(self, workspace: Path) -> None:
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=True, name="sub_counted")
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--manifest",
+                str(manifest),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--out",
+                str(workspace / "runs.jsonl"),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "1 invalid" in result.output
+        assert "model_not_permitted" in result.output
+
+    def test_the_one_cause_a_newcomer_cannot_act_on_is_explained(self, workspace: Path) -> None:
+        """`model_not_permitted` names a rule, not a next step."""
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=True, name="sub_explained")
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--manifest",
+                str(manifest),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--out",
+                str(workspace / "runs.jsonl"),
+            ],
+        )
+        assert "--model-caller" in result.output
+
+    def test_a_clean_sweep_says_nothing_extra(self, workspace: Path) -> None:
+        """The warning has to be absent when there is nothing wrong, or it is
+        the blanket kind a reader learns to skip."""
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=False, name="sub_clean")
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--manifest",
+                str(manifest),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--out",
+                str(workspace / "runs.jsonl"),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "invalid" not in result.output
+        assert "model-caller" not in result.output

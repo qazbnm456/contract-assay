@@ -8,6 +8,7 @@ project's intentions as though they were its capabilities.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Annotated
 
@@ -30,6 +31,8 @@ from contract_assay.models import (
     DEFAULT_PREDICTIONS_PER_UNIT,
     DetectorRun,
     DifficultyLevel,
+    InvalidReason,
+    Outcome,
     VulnerabilityClass,
 )
 from contract_assay.report.leaderboard import Measure, leaderboard, score_submission
@@ -432,6 +435,8 @@ def run_command(
 
     out.parent.mkdir(parents=True, exist_ok=True)
     written = 0
+    outcomes: Counter[Outcome] = Counter()
+    causes: Counter[InvalidReason] = Counter()
     with out.open("w", encoding="utf-8") as handle:
         for run in run_submission(
             detectors,
@@ -448,8 +453,36 @@ def run_command(
             handle.write(json.dumps(run.model_dump(mode="json")) + "\n")
             handle.flush()
             written += 1
+            outcomes[run.outcome] += 1
+            if run.invalid_reason is not None:
+                causes[run.invalid_reason] += 1
 
     typer.echo(f"wrote {out}: {written} run(s) over {len(units)} unit(s)")
+    # **The losses, not just the count.** A sweep that wrote 140 runs of which
+    # 130 were invalid printed the same line as one that worked, and the first
+    # thing a newcomer does is read that line and believe it. Measured: the
+    # reference runner without `--model-caller` produces 130 of 140 invalid,
+    # and nothing said so until the score document reported every class empty.
+    broken = outcomes[Outcome.INVALID] + outcomes[Outcome.SKIPPED]
+    if broken:
+        typer.secho(
+            f"  {outcomes[Outcome.INVALID]} invalid and {outcomes[Outcome.SKIPPED]} skipped: "
+            "these measure nothing and score as misses.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        for cause, count in causes.most_common():
+            typer.secho(f"    {count:>4}  {cause.value}", fg=typer.colors.YELLOW, err=True)
+        if causes.get(InvalidReason.MODEL_NOT_PERMITTED):
+            # The one cause a newcomer hits first and cannot act on from its
+            # name alone: the detector asked for a model and none was named.
+            typer.secho(
+                "    A detector asked for a model and none was named. Pass "
+                "--model-caller module.path:function, or submit a deterministic "
+                "harness on purpose.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
     typer.echo(
         f"  contract-assay score {out} --records {records} --source-root {source_root} "
         "--submission-id <id> --out score.json"
