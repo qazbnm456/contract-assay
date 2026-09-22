@@ -38,7 +38,12 @@ from contract_assay import __version__
 from contract_assay.corpus.records import CorpusRecord
 from contract_assay.models import ModelRole, VulnerabilityClass
 from contract_assay.report.leaderboard import Leaderboard, SubmissionScore
-from contract_assay.report.scoring import ClassScore, MatchStrength, ScoreReport
+from contract_assay.report.scoring import (
+    MINIMUM_JUDGED_FOR_BPREF,
+    ClassScore,
+    MatchStrength,
+    ScoreReport,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -231,6 +236,24 @@ def _class_document(
         )
     )
     recall_unavailable = None if score.records else "the corpus holds no positive record"
+    # bpref, and why it is absent when it is. The two reasons are different work
+    # for different people: an ordering is the submission's to declare, and a
+    # non-relevant verdict is the round's to produce.
+    records_r, non_relevant_n = score.bpref_basis(at_least)
+    if score.ranked_judgements is None:
+        bpref_unavailable: str | None = (
+            "the submission declared no ordering: bpref needs a score on every "
+            "finding of the class, because a rank is ordinal inside its own unit"
+        )
+    elif not records_r:
+        bpref_unavailable = "the corpus holds no positive record"
+    elif not non_relevant_n:
+        bpref_unavailable = (
+            "nothing here was judged not-an-instance, so every term would be 1 and "
+            "the figure would be recall under another name"
+        )
+    else:
+        bpref_unavailable = None
     return {
         "class": score.cls.value,
         "records": score.records,
@@ -246,6 +269,21 @@ def _class_document(
         "recall": _figure(score.recall(at_least), recall_unavailable),
         "precision": _figure(score.precision(at_least), precision_unavailable),
         "f1": _figure(f1, f1_unavailable),
+        # **Its own field, never inside precision.** bpref answers a different
+        # question over a different denominator, and a figure placed in a field
+        # named precision will be compared against precisions by everyone who
+        # reads it -- including, eventually, whoever wrote it.
+        "bpref": {
+            **_figure(score.bpref(at_least), bpref_unavailable),
+            # Published beside the value, not folded into it. bpref divides by
+            # min(R, N), so without these a reader cannot tell a figure resting
+            # on two verdicts from one resting on two hundred.
+            "r": records_r,
+            "n": non_relevant_n,
+            "min_r_n": min(records_r, non_relevant_n),
+            "below_minimum": score.bpref_below_minimum(at_least),
+            "minimum": MINIMUM_JUDGED_FOR_BPREF,
+        },
         # Not a score. A count below the stated minimum is reported so a caller
         # can refuse to draw a bar for it, which is the only honest rendering.
         "below_minimum": score.below_minimum,

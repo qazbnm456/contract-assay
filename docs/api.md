@@ -609,6 +609,43 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
+### `bpref`, the figure that exists while judging is outstanding
+
+That message — `110 prediction(s) await adjudication before precision exists` —
+is precision's all-or-nothing gate, and it is not a warning about quality. One
+unjudged prediction and the class has no precision, no F1, and no place on a
+board. In an exercise with rounds that means the board cannot exist until the
+judging finishes.
+
+Every class block therefore also carries `bpref`, which ignores unjudged
+predictions rather than counting them either way:
+
+```json
+"bpref": {
+  "value": 0.74,
+  "unavailable": null,
+  "r": 12, "n": 31, "min_r_n": 12,
+  "below_minimum": false, "minimum": 10
+}
+```
+
+**To get one, score your findings.** `bpref` needs an ordering across the whole
+class, and that is what `Finding.score` is for — a rank is ordinal inside the
+unit it came from, so per-unit ranks cannot be merged into one list. Score every
+finding of a class or none: a partly scored class is refused rather than filled
+in, because placing the unscored ones somewhere by default would invent a
+confidence you withheld. See "Ordering your findings, and `score`" above.
+
+**Read `min_r_n` before the value.** bpref divides by it, so at `n: 1` a single
+adjudication moves the figure between 0 and 1. `below_minimum` says when it is
+under the stated threshold.
+
+`bpref` is **not** precision and is never reported in a field named precision;
+the two answer different questions over different denominators. `value` is
+`null` with a reason when you declared no ordering, or when nothing in the class
+was judged not-an-instance — the second is the round's judging to supply, the
+first is yours.
+
 `rank` takes each submission's *runs*, not its score document, so that every row
 is computed against one corpus with one weighting in one invocation. A
 leaderboard assembled from figures cannot check that they were.

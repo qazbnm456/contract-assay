@@ -2449,6 +2449,62 @@ everywhere** and every prediction is unjudged. That is a fact about the corpus
 rather than about the detectors, and stating it is the only honest form
 available.
 
+### 7.4a bpref, for the figure precision cannot give
+
+Precision here is **all-or-nothing**: `judged_predictions < predictions` and the
+class has no figure at all. §7.4 explains why — a judged set made only of
+matches is identically 1.0 and one made only of refusals is identically 0, so a
+partial figure is not a weak measurement but a meaningless one.
+
+The consequence is not confined to reporting. A round is unrankable while any
+adjudication is outstanding, which in a multi-round exercise means the board
+cannot exist until the judging finishes — and the judging is the slow part.
+
+**bpref is the measure that survives an incomplete pool**, and the difference
+from precision is one decision: an unjudged prediction is **ignored**, not
+counted. Counting it as wrong punishes a submission for finding a defect the
+corpus has not recorded yet, which is the failure this benchmark is most likely
+to commit against its best entrant. Counting it as right rewards guessing.
+
+Over `R` known-relevant records and `N` judged non-relevant predictions:
+
+    bpref = (1/R) * sum over r of (1 - |non-relevant above r| / min(R, N))
+
+Four properties are worth stating because each is a decision that could have
+gone another way:
+
+1. **`R` is the class's records, not the ones that were found.** A record
+   nobody retrieved contributes a term of zero and stays in the denominator, so
+   this does not become a precision analogue that ignores misses.
+2. **A match below the strength floor counts with the non-relevant.** It is
+   judged, and it is not a hit at that floor. Dropping it would raise the figure
+   by discarding evidence against the submission — the same reasoning §7.2
+   gives for precision's denominator.
+3. **It needs a declared ordering**, which is what `Finding.score` is for. A
+   rank is ordinal inside the unit it came from, and no arrangement of per-unit
+   ranks yields one list; bpref merges every unit of a class into one. Arrival
+   order across units is this implementation's loop, and reading intent out of
+   it would be inventing a confidence the submission withheld. A submission
+   that scored some findings and not others has not ordered the class, and the
+   figure is refused rather than filled in.
+4. **`min(R, N)` is published beside it, never folded into it.** bpref divides
+   by that quantity, so at `N = 1` a single verdict moves the figure between 0
+   and 1. `MINIMUM_JUDGED_FOR_BPREF` is defined *as*
+   `MINIMUM_RECORDS_PER_CLASS` rather than as a second convention arrived at
+   separately, so changing one is visibly changing both.
+
+**It is never placed in a field named precision**, and the field is called
+`bpref` in the document, in the code and here. A figure in a field named
+precision will be compared against precisions by everyone who reads it,
+including whoever put it there; the two answer different questions over
+different denominators. Where precision is absent and bpref is not, a reader
+who conflated them would read a bpref of 1.0 as a perfect precision.
+
+Two cases return nothing rather than a number, and they are different people's
+work. `N = 0` is degenerate in precision's own way — every term is 1 and the
+result is recall wearing another name — and that is the round's judging to
+supply. No declared ordering is the submission's to supply.
+
 ### 7.5 A score and a declared limit are different kinds of claim
 
 A score is an estimate from a sample and it moves with the sample: add a hundred

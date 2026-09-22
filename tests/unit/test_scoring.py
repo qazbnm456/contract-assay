@@ -216,6 +216,7 @@ def a_run(
     file: str = PATH,
     source_id: str | None = None,
     source: str = SOURCE,
+    scores: list[float] | None = None,
 ) -> DetectorRun:
     # `vulnerable` requires a verified finding and `clean` forbids one, so the
     # outcome follows from the spans unless a test is specifically about an
@@ -234,10 +235,14 @@ def a_run(
                 quote=_at(a, b, source),
                 reasoning="r",
                 locator=Locator(file=file, start_line=a, end_line=b),
+                # A declared ordering, when a test is about one. `None`
+                # everywhere is the default because most tests are not, and a
+                # partially scored list is refused by `DetectorRun` itself.
+                score=None if scores is None else scores[index],
             ),
             status=CitationStatus.VERIFIED,
         )
-        for a, b in spans
+        for index, (a, b) in enumerate(spans)
     ]
     findings += [
         VerifiedFinding(

@@ -91,6 +91,17 @@ aggregate. The number is a convention rather than a finding, and it is stated
 here so that changing it is a visible decision.
 """
 
+MINIMUM_JUDGED_FOR_BPREF = MINIMUM_RECORDS_PER_CLASS
+"""Below this `min(R, N)`, a bpref is reported with the shortfall named.
+
+bpref divides by `min(R, N)`, so when one of them is small the figure is decided
+by a handful of verdicts: at `N = 1` a single adjudication moves it between 0
+and 1. That is the same failure `MINIMUM_RECORDS_PER_CLASS` exists for, one
+denominator along, so it is **the same number for the same reason** rather than
+a second convention arrived at separately. Changing one should mean changing
+both, which is easier to notice when one is defined as the other.
+"""
+
 
 class MatchStrength(StrEnum):
     """How precisely a prediction located a defect (§7)."""
@@ -162,6 +173,19 @@ class Unjudged:
     source_id: str
     detector_id: str
     locator: Locator
+
+
+@dataclass(frozen=True, slots=True)
+class JudgedPrediction:
+    """One judged prediction, with the confidence the submission gave it.
+
+    `strength` is the match it achieved, or `None` when the corpus judged the
+    location and found no instance there. An **unjudged** prediction is not
+    represented at all -- that is the whole point of the measure this feeds.
+    """
+
+    score: float
+    strength: MatchStrength | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +273,25 @@ class ClassScore:
 
     judged_by_strength: Mapping[MatchStrength, int] = field(default_factory=dict)
     """Matches among the judged predictions, by strength. Precision's numerator."""
+
+    ranked_judgements: tuple[JudgedPrediction, ...] | None = None
+    """Every judged prediction, strongest claim first, or `None` if unordered.
+
+    `None` and `()` mean different things and the difference decides whether a
+    figure exists. `None` is "this submission declared no ordering"; `()` is
+    "it declared one and nothing in this class was judged".
+
+    The ordering must be **declared**, by a score on every finding of the class.
+    Arrival order will not do, however tempting it is to reach for: within one
+    run it is the submission's own and `docs/rules.md` §4 leans on that, but
+    across units it is the order this module happens to iterate runs in. bpref
+    merges every unit of a class into one list, so using arrival order there
+    would read a submission's intent out of a loop in this file.
+
+    That is what `Finding.score` exists for, and why it is a score rather than a
+    rank: a rank is ordinal inside the unit it came from, and no arrangement of
+    per-unit ranks yields one list.
+    """
 
     @property
     def pool_is_fully_judged(self) -> bool:
@@ -357,6 +400,90 @@ class ClassScore:
         hits = sum(c for s, c in self.judged_by_strength.items() if s.rank >= at_least.rank)
         claimed = self.judged_predictions + self.unverifiable_claims
         return hits / claimed if claimed else None
+
+    def bpref(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> float | None:
+        """Binary preference: how well known-good was ranked above known-bad.
+
+        **The figure that exists when precision does not, and it is not
+        precision.** It carries its own name everywhere it appears for that
+        reason: put in a field called precision it would be compared against
+        precisions, and it answers a different question over a different
+        denominator.
+
+        Precision here is all-or-nothing -- one unjudged prediction and the
+        class has no figure -- and that gate is what makes a round unrankable
+        while adjudication is outstanding. bpref dissolves the gate by
+        **ignoring unjudged predictions entirely** rather than counting them
+        either way. Counting them as wrong punishes a submission for finding
+        defects the corpus has not yet recorded, which is the failure this
+        benchmark is most likely to commit against its best entrant; counting
+        them as right rewards guessing.
+
+        Buckley and Voorhees, over `R` known-relevant and `N` judged
+        non-relevant:
+
+            bpref = (1/R) * sum over r of (1 - |non-relevant above r| / min(R, N))
+
+        `R` is the class's positive records, not the ones that were found. A
+        record nobody retrieved contributes a term of zero and stays in the
+        denominator, so this is not a precision analogue that ignores misses --
+        it declines to rank well by finding little.
+
+        Returns `None` when the submission declared no ordering, and when
+        nothing was judged non-relevant. The second is degenerate rather than
+        merely weak, the same way an all-matches judged set makes precision
+        identically 1.0: with `N = 0` every term is 1 and the result is recall
+        wearing another name.
+
+        `min(R, N)` is published beside the figure rather than folded into it,
+        and `bpref_below_minimum` says when it is too small to lean on.
+        """
+        if self.ranked_judgements is None or not self.records:
+            return None
+        ordered = self.ranked_judgements
+
+        def found(judged: JudgedPrediction) -> bool:
+            return judged.strength is not None and judged.strength.rank >= at_least.rank
+
+        # A prediction that matched a record *below* the floor is judged and is
+        # not a hit at this floor, so it belongs with the non-relevant. Dropping
+        # it instead would raise the figure by discarding evidence against the
+        # submission -- the same reasoning `precision` gives for its denominator.
+        non_relevant = [index for index, j in enumerate(ordered) if not found(j)]
+        if not non_relevant:
+            return None
+        cap = min(self.records, len(non_relevant))
+        counted = set(non_relevant[:cap])
+
+        total = 0.0
+        above = 0
+        for index, judged in enumerate(ordered):
+            if index in counted:
+                above += 1
+            elif found(judged):
+                total += 1.0 - above / cap
+        return total / self.records
+
+    def bpref_basis(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> tuple[int, int]:
+        """`(R, N)` for `bpref` at this floor. Published, never folded in.
+
+        A bpref without its `min(R, N)` is a number whose stability nobody can
+        check, and the two are reported apart so that a reader sees the second
+        before trusting the first.
+        """
+        if self.ranked_judgements is None:
+            return (self.records, 0)
+        non_relevant = sum(
+            1
+            for j in self.ranked_judgements
+            if j.strength is None or j.strength.rank < at_least.rank
+        )
+        return (self.records, non_relevant)
+
+    def bpref_below_minimum(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> bool:
+        """Whether `min(R, N)` is under `MINIMUM_JUDGED_FOR_BPREF`."""
+        records, non_relevant = self.bpref_basis(at_least)
+        return min(records, non_relevant) < MINIMUM_JUDGED_FOR_BPREF
 
     def recall(self, at_least: MatchStrength = MatchStrength.FUNCTION) -> float | None:
         hits = sum(c for s, c in self.by_strength.items() if s.rank >= at_least.rank)
@@ -1586,7 +1713,7 @@ def score(
         # whatever landed. A finding whose citation failed is still a claim the
         # submission made about a location, so it spends a slot -- and the order
         # is the submission's own, so spending slots on guesses is its choice.
-        claimed: list[tuple[str, str, Locator]] = []
+        claimed: list[tuple[str, str, Locator, float | None]] = []
         capped = 0
         uncheckable = 0
         per_unit: Counter[str] = Counter()
@@ -1612,8 +1739,10 @@ def score(
                     uncheckable += 1
                 if finding.status is not CitationStatus.VERIFIED:
                     continue
-                claimed.append((run.source_id, run.detector_id, finding.finding.locator))
-        predictions = [locator for _, _, locator in claimed]
+                claimed.append(
+                    (run.source_id, run.detector_id, finding.finding.locator, finding.finding.score)
+                )
+        predictions = [locator for _, _, locator, _ in claimed]
         judged_files = complete_for.get(cls, set())
         adjudications = adjudicated_for.get(cls, [])
         covered = [
@@ -1670,9 +1799,34 @@ def score(
         # with the sentence the leaderboard prints from the same counts.
         all_unjudged.extend(
             Unjudged(class_id=cls, source_id=source_id, detector_id=detector_id, locator=locator)
-            for index, (source_id, detector_id, locator) in enumerate(claimed)
+            for index, (source_id, detector_id, locator, _) in enumerate(claimed)
             if index not in set(judged)
         )
+        # The declared ordering, or nothing. Every claim in the class must carry
+        # a score: a submission that scored some of its findings and not others
+        # has not ordered the class, and merging the scored with the unscored
+        # would put the unscored somewhere by default -- which is this module
+        # inventing a confidence the submission withheld.
+        scores = [score for _, _, _, score in claimed]
+        ranked_judgements: tuple[JudgedPrediction, ...] | None = None
+        if claimed and all(score is not None for score in scores):
+            judged_set = set(judged)
+            ranked_judgements = tuple(
+                sorted(
+                    (
+                        JudgedPrediction(
+                            # `claimed` is in the submission's own order within
+                            # each unit, so a stable sort leaves ties where the
+                            # submission put them rather than reordering them.
+                            score=scores[index],  # type: ignore[arg-type]
+                            strength=assigned[index].strength if index in assigned else None,
+                        )
+                        for index in sorted(judged_set)
+                    ),
+                    key=lambda judged_prediction: -judged_prediction.score,
+                )
+            )
+
         strengths: Counter[MatchStrength] = Counter(m.strength for m in assigned.values())
         judged_strengths: Counter[MatchStrength] = Counter(
             match.strength for index, match in assigned.items() if index in set(judged)
@@ -1711,6 +1865,7 @@ def score(
             judged_units=len({predictions[index].file for index in judged}),
             judged_predictions=len(judged),
             judged_by_strength=dict(judged_strengths),
+            ranked_judgements=ranked_judgements,
             exact_unavailable=sum(
                 1
                 for r in class_records
