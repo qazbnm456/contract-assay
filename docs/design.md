@@ -68,7 +68,7 @@ noticed that the image had never built.** The Containerfile copied
 all green, on an image that could not exist — so a confinement that could not
 exist either.
 
-The existing check in §1.2 — for each cause, one input that produced it — does
+The existing check in §1.4 — for each cause, one input that produced it — does
 not catch this, and neither does "what test fails if this guarantee is absent",
 because a flag's removal *does* fail those tests. They were correct tests of a
 real thing at the wrong layer.
@@ -82,7 +82,7 @@ rather than a network name. And every flag is removed in turn to confirm the
 suite fails — a test that still passed with the flag gone was testing the
 engine's defaults.
 
-It is seductive for the same reason the other instances in §1.2 are: checking
+It is seductive for the same reason the other instances in §1.4 are: checking
 the request is cheap, it looks like coverage, and it passes. The same mistake in
 miniature, caught the same day: the first version of the kill test drove
 `docker stop` by hand, which tested Docker rather than `SubprocessLauncher` —
@@ -1201,7 +1201,7 @@ precision, `confirmed_clean` most cheaply, because a human asserts completeness
 directly and records how they confirmed it.
 
 **But a confirmation resting on a structural absence licenses precision
-nowhere, and that is §1.3 rather than bad luck.** The tempting way to make
+nowhere, and that is §1.4 rather than bad luck.** The tempting way to make
 hand-confirmation cheap is to rest it on a premise anyone can re-check: this
 file reads no property a block producer chooses, therefore it holds no instance
 of the class that misuses one. The premise is sound and the record is honest.
@@ -1339,7 +1339,7 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   quietly includes work no adapter could have used, and every yield figure
   computed from it understates.
 
-  Two obligations, both from §1.3, and a third that turned out to have a better
+  Two obligations, both from §1.4, and a third that turned out to have a better
   answer than disclosure. A harvester parsing only certain report shapes yields a
   corpus skewed toward those platforms, so it tallies what it skipped and why. And it tallies those skips **by class**, not only by platform and
   cause: a skipped finding has no record — that is why it was skipped — so a
@@ -1393,7 +1393,7 @@ harvest  ──▶  normalize  ──▶  verify  ──▶  corpus/records/*.js
   around 20%, with perhaps another 15% reachable only by reading the title as
   prose.
 
-  That assessment was made by whoever wrote the classifier, which is §1.3 again:
+  That assessment was made by whoever wrote the classifier, which is §1.4 again:
   the instrument judged its own misses, and the bias showed in the direction
   predicted. The first estimate from it was roughly double what disciplined
   synonyms then delivered -- 40% claimed against 20% measured -- because
@@ -1857,7 +1857,7 @@ that mechanical rather than manual.
 
 One thing to plan for rather than discover, whenever the pipeline is taken up.
 Confirming that a mutation preserved a defect by comparing which predicates fire
-cannot confirm a defect the predicates never saw — §1.3 again — so those cases
+cannot confirm a defect the predicates never saw — §1.4 again — so those cases
 fall to human review, which is the expensive and lossy path. Classes needing
 more review therefore yield fewer confirmed variants per unit of effort, and a
 variant set sized by counting available mutations rather than by budgeting
@@ -1960,7 +1960,7 @@ labels the *report* supplied — rather than read off the provenance. A finished
 record cannot recover that distinction otherwise: once the index has filled a
 label in, nothing about the record tells it apart from one the report stated.
 
-This was found by turning §1.4's own question on code written after §1.3 was.
+This was found by turning §1.4's own question on code written after §1.4 was.
 Nothing protects new code from a rule in an old section except somebody pointing
 the question at it again.
 
@@ -2352,7 +2352,7 @@ cross-register relation is the thing that rots first.
 
 The container is named for the set rather than for half of it, which was worth
 correcting while there were two entries: a container named wrongly attracts the
-wrong contents, exactly as a cause named wrongly points at the wrong fix (§1.3).
+wrong contents, exactly as a cause named wrongly points at the wrong fix (§1.4).
 
 So each detector declares a register of what it cannot establish, carried on
 every run by the harness rather than asserted at report time. Each entry names
@@ -3065,7 +3065,7 @@ rather than two.
 
 `corpus/normalize.py` is built, and it pins the digest itself rather than leaving
 that to `verify`. For a derived span the digest is the only check that survives —
-the span check is tautological (§1.3) — and it only survives if the digest
+the span check is tautological (§1.4) — and it only survives if the digest
 witnesses the bytes the derivation ran against. Left blank for `verify` to fill
 in later, verification would compare the file to itself, and the guarantee §6.6
 claims for derived locators would be empty.

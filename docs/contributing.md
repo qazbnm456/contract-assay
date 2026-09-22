@@ -5,7 +5,7 @@ different risks. A wrong record poisons every score computed against it; a
 wrong detector costs one number. The bars below follow from that asymmetry
 rather than from how hard each is to write.
 
-Read `docs/design.md` §1.3 first. The rules there are the review standard, and
+Read `docs/design.md` §1.4 first. The rules there are the review standard, and
 the shortest of them is the one most often skipped: **a rule is an instruction
 to go and look, not a conclusion to cite.**
 
