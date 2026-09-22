@@ -1,0 +1,35 @@
+{
+  "any_match_and_write_up": 291,
+  "archive": "https://github.com/SunWeb3Sec/DeFiHackLabs",
+  "archive_commit": "cb457812eacd4dad09bbd1b62a1fe2fcff1a8669",
+  "chain_and_fork_point_resolved": 852,
+  "exact_match_and_write_up": 125,
+  "exactly_one_victim": 492,
+  "files": 874,
+  "fork_point_forms": {
+    "absent": 7,
+    "block_number": 607,
+    "block_number_via_constant": 238,
+    "no_fork_call": 7,
+    "transaction_hash_via_constant": 9,
+    "unresolved": 6
+  },
+  "incidents": 863,
+  "legs_1_and_2": 483,
+  "lookup_statuses": {
+    "exact_match": 149,
+    "match": 189,
+    "no verified source": 145
+  },
+  "lookups_made": 483,
+  "population_glob": "src/test/*/*_exp*.sol",
+  "verified_victim_source_any_match": 338,
+  "verified_victim_source_exact_match": 149,
+  "victims_annotated_per_file": {
+    "0": 345,
+    "1": 492,
+    "2": 35,
+    "3": 1,
+    "9": 1
+  }
+}

@@ -998,23 +998,77 @@ be identified at all** — by a method, matching a verified contract's own name
 against the project's name, that is itself a broken instrument. So the two
 figures are about the same sample and do not compose: availability was measured
 over addresses, identifiability over victims, and the yield depends on the
-intersection, which nobody has measured.
+intersection.
 
-The yield-relevant measurement is therefore one figure and not a product of
-these two: **of N sampled incidents, for how many can the victim be identified
-from the exploit's call targets, its source retrieved at the fork point, and its
-defect mapped to one of the nine classes.** Until that exists, 849 multiplied by
-anything is an estimate with a borrowed denominator. The availability figure
-stands for what it measured and licenses the route; it does not licence a number
-of records.
+**That intersection has since been measured, over the whole population instead
+of a sample.** The result is written to `docs/measurements/incident-yield.json`
+and `tools/measure_incident_yield.py` reproduces it. The population is pinned by
+the archive's commit, which matters because the archive grows: it held 849
+incidents when the figures above were taken and 863 at the commit this one
+names. It also fixes a defect in the earlier attempt that is worth stating
+plainly — **the 34-incident sample was never written down.** No list, no seed,
+no selection rule. Its figures could therefore never be reproduced or
+corrected, only re-taken, which is the same failure as a figure said aloud and
+never recorded, one level up: the measurement was recorded and the thing it was
+measured over was not.
+
+Four things have to hold at once for an incident to become a record, and the
+conjunction is what was measured:
+
+1. **A chain and a fork point, from the artefact: 852 of 874 (97%).** Higher
+   than the 88% above, and the difference is instrument rather than data. A
+   fifth of these state the fork point as a named constant, and 56 declare it
+   as `blocknumToForkFrom = 6_467_248 - 1` — the block *before* the exploit,
+   which is the state in which the defect was still live. A reader that accepts
+   only inline literals loses them, and one that resolves the name but drops
+   the arithmetic pins the block the exploit landed in and reports the same
+   count while doing it.
+2. **Exactly one exploited contract identified: 492 of 874 (56%).** Read from
+   the archive's own header annotation rather than by matching a contract's
+   name against the project's, which is the broken instrument above. 35 files
+   annotate two and are counted as ambiguous rather than resolved by taking the
+   first.
+3. **Verified source for that contract: 338 of the 483 that clear both (70%).**
+   This is the figure the 82% was mistaken for, and it is the victim's source
+   rather than any address's.
+4. **A write-up to map a class from: 291 of those 338.** A bound rather than a
+   result — the artefact states what was attacked and never which of the nine
+   classes it belongs to.
+
+So **291 incidents can support a record**, a third of the archive. But that is
+the file-level number, and the strength matters more than the count.
+
+**Only 149 of the 483 are exact matches, and a line-span locator survives
+nothing weaker.** The verification repository defines two strengths. An exact
+match recompiles byte-for-byte including the metadata hash, and because the
+metadata carries a keccak256 of every source file, the source is guaranteed to
+be the source that was compiled. A plain match agrees on everything *except*
+that hash, which in the repository's own words permits "differences in source
+code comments, variable names, or other metadata fields such as source paths" —
+a source whose lines have moved. A locator here is a line span, so a plain
+match supports a claim about a file and nothing narrower.
+
+That is not a caveat, it is the yield. `assay-arena` already refuses
+`strength_floor: "file"` on a ranked round, so a plain-match incident cannot
+feed one. The number that sizes the route is therefore **125**: exact match,
+one identified victim, a resolved fork point and a write-up — 14% of the
+archive, and still more than twice the present holdout.
+
+The availability figure stands for what it measured and licenses the route; it
+never licensed a number of records, and this is that number.
 
 An address pin is not weaker than a commit pin. Deployed bytecode is immutable,
 so an address plus a chain plus a fork point is at least as reproducible as a
 commit and arguably more so, since an address cannot be force-pushed. The digest
-witnesses the bytes exactly as it does now. Proxies are the real complication
-and they are answerable: the verification repository resolves them itself,
-reporting whether an address is a proxy and naming its implementations, so the
-pin can name the implementation rather than the proxy.
+witnesses the bytes exactly as it does now. Proxies are the real complication.
+The pin names the implementation and carries the proxy address as provenance,
+which `AddressPin` settles — but **not** on the strength of the verification
+repository resolving proxies for us, which this document claimed here and §6.2
+then refuted: that repository reports a *recognised* proxy standard rather than
+proxy-ness, and returned "not a proxy" for two of three contracts whose own
+names end in `Proxy`. Proxy status has to be read from the chain. The claim is
+corrected in place rather than deleted, because it is the claim that made the
+measurement in §6.2 look unnecessary.
 
 §9 excludes *unverified* on-chain contracts and says nothing against verified
 ones, so this is inside the stated non-goals rather than an expansion of them.
@@ -1357,6 +1411,13 @@ new negative kind — is therefore untested rather than refuted. Settling it nee
 proxy status read from the chain (an implementation storage slot, or a
 `delegatecall` in the runtime code) rather than from a verification repository,
 and a victim identified from the exploit's call targets rather than from a name.
+
+**Half of that is now available.** The victim is read from the archive's own
+header annotation for 492 of 874 artefacts, which is a better instrument than
+either name-matching or call targets and cost nothing to obtain — the annotation
+was in the file the whole time. What remains is proxy status from the chain over
+those 492, and the rate it produces still decides only engineering effort:
+`AddressPin` already settles which address the pin names.
 
 ### 6.3 Pipeline
 
