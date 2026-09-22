@@ -57,6 +57,44 @@ def a_document(**over: Any) -> dict[str, Any]:
     return {**base, **over}
 
 
+class TestCoverageIsPartOfTheBasis:
+    """A figure over part of the corpus is not comparable with one over all of it.
+
+    `run` flushes per unit, so an interrupted sweep leaves its work behind; the
+    runs file records what ran and never what it was asked to run; the score
+    document inferred `completion_rate` from the runs it was handed; and the
+    pointer carried no coverage at all. Measured: a submission over 35 of 140
+    units was listed beside a full sweep under "all measured against the same
+    corpus digest, engine version, floor, weighting and prediction cap.
+    Comparable."
+    """
+
+    def _pointer(self, units: int | None, submission: str) -> ResultPointer:
+        document = a_document(
+            submission_id=submission,
+            coverage={"units_scored": units, "units_in_corpus": 140, "rate": None},
+        )
+        if units is None:
+            document.pop("coverage")
+        return pointer_from_document(
+            document, published_by="Lab", document_url=f"https://example.org/{submission}.json"
+        )
+
+    def test_two_coverages_do_not_compare(self) -> None:
+        outcome = compare([self._pointer(140, "full"), self._pointer(35, "partial")])
+        assert len(outcome.comparable) == 2
+        assert "NOT comparable" in outcome.statement()
+
+    def test_the_same_coverage_compares(self) -> None:
+        outcome = compare([self._pointer(140, "one"), self._pointer(140, "two")])
+        assert len(outcome.comparable) == 1
+
+    def test_a_document_written_before_the_field_still_reads(self) -> None:
+        # Refusing it would make the reader the thing that broke; `None`
+        # compares only with `None`, which is the rule the other six follow.
+        assert self._pointer(None, "older").units_scored is None
+
+
 class TestAPointerComesOutOfTheDocument:
     def test_every_field_is_read_rather_than_claimed(self) -> None:
         # A pointer assembled by hand is a number somebody typed.

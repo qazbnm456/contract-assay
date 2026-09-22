@@ -52,6 +52,35 @@ jobs:
         # it. The gate is where that is caught, on the pull request that adds it.
         run: contract-assay results results
 
+  clean-install:
+    # A clean install on a machine whose Python has no CA bundle wired in.
+    #
+    # `contract-assay fetch` -- the documented first step -- failed on all 141
+    # pins after either documented install, because `certifi` was used when
+    # importable and never declared. Two earlier reviews found that and fixed
+    # the *mypy* consequence twice: every job here is `ubuntu-latest`, where
+    # urllib does consult the system store, and the one test that covered the
+    # mitigation was an `importorskip` that skipped in exactly the environment
+    # where the bug bites. This job is the environment.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install as the docs say
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --group dev
+
+      - name: Fetch the pinned source
+        run: contract-assay fetch corpus/records --source-root ./checkout
+
+      - name: The gate, on this platform
+        run: pytest -m offline
+
   figures:
     # The numbers the docstrings publish, checked against a real checkout.
     #

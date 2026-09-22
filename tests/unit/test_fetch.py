@@ -576,5 +576,21 @@ class TestTheDefaultFetcherTrustsTheRightStore:
         # per file, which reads as an unreachable host rather than a missing CA
         # bundle. This ran against 141 real pins and reported 141 failures once,
         # for exactly that reason.
-        pytest.importorskip("certifi")
+        # Not `importorskip`: certifi is a declared dependency now, and the
+        # skip was in the environment where its absence bites -- so the suite
+        # reported a pass on the machine where `fetch` failed 141 of 141 pins.
+        import certifi
+
+        assert Path(certifi.where()).is_file()
         assert callable(urllib_fetcher())
+
+    def test_certifi_is_declared_rather_than_hoped_for(self) -> None:
+        # Two reviews found the missing declaration and fixed the mypy
+        # consequence of it. This is the declaration.
+        import tomllib
+
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        declared = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        assert any(
+            requirement.startswith("certifi") for requirement in declared["project"]["dependencies"]
+        )

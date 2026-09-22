@@ -1239,6 +1239,42 @@ class TestAFigureIsAboutItsCorpusComposition:
         assert "sherlock at 100%" in statement
 
 
+class TestAPartialSweepSaysSo:
+    """A submission over part of the corpus used to read exactly like a whole one.
+
+    `run` flushes per unit so an interrupted sweep leaves its work behind, the
+    runs file records what ran and never what it was asked to run, and
+    `completion_rate` is about the runs that arrived. Measured: 35 units of 140
+    gave `435 records scored across 9 classes`, `completion_rate 1.0`, `0 runs
+    were invalid and 0 skipped`, and a `results` listing that called it
+    comparable with a full sweep. The scorer can see it without any change to
+    the runs format, because it holds the corpus.
+    """
+
+    def test_the_statement_names_the_units_never_run(self) -> None:
+        one = a_record(record_id="one")
+        other = a_record(record_id="two", repo="elsewhere")
+        report = score([a_run([(5, 6)], source_id=one.pin.source_id)], [one, other], resolver())
+        assert (report.units_scored, report.units_in_corpus) == (1, 2)
+        assert report.unit_coverage == 0.5
+        assert "produced runs for 1 of 2 source units" in report.statement()
+
+    def test_a_whole_sweep_says_nothing(self) -> None:
+        one = a_record(record_id="one")
+        report = score([a_run([(5, 6)], source_id=one.pin.source_id)], [one], resolver())
+        assert (report.units_scored, report.units_in_corpus) == (1, 1)
+        assert report.unit_coverage == 1.0
+        assert "source units" not in report.statement()
+
+    def test_an_invalid_run_still_counts_as_covered(self) -> None:
+        # It was run and it answered badly, which is a measurement. Counting it
+        # as *not covered* would hide a crashing detector inside a coverage gap.
+        one = a_record(record_id="one")
+        run = a_run([], source_id=one.pin.source_id, outcome=Outcome.INVALID)
+        report = score([run], [one], resolver())
+        assert report.units_scored == 1
+
+
 class TestThePoolIsBounded:
     """The per-unit prediction cap.
 

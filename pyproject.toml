@@ -25,6 +25,16 @@ dependencies = [
     # there is no configuration in which it is reasonable to do without it.
     "tree-sitter>=0.26,<0.27",
     "tree-sitter-solidity>=1.2.13,<2",
+    # `fetch` is the documented first step and it speaks TLS. Python's default
+    # SSL context is wired to a system store on Linux and to nothing usable on
+    # a stock macOS CPython, where every pin failed with
+    # `CERTIFICATE_VERIFY_FAILED` -- 141 of 141, from both documented installs,
+    # measured. `urllib_fetcher` has always used certifi when it could find it
+    # and its docstring has always said the failure "reads as 'the host is
+    # unreachable' rather than 'this machine has no CA bundle wired in'". Two
+    # earlier reviews found that and fixed the *mypy* consequence twice while
+    # leaving the dependency undeclared, because CI is Linux-only.
+    "certifi>=2024.2.2",
 ]
 
 [project.optional-dependencies]
@@ -44,7 +54,7 @@ all = ["contract-assay[slither]"]
 # where a dependency nothing here imports belongs.
 
 [project.scripts]
-contract-assay = "contract_assay.cli:app"
+contract-assay = "contract_assay.cli:run_cli"
 
 [project.urls]
 Repository = "https://github.com/qazbnm456/contract-assay"
@@ -112,7 +122,10 @@ mypy_path = "src"
 packages = ["contract_assay"]
 
 [[tool.mypy.overrides]]
-# `certifi` is a genuinely optional import, guarded by `try/except ImportError`
+# `certifi` is now a declared dependency and no longer optional. The override
+# stays because the import is still guarded: an installed-but-broken certifi
+# should degrade to the system store rather than abort a fetch.
+# `certifi` was a genuinely optional import, guarded by `try/except ImportError`
 # in `corpus/fetch.py` -- present on most machines because something else pulled
 # it in, absent in a clean install of this package. It was absent from both the
 # dependencies and these overrides, so `mypy` failed in a clean environment and

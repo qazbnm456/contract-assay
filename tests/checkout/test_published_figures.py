@@ -189,10 +189,16 @@ class TestTheDigestMeansOneThing:
     diverged.
     """
 
-    def test_the_byte_digest_and_the_text_digest_agree(self, records) -> None:  # type: ignore[no-untyped-def]
+    def test_the_byte_digest_and_the_text_digest_agree(self, records, resolve) -> None:  # type: ignore[no-untyped-def]
+        # `resolve` is requested for its skip guard, not its value: without it
+        # this test alone reported a missing checkout as the byte digest and
+        # the text digest disagreeing, while its ten siblings skipped and named
+        # the fetch command.
         import hashlib
 
         from contract_assay.corpus.fetch import checkout_file
+
+        assert resolve is not None
 
         checked = 0
         for record in records:

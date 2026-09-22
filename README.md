@@ -149,9 +149,11 @@ $ contract-assay fetch corpus/records --source-root ./checkout
 
 $ contract-assay run --manifest my-detector.json --records corpus/records \
     --source-root ./checkout --out runs.jsonl
+# `my-detector.json` is your manifest -- `examples/reference_runner/manifest.json`
+# is one to copy. Do not also use that name for `--out` below.
 
 $ contract-assay score runs.jsonl --records corpus/records \
-    --submission-id my-detector --source-root ./checkout --out my-detector.json
+    --submission-id my-detector --source-root ./checkout --out my-score.json
 
 $ contract-assay results        # compare with what others have published
 ```
@@ -229,7 +231,8 @@ contract-assay verify corpus/records/ --source-root .
 contract-assay score runs.jsonl --records corpus/records --submission-id team-a \
     --source-root ./checkout --weights weights.json --out team-a.json
 contract-assay rank --submission team-a=team-a-runs.jsonl \
-    --records corpus/records --weights weights.json --baseline the-agreed-model
+    --records corpus/records --source-root ./checkout \
+    --weights your-weights.json --baseline the-agreed-model
 ```
 
 ## What this is, and what depends on it

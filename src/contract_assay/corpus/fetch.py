@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import threading
 import unicodedata
 import uuid
@@ -196,13 +197,19 @@ def raw_url(pin: CommitPin) -> str:
 def urllib_fetcher(timeout: float = 30.0) -> Fetcher:
     """The default fetcher. Separated so a caller can supply a cache or a mirror.
 
-    The SSL context is built from `certifi`'s bundle when it is installed, and
-    that is not incidental. Python's `urllib` does not consult the system trust
-    store on macOS, so a default context fails to verify **every** host -- and
-    the failure arrives as one `URLError` per file, which reads as "the host is
-    unreachable" rather than "this machine has no CA bundle wired in". The first
-    reading sends someone to check their network; the second is the fix. A cause
-    recorded wrongly points investigation away from it.
+    The SSL context is built from `certifi`'s bundle, which is a **declared
+    dependency** for this reason: Python's `urllib` does not consult the system
+    trust store on macOS, so a default context fails to verify **every** host --
+    and the failure arrives as one `URLError` per file, which reads as "the host
+    is unreachable" rather than "this machine has no CA bundle wired in". The
+    first reading sends someone to check their network; the second is the fix.
+
+    Measured, twice: 141 of 141 pins failed from both documented installs on a
+    machine without it, and two earlier reviews fixed the *mypy* consequence of
+    the missing declaration while leaving the declaration missing, because CI is
+    Linux-only. The import stays guarded so that an installed-but-broken certifi
+    degrades to the system store instead of aborting a fetch, and the fallback
+    says so where the operator reads it.
     """
     import ssl
     import urllib.request
@@ -212,7 +219,15 @@ def urllib_fetcher(timeout: float = 30.0) -> Fetcher:
         import certifi
 
         context = ssl.create_default_context(cafile=certifi.where())
-    except ImportError:  # pragma: no cover - certifi ships with the usual stack
+    except ImportError:  # pragma: no cover - a declared dependency
+        # Named where the operator will look, because the bare `URLError` this
+        # produces per file is the one the docstring above says is misread.
+        print(
+            "certifi is not importable, so TLS verification falls back to this "
+            "machine's system store. On macOS that store is not wired to Python and "
+            "every pin will fail to verify: `pip install certifi` is the fix.",
+            file=sys.stderr,
+        )
         context = None
 
     def fetch(url: str) -> bytes:

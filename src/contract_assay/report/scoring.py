@@ -418,6 +418,25 @@ class ScoreReport:
     submission's claim, it replaced it. Zero for a submission whose locators sit
     where its quotes do."""
 
+    units_scored: int = 0
+    """How many of the corpus's source units this submission produced a run for.
+
+    Published because a partial sweep was indistinguishable from a whole one.
+    `run` flushes per unit so an interrupted sweep leaves its work behind -- and
+    the runs file records what ran, never what it was asked to run, so scoring
+    35 units of 140 gave `435 records scored across 9 classes`, a
+    `completion_rate` of 1.0, `0 runs were invalid and 0 skipped`, and a
+    `results` listing that called it "Comparable" with a full sweep. The only
+    trace was `classes[].runs.measured`, nested per class.
+
+    The scorer can see this without any change to the runs format, because it
+    holds the corpus: the denominator is the units the records pin.
+    `completion_rate` is a different question -- of the runs that arrived, how
+    many answered -- and both are published."""
+
+    units_in_corpus: int = 0
+    """How many source units the records pin. The denominator for `units_scored`."""
+
     stale_citations: int = 0
     """Of those, the ones whose source was there and did not match its pin.
 
@@ -556,6 +575,18 @@ class ScoreReport:
     def thin_classes(self) -> tuple[VulnerabilityClass, ...]:
         return tuple(cls for cls, score in sorted(self.by_class.items()) if score.below_minimum)
 
+    @property
+    def unit_coverage(self) -> float | None:
+        """Share of the corpus's units this submission ran at all.
+
+        Distinct from a class's `completion_rate`, which is about the runs that
+        arrived: a submission can answer every run it produced and still have
+        covered a quarter of the corpus.
+        """
+        if not self.units_in_corpus:
+            return None
+        return self.units_scored / self.units_in_corpus
+
     def statement(self) -> str:
         """The sentence that has to accompany any figure taken from this report."""
         records = sum(s.records for s in self.by_class.values())
@@ -566,6 +597,19 @@ class ScoreReport:
         parts = [
             f"{_plural(records, 'record')} scored across {_plural(classes, 'class', 'classes')}."
         ]
+
+        # Second, because it changes what every figure below it is over. A
+        # partial sweep used to read exactly like a whole one.
+        if self.units_in_corpus and self.units_scored < self.units_in_corpus:
+            missing = self.units_in_corpus - self.units_scored
+            parts.append(
+                f"This submission produced runs for {self.units_scored} of "
+                f"{self.units_in_corpus} source units: {_plural(missing, 'unit')} was "
+                "never run, and every figure here counts its records as missed. A "
+                "figure over part of the corpus is not comparable with one over all of "
+                "it -- `contract-assay run` reports the units it could not read, and an "
+                "interrupted sweep has to be finished rather than scored."
+            )
 
         thin = self.thin_classes
         if thin:
@@ -1369,6 +1413,16 @@ def score(
     # One reader for the whole invocation, so the bytes the citation gate
     # covered are the bytes `parsed_for` parses. See `VerifiedSource`.
     verified = VerifiedSource(records, resolve)
+    # Coverage, from the corpus rather than from the submission: the runs file
+    # records what ran and never what it was asked to run.
+    units_in_corpus = len({record.pin.unit_id for record in records})
+    units_scored = len(
+        {
+            units.get(run.source_id) or f"file:{run.source_id}"
+            for run in runs
+            if run.outcome.is_measurement or run.outcome is Outcome.INVALID
+        }
+    )
     (
         runs,
         refuted_citations,
@@ -1658,6 +1712,8 @@ def score(
         deterministic_runs=deterministic_runs,
         refuted_citations=refuted_citations,
         stale_citations=stale_citations,
+        units_scored=units_scored,
+        units_in_corpus=units_in_corpus,
         repositioned_predictions=repositioned,
         repositioned_into_another_function=repositioned_elsewhere,
         unchecked_citations=unchecked_citations,

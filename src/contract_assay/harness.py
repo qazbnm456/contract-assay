@@ -306,6 +306,18 @@ def run_submission(
                 # on unit 40 of 141 ended the sweep with a traceback; now it
                 # costs one unit, recorded with its cause.
                 reply = ModelReply(failed=f"{type(failure).__name__}: {failure}")
+            if not isinstance(reply, ModelReply):
+                # A caller that *returns* the wrong thing, which is the likeliest
+                # bug in a hand-written adapter and the one shape this did not
+                # cover: `None` or a dict gave `AttributeError: 'NoneType' object
+                # has no attribute 'failed'`, a traceback, and **zero runs
+                # written** -- the whole sweep lost to one unit's caller. A
+                # raising caller has always cost one unit and been recorded with
+                # its cause; returning nonsense now costs the same.
+                reply = ModelReply(  # type: ignore[unreachable]
+                    failed=f"the model caller returned {type(reply).__name__} rather than a "
+                    "ModelReply; a failed call is a value, not an exception, and not a guess"
+                )
             if reply.failed is not None:
                 yield DetectorRun(
                     detector_id=detector.detector_id,

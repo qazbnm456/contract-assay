@@ -22,6 +22,11 @@ from contract_assay.models import DEFAULT_PREDICTIONS_PER_UNIT
 
 pytestmark = pytest.mark.offline
 
+# Diagnostics go to stderr, data to stdout. This click version keeps the two
+# apart on `Result`, so a test says which stream it reads -- and the reason the
+# split matters is that the arena captures only the engine's stderr and was
+# getting a blank line for every refusal, because `typer.secho` writes to
+# stdout unless told otherwise.
 runner = CliRunner()
 
 VAULT = """\
@@ -90,6 +95,15 @@ def _cap_default(application: typer.Typer, command: str) -> object:
     raise AssertionError(f"no command named {command!r}")
 
 
+def _pin_for(path: str) -> dict[str, object]:
+    return {
+        "kind": "commit",
+        "repo_url": "https://github.com/example/vault",
+        "commit": COMMIT,
+        "path": path,
+    }
+
+
 def write_record(workspace: Path, record: dict[str, object], name: str = "record.json") -> Path:
     path = workspace / "records" / name
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
@@ -129,7 +143,7 @@ class TestDeclarations:
         junk.write_text("}{ not solidity ][", encoding="utf-8")
         result = runner.invoke(app, ["declarations", str(junk)])
         assert result.exit_code == 1
-        assert "no declarations" in result.stdout
+        assert "no declarations" in result.stderr
 
     def test_a_missing_file_is_rejected_by_the_argument_parser(self, workspace: Path) -> None:
         result = runner.invoke(app, ["declarations", str(workspace / "nope.sol")])
@@ -172,7 +186,7 @@ class TestVerify:
             app, ["verify", str(workspace / "records"), "--source-root", str(workspace)]
         )
         assert result.exit_code == 1
-        assert "malformed record" in result.stdout
+        assert "malformed record" in result.stderr
         assert "must name the function" in result.stdout
 
     def test_a_single_file_target_works_as_well_as_a_directory(self, workspace: Path) -> None:
@@ -187,7 +201,7 @@ class TestVerify:
             app, ["verify", str(workspace / "records"), "--source-root", str(workspace)]
         )
         assert result.exit_code == 1
-        assert "no record files" in result.stdout
+        assert "no record files" in result.stderr
 
     def test_unresolvable_source_is_reported_with_the_pin(self, workspace: Path) -> None:
         record = a_record()
@@ -306,6 +320,112 @@ class TestResolvingAnAddressPin:
         self._manifest(tmp_path, {"src/Vault.sol": "contract Vault {}"})
         pin = CommitPin(repo_url="https://github.com/x/y", commit="a" * 40, path="src/Vault.sol")
         assert _local_resolver(tmp_path)(pin) is None
+
+
+class TestFetchsExitCodeMeansSomething:
+    """Exit 0 used to mean "at least one file landed".
+
+    Measured: 1 of 2 pins usable gave exit 0, so a CI step could not tell a
+    complete checkout from a mostly empty one. A pin no repository can serve --
+    one record pins verified source for a deployed address -- is expected and
+    does not count against it, which is why a good fetch of the shipped corpus
+    still exits 0 with 140 of 141.
+    """
+
+    def test_a_partial_fetch_exits_nonzero(self, workspace: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        write_record(workspace, a_record(), name="one.json")
+        write_record(
+            workspace,
+            a_record(
+                record_id="vault-slippage-2",
+                pin=_pin_for("src/Other.sol"),
+                locator={
+                    "file": "src/Other.sol",
+                    "contract": "Vault",
+                    "function": "swapAndWithdraw",
+                    "start_line": 11,
+                    "end_line": 13,
+                },
+            ),
+            name="two.json",
+        )
+        (workspace / "src" / "Other.sol").write_text(VAULT, encoding="utf-8")
+        calls: list[str] = []
+
+        def one_works(url: str) -> bytes:
+            calls.append(url)
+            if "Other" in url:
+                raise RuntimeError("mirror down")
+            return VAULT.encode("utf-8")
+
+        monkeypatch.setattr("contract_assay.cli.urllib_fetcher", lambda *args, **kwargs: one_works)
+        result = runner.invoke(
+            app,
+            [
+                "fetch",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace / "out"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "mirror down" in result.stderr
+
+
+class TestDiagnosticsGoToStderr:
+    """Data on stdout, diagnostics on stderr — because another program reads them.
+
+    Seventeen of eighteen `typer.secho` calls wrote to stdout, and
+    `assay-arena`'s `RoundRunner._engine` builds its `EngineFailure` from the
+    engine's **stderr** — so every refusal the arena triggers reached the
+    operator as a blank line, under a docstring promising "the engine's own
+    stderr rather than a summary of it… the engine's refusals are written to be
+    read".
+    """
+
+    def test_a_refusal_is_on_stderr_and_stdout_stays_empty(self, workspace: Path) -> None:
+        write_record(workspace, a_record())
+        (workspace / "runs.jsonl").write_text("", encoding="utf-8")
+        (workspace / "weights.json").write_text('{"ZZ": 1.0}', encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "score",
+                str(workspace / "runs.jsonl"),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--submission-id",
+                "s",
+                "--weights",
+                str(workspace / "weights.json"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "is not a difficulty level" in result.stderr
+        assert "is not a difficulty level" not in result.stdout
+
+    def test_the_document_still_goes_to_stdout(self, workspace: Path) -> None:
+        # The other half of the split: a consumer piping `score` into `jq` must
+        # get the document and nothing else.
+        write_record(workspace, a_record())
+        (workspace / "runs.jsonl").write_text("", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "score",
+                str(workspace / "runs.jsonl"),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--submission-id",
+                "s",
+            ],
+        )
+        assert result.exit_code == 0
+        assert json.loads(result.stdout)["submission_id"] == "s"
 
 
 class TestTheResolverReadsARevisionedCheckout:

@@ -62,6 +62,7 @@ _BASIS = (
     "weights",
     "predictions_per_unit",
     "main_model",
+    "units_scored",
 )
 """The fields two results must agree on before their totals mean the same thing.
 
@@ -88,6 +89,20 @@ class ResultPointer(BaseModel):
     strength_floor: Annotated[str, Field(pattern=r"^(exact|function|call_adjacent|file)$")]
     weights: dict[str, float] = Field(default_factory=dict)
     predictions_per_unit: int | None = None
+    units_scored: int | None = None
+    """How many of the corpus's source units the submission ran.
+
+    In the basis, because a figure over part of the corpus is not comparable
+    with one over all of it -- and it was invisible: `run` flushes per unit, so
+    an interrupted sweep leaves its work behind; the runs file records what ran
+    and never what it was asked to run; the score document inferred
+    `completion_rate` from the runs it was handed; and this pointer carried no
+    coverage of any kind. Measured, a submission that ran 35 of 140 units was
+    listed beside a full sweep under "all measured against the same corpus
+    digest, engine version, floor, weighting and prediction cap. Comparable."
+
+    `None` for a pointer written before the field existed, which compares only
+    with other such pointers -- the same rule the other six fields follow."""
 
     main_model: str | None = None
     """The model behind the figures, or `None` for a deterministic submission.
@@ -176,6 +191,20 @@ def pointer_from_document(
             node = node[key]
         return node
 
+    def optional(name: str, *path: str) -> Any:
+        """Same, but `None` when the document predates the field.
+
+        Only for a field added after documents were already being published:
+        refusing an older document would make the reader the thing that broke,
+        and `ResultPointer` already compares `None` only with `None`.
+        """
+        node: Any = document
+        for key in (name, *path):
+            if not isinstance(node, dict) or key not in node:
+                return None
+            node = node[key]
+        return node
+
     return ResultPointer(
         submission_id=field("submission_id"),
         published_by=published_by,
@@ -189,6 +218,7 @@ def pointer_from_document(
         # model refuses for `total`.
         weights=field("weights"),
         predictions_per_unit=field("predictions_per_unit"),
+        units_scored=optional("coverage", "units_scored"),
         main_model=field("models", "main"),
         total=field("aggregate", "total", "value"),
         unavailable=field("aggregate", "total", "unavailable"),

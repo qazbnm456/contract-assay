@@ -145,7 +145,7 @@ def verify_command(
     """Check corpus records against source, and report what was rejected and why."""
     paths = sorted(records.glob("*.json")) if records.is_dir() else [records]
     if not paths:
-        typer.secho(f"no record files under {records}", fg=typer.colors.RED)
+        typer.secho(f"no record files under {records}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
     parsed: list[CorpusRecord] = []
@@ -153,16 +153,16 @@ def verify_command(
         try:
             parsed.append(CorpusRecord.model_validate_json(path.read_text(encoding="utf-8")))
         except ValidationError as exc:
-            typer.secho(f"{path.name}: malformed record", fg=typer.colors.RED)
+            typer.secho(f"{path.name}: malformed record", fg=typer.colors.RED, err=True)
             typer.echo(f"  {exc.error_count()} problem(s); first: {exc.errors()[0]['msg']}")
             raise typer.Exit(1) from exc
 
     report = verify_all(parsed, _local_resolver(source_root))
 
     for result in report.rejected:
-        typer.secho(f"  rejected  {result}", fg=typer.colors.RED)
+        typer.secho(f"  rejected  {result}", fg=typer.colors.RED, err=True)
     for record in report.admitted:
-        typer.secho(f"  admitted  {record.record_id}", fg=typer.colors.GREEN)
+        typer.secho(f"  admitted  {record.record_id}", fg=typer.colors.GREEN, err=True)
 
     if write_digests:
         by_id = {r.record_id: r for r in report.admitted}
@@ -190,7 +190,7 @@ def declarations_command(
     """
     index = index_source(source.read_text(encoding="utf-8", errors="replace"))
     if not index.parsed:
-        typer.secho("no declarations could be read from this file", fg=typer.colors.RED)
+        typer.secho("no declarations could be read from this file", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
     for decl in index.declarations:
@@ -216,7 +216,7 @@ def _records_from(directory: Path) -> list[CorpusRecord]:
     try:
         return load_records(directory)
     except ValueError as invalid:
-        typer.secho(str(invalid), fg=typer.colors.RED)
+        typer.secho(str(invalid), fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from invalid
 
 
@@ -237,7 +237,9 @@ def _runs_from(path: Path) -> list[DetectorRun]:
             runs.append(DetectorRun.model_validate_json(line))
         except ValidationError as invalid:
             typer.secho(
-                f"{path.name}:{number}: {invalid.error_count()} problems", fg=typer.colors.RED
+                f"{path.name}:{number}: {invalid.error_count()} problems",
+                fg=typer.colors.RED,
+                err=True,
             )
             raise typer.Exit(1) from invalid
     return runs
@@ -258,7 +260,9 @@ def _weights_from(path: Path | None) -> dict[DifficultyLevel, float]:
         try:
             weights[DifficultyLevel(key)] = float(value)
         except (ValueError, TypeError) as bad:
-            typer.secho(f"{path.name}: {key!r} is not a difficulty level", fg=typer.colors.RED)
+            typer.secho(
+                f"{path.name}: {key!r} is not a difficulty level", fg=typer.colors.RED, err=True
+            )
             raise typer.Exit(1) from bad
     return weights
 
@@ -286,9 +290,21 @@ def fetch_command(
         _records_from(records), source_root, workers=workers, fetch=urllib_fetcher()
     )
     for outcome in report.by_state("mismatched") + report.by_state("unavailable"):
-        typer.secho(f"  {outcome.state:<12} {outcome.path}: {outcome.detail}", fg=typer.colors.RED)
+        typer.secho(
+            f"  {outcome.state:<12} {outcome.path}: {outcome.detail}", fg=typer.colors.RED, err=True
+        )
     typer.echo(report.statement())
-    if not report.usable:
+    # Non-zero unless every pin a repository *can* serve is usable. `usable`
+    # alone exited 0 as soon as one file landed, whatever fraction failed --
+    # measured, 1 of 2 pins gave exit 0 -- so a CI step could not tell a
+    # complete checkout from a mostly empty one. A pin a repository cannot
+    # serve at all is expected and does not count against it: one record here
+    # pins verified source for a deployed address, which is why `verify` reports
+    # 441 of 442 and this command still exits 0 on a good fetch.
+    expected_gaps = sum(
+        1 for outcome in report.by_state("unavailable") if "chain explorer" in outcome.detail
+    )
+    if report.usable + expected_gaps < len(report.outcomes):
         raise typer.Exit(1)
 
 
@@ -346,11 +362,22 @@ def run_command(
     """
     detectors: list[Detector] = []
     for path in manifest:
-        declared = SubmissionManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            declared = SubmissionManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        except ValidationError as malformed:
+            # The boundary in `run_cli` catches this too, and cannot name the
+            # file: several `--manifest` flags are allowed, so "1 validation
+            # error for SubmissionManifest" leaves the operator to guess which
+            # one. `verify` has named its file for every malformed record since
+            # it was written.
+            problems = malformed.errors()
+            first = problems[0]["msg"] if problems else str(malformed)
+            typer.secho(f"{path.name}: {first}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from malformed
         try:
             detectors.append(load_detector(declared, search_path=path.parent))
         except MalformedSubmission as bad:
-            typer.secho(f"{path}: {bad}", fg=typer.colors.RED)
+            typer.secho(f"{path}: {bad}", fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from bad
 
     caller = None
@@ -358,7 +385,7 @@ def run_command(
         try:
             caller = load_caller(model_caller, search_path=Path.cwd())
         except ValueError as bad:
-            typer.secho(str(bad), fg=typer.colors.RED)
+            typer.secho(str(bad), fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from bad
 
     units, missing = units_from(_records_from(records), source_root)
@@ -372,7 +399,7 @@ def run_command(
             fg=typer.colors.YELLOW,
         )
     if not units:
-        typer.secho(f"no source units found under {source_root}", fg=typer.colors.RED)
+        typer.secho(f"no source units found under {source_root}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
     if limit:
         units = units[:limit]
@@ -424,7 +451,7 @@ def results_command(
     try:
         pointers = load_pointers(directory)
     except ValueError as invalid:
-        typer.secho(str(invalid), fg=typer.colors.RED)
+        typer.secho(str(invalid), fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from invalid
 
     comparison = compare(pointers)
@@ -542,9 +569,16 @@ def rank_command(
         Path, typer.Option("--records", exists=True, help="Corpus record file or directory.")
     ],
     source_root: Annotated[
-        Path | None,
-        typer.Option("--source-root", exists=True, file_okay=False, help="Checkout for source."),
-    ] = None,
+        Path,
+        typer.Option(
+            "--source-root",
+            exists=True,
+            file_okay=False,
+            help="Checkout the quotes are re-read against. Required, as it is for `score`: "
+            "without it a submission's claims cannot be checked and its class reads as "
+            "'claimed nothing'.",
+        ),
+    ],
     weights: Annotated[
         Path | None,
         typer.Option("--weights", exists=True, dir_okay=False, help="Difficulty weights, as JSON."),
@@ -596,18 +630,18 @@ def rank_command(
     resolved sources. Rank from a checkout nobody is writing to.
     """
     held = _records_from(records)
-    resolve = _local_resolver(source_root) if source_root is not None else None
+    resolve = _local_resolver(source_root)
     weighting = _weights_from(weights)
     scores = []
     documents: dict[str, dict[str, object]] = {}
     for entry in submissions:
         submission_id, separator, runs_path = entry.partition("=")
         if not separator or not submission_id:
-            typer.secho(f"{entry!r} is not `id=path`", fg=typer.colors.RED)
+            typer.secho(f"{entry!r} is not `id=path`", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)
         path = Path(runs_path)
         if not path.is_file():
-            typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED)
+            typer.secho(f"{runs_path} is not a readable runs file", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)
         report = score(_runs_from(path), held, resolve, predictions_per_unit=predictions_per_unit)
         submission = score_submission(submission_id, report, weights=weighting)
@@ -625,7 +659,7 @@ def rank_command(
             try:
                 wanted.append(VulnerabilityClass(name))
             except ValueError as unknown:
-                typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED)
+                typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED, err=True)
                 raise typer.Exit(1) from unknown
     board = leaderboard(scores, baseline=baseline, over=wanted)
     document = json.dumps(
@@ -638,3 +672,41 @@ def rank_command(
         return
     out.write_text(document + "\n", encoding="utf-8")
     typer.echo(f"wrote {out} -- {board.statement()}")
+
+
+def run_cli() -> int:
+    """The console script. One exception boundary for the whole CLI.
+
+    There was none at this edge -- no `except OSError`, no `except Exception`,
+    no excepthook -- and an operational review found six documented paths that
+    ended in a bare pydantic or I/O traceback: a malformed `--manifest` (five
+    shapes, and the filename never named), an unreadable file in the checkout,
+    an unwritable `--source-root`, a full filesystem, `--out` naming a
+    directory, and a `--model-caller` returning the wrong type. Each was one
+    handler away, and each earlier fix added one handler.
+
+    A `ValidationError` from a hand-edited JSON file and an `OSError` from a
+    filesystem are things an operator did, not defects in this package: one
+    line naming the cause, exit 1. Everything else propagates, because a defect
+    in here should look like one.
+    """
+    try:
+        app()
+    except SystemExit as exit_code:  # typer's own, including --help and Exit
+        return int(exit_code.code or 0)
+    except (ValidationError, json.JSONDecodeError) as malformed:
+        lines = str(malformed).splitlines()
+        typer.secho(lines[0] if lines else str(malformed), fg=typer.colors.RED, err=True)
+        typer.secho(
+            "this file is not the shape the command expects; `--help` names what it takes",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        return 1
+    except OSError as failed:
+        named = getattr(failed, "filename", None)
+        typer.secho(
+            f"{named or 'a file'}: {failed.strerror or failed}", fg=typer.colors.RED, err=True
+        )
+        return 1
+    return 0

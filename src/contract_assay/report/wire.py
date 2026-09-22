@@ -234,6 +234,14 @@ def score_document(
         "predictions_per_unit": report.predictions_per_unit,
         "weights": {level.value: weight for level, weight in sorted(submission.weights.items())},
         "corpus": corpus_fingerprint(records),
+        # How much of that corpus this submission actually ran. A partial sweep
+        # published a `completion_rate` of 1.0 and a statement identical to a
+        # whole one, and `results` called the two comparable.
+        "coverage": {
+            "units_scored": report.units_scored,
+            "units_in_corpus": report.units_in_corpus,
+            "rate": report.unit_coverage,
+        },
         "models": _models(report),
         # The two counts that say whether the scorer agreed with the submission
         # about its own evidence. They existed on the report and reached the

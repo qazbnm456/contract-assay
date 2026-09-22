@@ -275,6 +275,35 @@ class TestTheLoop:
         run = next(iter(run_submission([Planner()], [a_unit()], model=caller)))
         assert len(run.findings) == DEFAULT_PREDICTIONS_PER_UNIT
 
+    @pytest.mark.parametrize("returned", [None, {"findings": []}, "nope", 7])
+    def test_a_caller_that_returns_the_wrong_thing_costs_one_unit(self, returned: object) -> None:
+        # The likeliest bug in a hand-written adapter, and the one shape this
+        # did not cover: `None` gave `AttributeError: 'NoneType' object has no
+        # attribute 'failed'`, a traceback, and **zero runs written** -- the
+        # whole sweep lost to one unit's caller, while a caller that *raises*
+        # has always cost one unit and been recorded with its cause.
+        class Planner(Detector):
+            detector_id = "planner-wrong-return"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="look")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            return returned  # type: ignore[return-value]
+
+        # Two units, so the second proves the sweep continued.
+        runs = list(run_submission([Planner()], [a_unit(), a_unit()], model=caller))
+        assert [run.outcome for run in runs] == [Outcome.INVALID, Outcome.INVALID]
+        assert runs[0].invalid_reason is InvalidReason.TRANSPORT_FAILURE
+        # The cause is recorded; the *text* is not carried onto the run, here or
+        # for a caller that raises -- `ModelReply.failed` dies with the reply.
+        # Stated rather than asserted, because fixing it is a change to the run
+        # schema and not to this loop.
+
     def test_a_failed_call_is_invalid_and_keeps_its_cost(self) -> None:
         # A call that happened and returned nothing still cost tokens, and the
         # run measured nothing rather than finding nothing.
