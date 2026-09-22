@@ -65,6 +65,26 @@ class SubmissionScore:
     report: ScoreReport
     at_least: MatchStrength
     weights: Mapping[DifficultyLevel, float]
+    class_weights: Mapping[VulnerabilityClass, float] | None = None
+    """A weight per class, when the exercise measured one, overriding `weights`.
+
+    **The general case, and `weights` is the special case of it.** Nine classes
+    share three difficulty levels, so a level weighting says that
+    `oracle_integrity`, `slippage`, `flashloan_manipulation` and
+    `arithmetic_rounding` are equally hard -- which is a claim, and one an
+    exercise with results in hand can replace with a measurement.
+
+    Both are still "supplied by whoever runs the exercise", which is the rule
+    that keeps a coefficient out of this package. What this field adds is
+    *granularity*, not a policy: nothing here computes a weight, and a class
+    weighting arrived at by measuring is indistinguishable from one arrived at
+    by opinion as far as this module is concerned.
+
+    **All or nothing over the requested classes.** A partial mapping silently
+    falling back to the level weight would mix two weightings inside one mean,
+    and the resulting total would have no stated basis -- the same failure a
+    partly scored class has in `bpref`. A gap is refused with the classes named.
+    """
 
     @property
     def classes(self) -> tuple[VulnerabilityClass, ...]:
@@ -109,6 +129,17 @@ class SubmissionScore:
         total = measured + invalid
         return measured / total if total else None
 
+    def _weight_for(self, cls: VulnerabilityClass) -> float | None:
+        """This class's weight, from the class weighting if one was supplied.
+
+        Returns `None` when a class weighting exists and does not cover `cls`,
+        rather than falling back to the level weight: falling back would mix two
+        weightings inside one mean and produce a total with no stated basis.
+        """
+        if self.class_weights is not None:
+            return self.class_weights.get(cls)
+        return self.weights.get(cls.level)
+
     def weighted_f1(self, over: Sequence[VulnerabilityClass] | None = None) -> float | None:
         """Difficulty-weighted mean F1, or nothing if any requested class lacks one.
 
@@ -127,7 +158,7 @@ class SubmissionScore:
             value = self.f1(cls)
             if value is None:
                 return None
-            weight = self.weights.get(cls.level)
+            weight = self._weight_for(cls)
             if weight is None:
                 return None
             numerator += weight * value
@@ -234,10 +265,15 @@ def score_submission(
     *,
     weights: Mapping[DifficultyLevel, float],
     at_least: MatchStrength = MatchStrength.FUNCTION,
+    class_weights: Mapping[VulnerabilityClass, float] | None = None,
 ) -> SubmissionScore:
     """Wrap one submission's score report for ranking."""
     return SubmissionScore(
-        submission_id=submission_id, report=report, at_least=at_least, weights=dict(weights)
+        submission_id=submission_id,
+        report=report,
+        at_least=at_least,
+        weights=dict(weights),
+        class_weights=None if class_weights is None else dict(class_weights),
     )
 
 

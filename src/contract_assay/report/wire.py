@@ -315,15 +315,31 @@ def _why_no_total(submission: SubmissionScore) -> str | None:
     """
     if submission.total() is not None:
         return None
-    unweighted = sorted(
-        {cls.level.value for cls in submission.classes if cls.level not in submission.weights}
-    )
     reasons: list[str] = []
-    if unweighted:
-        reasons.append(
-            "no weight was supplied for difficulty " + ", ".join(unweighted) + " -- this engine "
-            "ships none, because a weighting is a statement about what the exercise values"
+    if submission.class_weights is not None:
+        # A class weighting is all-or-nothing over the classes being ranked, so
+        # the gap is named by class rather than by level -- falling back to the
+        # level weight for the missing ones would mix two weightings inside one
+        # mean and give the total no stated basis.
+        uncovered = sorted(
+            cls.value for cls in submission.classes if cls not in submission.class_weights
         )
+        if uncovered:
+            reasons.append(
+                "the exercise supplied a weight per class and named none for "
+                + ", ".join(uncovered)
+                + " -- a class weighting covers every class it ranks or it is not one"
+            )
+    else:
+        unweighted = sorted(
+            {cls.level.value for cls in submission.classes if cls.level not in submission.weights}
+        )
+        if unweighted:
+            reasons.append(
+                "no weight was supplied for difficulty " + ", ".join(unweighted) + " -- this "
+                "engine ships none, because a weighting is a statement about what the "
+                "exercise values"
+            )
     partial = "; ".join(
         f"{cls.value}: {why}" for cls, why in sorted(submission.unavailable.items())
     )
@@ -355,6 +371,15 @@ def score_document(
         # measurements.
         "predictions_per_unit": report.predictions_per_unit,
         "weights": {level.value: weight for level, weight in sorted(submission.weights.items())},
+        # In the document because `weights` is in the comparability basis and a
+        # class weighting replaces it. Without this, two rounds weighting the
+        # same levels differently per class would present identical bases and
+        # `results.compare` would call their totals comparable.
+        "class_weights": (
+            None
+            if submission.class_weights is None
+            else {cls.value: weight for cls, weight in sorted(submission.class_weights.items())}
+        ),
         "corpus": corpus_fingerprint(records),
         # How much of that corpus this submission actually ran. A partial sweep
         # published a `completion_rate` of 1.0 and a statement identical to a

@@ -17,6 +17,7 @@ from contract_assay.models import (
 )
 from contract_assay.report.leaderboard import leaderboard, score_submission
 from contract_assay.report.scoring import ClassScore, MatchStrength, ScoreReport
+from contract_assay.report.wire import score_document
 
 pytestmark = pytest.mark.offline
 
@@ -391,3 +392,86 @@ class TestTheSamePoolOrNoComparison:
             [capped_at(None, "alice"), capped_at(None, "bob")], baseline="agreed-model"
         )
         assert len(board.ranked) == 2
+
+
+class TestAClassWeightingIsTheGeneralCase:
+    """Nine classes share three difficulty levels, so a level weighting asserts
+    that four of them are equally hard. An exercise with results in hand can
+    say otherwise, and this is the field that lets it.
+
+    Nothing here computes a weight. A class weighting arrived at by measuring a
+    cohort and one arrived at by opinion are the same thing to this module,
+    which is what keeps the coefficient out of the package.
+    """
+
+    def two_classes(self) -> tuple[ClassScore, ClassScore]:
+        """One class at half the other's F1, so a weighting is visible."""
+        weak = a_class_score(cls=VulnerabilityClass.ORACLE_INTEGRITY, records=4, hits=1)
+        strong = a_class_score(cls=CLS, records=4, hits=4)
+        return weak, strong
+
+    def test_a_class_weight_overrides_the_level_weight(self) -> None:
+        weak, strong = self.two_classes()
+        by_level = score_submission("alice", a_report(weak, strong), weights=WEIGHTS)
+        by_class = score_submission(
+            "alice",
+            a_report(weak, strong),
+            weights=WEIGHTS,
+            class_weights={CLS: 1.0, VulnerabilityClass.ORACLE_INTEGRITY: 9.0},
+        )
+        assert by_level.weighted_f1() != pytest.approx(by_class.weighted_f1())
+
+    def test_leaning_on_the_harder_class_lowers_a_submission_that_misses_it(self) -> None:
+        """The property the whole field is for: a class few can do is worth
+        more, so a submission strong only on the easy one ranks lower."""
+        weak, strong = self.two_classes()
+        report = a_report(weak, strong)
+        even = score_submission(
+            "alice", report, weights=WEIGHTS, class_weights={CLS: 1.0, weak.cls: 1.0}
+        )
+        leaning = score_submission(
+            "alice", report, weights=WEIGHTS, class_weights={CLS: 1.0, weak.cls: 9.0}
+        )
+        even_total, leaning_total = even.weighted_f1(), leaning.weighted_f1()
+        assert even_total is not None and leaning_total is not None
+        assert leaning_total < even_total
+
+    def test_a_class_weighting_with_a_gap_is_refused_not_filled_in(self) -> None:
+        """Falling back to the level weight for the missing class would mix two
+        weightings inside one mean, and the total would have no stated basis."""
+        weak, strong = self.two_classes()
+        partial = score_submission(
+            "alice", a_report(weak, strong), weights=WEIGHTS, class_weights={CLS: 1.0}
+        )
+        assert partial.weighted_f1() is None
+        assert partial.total() is None
+
+    def test_the_gap_is_named_by_class_in_the_document(self) -> None:
+        weak, strong = self.two_classes()
+        partial = score_submission(
+            "alice", a_report(weak, strong), weights=WEIGHTS, class_weights={CLS: 1.0}
+        )
+        document = score_document(partial, [])
+        why = document["aggregate"]["total"]["unavailable"]
+        assert "oracle_integrity" in why
+        assert "covers every class it ranks" in why
+
+    def test_the_class_weighting_reaches_the_document(self) -> None:
+        """`weights` is one of the seven comparability fields and a class
+        weighting replaces it. Unpublished, two rounds weighting the same levels
+        differently per class would present identical bases."""
+        weak, strong = self.two_classes()
+        submission = score_submission(
+            "alice",
+            a_report(weak, strong),
+            weights=WEIGHTS,
+            class_weights={CLS: 1.0, weak.cls: 9.0},
+        )
+        document = score_document(submission, [])
+        assert document["class_weights"] == {"access_control": 1.0, "oracle_integrity": 9.0}
+
+    def test_a_level_weighted_submission_publishes_no_class_weighting(self) -> None:
+        """`None` rather than `{}`: an empty mapping would compare equal to
+        another empty one and call two level-weighted results class-weighted."""
+        document = score_document(a_submission(), [])
+        assert document["class_weights"] is None

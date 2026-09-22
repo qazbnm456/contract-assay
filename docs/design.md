@@ -3110,6 +3110,38 @@ measurement. The two figures above 0.5 are both below the stated minimum of ten
 records and are reported as unusable. And the composition sentence travels with
 all of it: 87% of the records come from one platform.
 
+### 7.6a A weighting per class, and still not one this engine picks
+
+Weights are supplied per **difficulty level** — `S`, `M`, `Q` — and nine classes
+share those three. So a level weighting asserts that `oracle_integrity`,
+`slippage`, `flashloan_manipulation` and `arithmetic_rounding` are equally hard.
+That is a claim, and an exercise with a round of results in hand can replace it
+with a measurement: what few submissions found is what was hard.
+
+`class_weights` is therefore the general case and the level weighting is the
+special case of it — one weight per class, and when it is present it replaces
+the level weighting entirely.
+
+**This does not move the coefficient inside the engine.** Nothing here computes
+a weight; a class weighting arrived at by measuring a cohort and one arrived at
+by opinion are indistinguishable to this module, which is the point. What the
+field adds is granularity, not policy. §7.6's rule is unchanged: a weighting is
+a statement about what an exercise values, and an exercise that publishes none
+cannot be ranked.
+
+Two consequences follow from that and both are enforced:
+
+- **All or nothing over the classes being ranked.** A partial mapping falling
+  back to the level weight for the rest would mix two weightings inside one
+  mean, and the total would have no stated basis. The gap is refused and the
+  uncovered classes are named — the same shape as a partly scored class in
+  §7.4a.
+- **It is published, and it is in the comparability basis.** A class weighting
+  replaces `weights`, so two results that both used one would otherwise present
+  the same (empty, or identical) level weighting and be called comparable while
+  their totals were weighted differently per class. That is the exact failure
+  the basis exists to prevent, arriving through the field added to prevent it.
+
 ### 7.7 The boundary a submission surface is built on
 
 A ranking is eventually read on a page, and the page is a different program.

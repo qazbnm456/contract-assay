@@ -60,6 +60,7 @@ _BASIS = (
     "corpus_digest",
     "strength_floor",
     "weights",
+    "class_weights",
     "predictions_per_unit",
     "main_model",
     "units_scored",
@@ -88,6 +89,18 @@ class ResultPointer(BaseModel):
     corpus_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     strength_floor: Annotated[str, Field(pattern=r"^(exact|function|call_adjacent|file)$")]
     weights: dict[str, float] = Field(default_factory=dict)
+    class_weights: dict[str, float] | None = None
+    """A weight per vulnerability class, when the exercise measured one.
+
+    In the basis beside `weights` and not instead of it. A class weighting
+    replaces the level weighting, so two results that both used one would
+    otherwise present the same (empty, or identical) `weights` and be called
+    comparable while their totals were weighted differently per class -- which
+    is the exact failure the basis exists to prevent, arriving through the field
+    that was added to prevent it.
+
+    `None` means the result was scored by difficulty level, which compares only
+    with other level-weighted results."""
     predictions_per_unit: int | None = None
     units_scored: int | None = None
     """How many of the corpus's source units the submission ran.
