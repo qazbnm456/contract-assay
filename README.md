@@ -248,6 +248,13 @@ boundary and why it is worth holding.
 [docs/contributing.md](docs/contributing.md) says what can be contributed --
 records, adapters, detectors, classes -- and what review asks of each.
 
-## Licence
+## Licence, citing, reporting
 
 MIT. See [LICENSE](LICENSE).
+
+Citing a figure measured with this benchmark: [CITATION.cff](CITATION.cff), and
+say which corpus commit you measured against — the records, their locators and
+the pinned sources all move between releases.
+
+A way to make an unverifiable claim score is a vulnerability in this project,
+not a bug report: [SECURITY.md](SECURITY.md).

@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+title: contract-assay
+message: >-
+  If you use this benchmark, or report a figure measured with it, please cite it
+  and say which corpus commit you measured against. A figure without the corpus
+  commit is not reproducible: the records, their locators and the pinned sources
+  all move between releases.
+type: software
+authors:
+  - given-names: Boik
+    family-names: Su
+    email: boik.su@cycraft.com
+    affiliation: CyCraft Technology
+    orcid: https://orcid.org/0009-0000-4700-7128
+repository-code: https://github.com/qazbnm456/contract-assay
+license: MIT
+version: 0.1.0
+abstract: >-
+  Benchmark infrastructure for LLM smart contract auditing. A prediction is
+  scored only if it quotes the source at the lines it names, and the quote is
+  checked against a pinned commit before scoring, so a detector that names a
+  plausible line without reading the file measures nothing. Ships a corpus of
+  442 verified records across nine vulnerability classes, drawn from public
+  audit platforms, with the adjudication for each record recorded next to it.
+keywords:
+  - smart-contract
+  - security
+  - benchmark
+  - llm
+  - solidity
+  - audit
+  - vulnerability-detection
