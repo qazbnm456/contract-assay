@@ -48,6 +48,7 @@ from contract_assay.models import (
 from contract_assay.report.scoring import (
     MINIMUM_RECORDS_PER_CLASS,
     MatchStrength,
+    VerifiedSource,
     recheck_citations,
     score,
 )
@@ -1564,6 +1565,32 @@ class TestTheScorerTakesNobodysWordForACitation:
         [match] = report.matches
         assert match.strength is MatchStrength.EXACT
 
+    def test_the_digest_bearing_pin_wins_whatever_order_it_arrives_in(self) -> None:
+        # `source_id` excludes the digest, so several records collapse to one
+        # unit -- and a last-write-wins dict let one digest-less record disable
+        # the gate for every other record pinning the same unit. Four units in
+        # the shipped corpus pair a digest-bearing record with a later
+        # `*-adjudicated-*` record that has none, and the forged `--source-root`
+        # forgery leaked exactly those four. The rule moved into
+        # `VerifiedSource` and its test did not follow: a review reverted it and
+        # scored four records against planted bytes with every gate green.
+        digest = hashlib.sha256(SOURCE.encode("utf-8")).hexdigest()
+        with_digest = a_record(record_id="one")
+        with_digest = with_digest.model_copy(
+            update={"pin": with_digest.pin.model_copy(update={"sha256": digest})}
+        )
+        without = a_record(record_id="two", start=20, end=21)
+        assert without.pin.sha256 is None
+        assert with_digest.pin.source_id == without.pin.source_id
+
+        for order in ([with_digest, without], [without, with_digest]):
+            reader = VerifiedSource(order, resolver(PLANT))
+            # The plant is not this unit's source, so the gate refuses it --
+            # which it can only do if it chose the pin that carries a digest.
+            assert reader.of(with_digest.pin.source_id) is None
+            assert reader.why(with_digest.pin.source_id) == "digest_mismatch"
+            assert reader.pin_for(with_digest.pin.source_id).sha256 == digest
+
     def test_a_digest_mismatch_says_so_instead_of_naming_the_flag(self) -> None:
         # Both reasons printed "no source was available for this unit ... run
         # with --source-root", which is two false clauses for a mismatch: a
@@ -1578,6 +1605,24 @@ class TestTheScorerTakesNobodysWordForACitation:
         assert report.unchecked_citations == 1
         assert "does not match this unit's recorded digest" in report.statement()
         assert "run with --source-root" not in report.statement()
+
+    def test_the_demoted_finding_names_the_digest_in_its_own_detail(self) -> None:
+        # The statement is built from the counter; this is the per-finding
+        # detail, which is what a consumer reading the runs sees. Collapsing
+        # both messages into "no source was available ... run with
+        # --source-root" leaves every gate green.
+        record = a_record()
+        pinned = record.model_copy(
+            update={"pin": record.pin.model_copy(update={"sha256": "0" * 64})}
+        )
+        runs, _, unchecked, stale, *_ = recheck_citations([a_run([(5, 6)])], [pinned], resolver())
+        assert (unchecked, stale) == (1, 1)
+        [check] = runs[0].findings[0].failed_checks
+        assert "recorded digest" in check.detail
+        # It may name the flag as *where* the bytes came from; what it must not
+        # do is recommend passing it, which is the advice that was wrong.
+        assert "run with --source-root" not in check.detail
+        assert "contract-assay fetch" in check.detail
 
     def test_a_quote_that_starts_mid_line_is_refused(self) -> None:
         # The forgery a whole-line rule closes and a token-run rule does not:

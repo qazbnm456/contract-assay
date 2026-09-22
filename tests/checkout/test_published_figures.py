@@ -25,6 +25,7 @@ import collections
 import os
 from collections.abc import Sequence
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -278,3 +279,40 @@ class TestWhatTheTokenFloorCosts:
             elif not _names_something_of_its_own(tokens):
                 clause += 1
         assert (floor, clause) == (120, 3)
+
+
+class TestTheProseQuotesTheseFigures:
+    """The literals above, counted in the prose that publishes them.
+
+    Pinning the figures in this file closed one half of the generator: a figure
+    that moves fails a test. The other half stayed open -- a review changed
+    `micro recall 0.9954` to `0.9977` in one docstring and every gate passed,
+    because the prose is coupled to these literals by convention. So the
+    coupling is a test too, and it counts rather than searches: presence alone
+    passed the same mutation, because the figure still appeared elsewhere in
+    the file.
+
+    A count is deliberately brittle. If you add a sentence that mentions one of
+    these figures, the number here moves with it -- which is the point: every
+    edit to a published figure's prose is then a deliberate one.
+    """
+
+    PUBLISHED: ClassVar[dict[str, dict[str, int]]] = {
+        "src/contract_assay/report/scoring.py": {"0.9954": 1, "0.9815": 1, "0.9908": 4},
+        "src/contract_assay/detectors/base.py": {"0.9954": 4, "0.9908": 12, "0.7149": 1},
+        "docs/api.md": {"0.9954": 1, "0.9815": 1, "0.9908": 4, "0.7149": 1},
+        "README.md": {"0.9954": 1},
+        "results/README.md": {"0.9954": 1},
+    }
+
+    @pytest.mark.parametrize("relative", sorted(PUBLISHED))
+    def test_each_figure_this_file_pins_is_quoted_the_same_number_of_times(
+        self, relative: str
+    ) -> None:
+        body = (ROOT / relative).read_text(encoding="utf-8")
+        counted = {figure: body.count(figure) for figure in self.PUBLISHED[relative]}
+        assert counted == self.PUBLISHED[relative], (
+            f"{relative}'s published figures moved. If a measurement changed, the "
+            "assertions above should have failed first; if you added or removed a "
+            "mention, update the count here in the same commit"
+        )

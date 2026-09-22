@@ -10,6 +10,7 @@ the wrong source.
 from __future__ import annotations
 
 import hashlib
+import time
 from pathlib import Path
 from typing import Any
 
@@ -247,6 +248,52 @@ class TestWhatItWillNotGuess:
         }
         assert "replaced after they were verified" in report.by_state("mismatched")[0].detail
 
+    def test_two_pins_of_one_file_are_one_download_and_no_race(self, tmp_path: Path) -> None:
+        # Seven paths in the shipped corpus are pinned by two `source_id`s
+        # carrying the *same* digest, so the collision detector -- which keys on
+        # the set of distinct digests per path -- is false for them and both
+        # entries target one file. At the default eight workers both wrote a
+        # staging file and the second thread's `replace` raised
+        # `FileNotFoundError` after the first had moved it: measured, 13 of 18
+        # cold fetches of the shipped corpus crashed with a bare traceback out
+        # of typer, on the command the README gives as step one.
+        #
+        # The fetcher is slow on purpose. Without the lock both threads are
+        # inside it before either writes, so the download happens twice and the
+        # race is live; with it the second finds the file present.
+        calls: list[str] = []
+
+        def fetch(url: str) -> bytes:
+            calls.append(url)
+            time.sleep(0.05)
+            return BODY
+
+        records = [
+            a_record(
+                record_id="one",
+                pin=CommitPin(
+                    repo_url="https://github.com/example/vault",
+                    commit="a" * 40,
+                    path=PATH,
+                    sha256=DIGEST,
+                ),
+            ),
+            a_record(
+                record_id="two",
+                pin=CommitPin(
+                    repo_url="https://github.com/example/vault",
+                    commit="b" * 40,
+                    path=PATH,
+                    sha256=DIGEST,
+                ),
+            ),
+        ]
+        report = fetch_records(records, tmp_path, fetch=fetch, workers=8)
+        assert len(calls) == 1
+        assert sorted(o.state for o in report.outcomes) == ["present", "verified"]
+        assert report.collisions == ()
+        assert list(tmp_path.rglob("*.partial")) == []
+
     def test_two_spellings_of_one_path_are_a_collision(self, tmp_path: Path) -> None:
         # The detector keyed on the raw string, so two pins differing only in
         # case -- one file on the default macOS and Windows filesystems -- did
@@ -296,6 +343,74 @@ class TestWhatItWillNotGuess:
         assert sorted(o.state for o in report.outcomes) == ["unavailable", "verified"]
         assert "one file on a case-insensitive" in report.by_state("unavailable")[0].detail
         assert "are another pin's file on this filesystem" in report.statement()
+
+    def test_a_file_outside_the_root_is_not_reported_as_present(self, tmp_path: Path) -> None:
+        # The idempotence branch returned before containment was consulted, and
+        # `is_file()`/`read_bytes()` follow links -- so a pre-existing symlink
+        # out of the checkout was reported `present` with `digest_checked=True`
+        # and the statement said the checkout was complete and verified, over
+        # bytes this package's own reader refuses and `run` calls missing.
+        outside = tmp_path / "outside.sol"
+        outside.write_bytes(BODY)
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / PATH).symlink_to(outside)
+        report = fetch_records([a_record()], root, fetch=a_fetcher())
+        assert [o.state for o in report.outcomes] == ["unavailable"]
+        assert "resolves outside --source-root" in report.outcomes[0].detail
+        assert "matched their recorded digest" not in report.statement()
+
+    def test_a_first_fetch_into_a_directory_that_does_not_exist_works(self, tmp_path: Path) -> None:
+        # The primary path, and it was invisible to the suite: without the root
+        # created up front, `_writable_inside` walks past it to a directory
+        # legitimately outside the checkout and refuses every write.
+        root = tmp_path / "nested" / "checkout"
+        report = fetch_records([a_record()], root, fetch=a_fetcher())
+        assert [o.state for o in report.outcomes] == ["verified"]
+        assert (root / PATH).read_bytes() == BODY
+
+    def test_a_dangling_link_at_the_target_is_still_written(self, tmp_path: Path) -> None:
+        # `replace` acts on the link, not on what it points at, so nothing
+        # escapes -- and refusing it only lost a write that would have landed
+        # inside the root. A clause whose only measured effect is a false
+        # refusal is worse than no clause.
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        (root / PATH).symlink_to(tmp_path / "gone.sol")
+        report = fetch_records([a_record()], root, fetch=a_fetcher())
+        assert [o.state for o in report.outcomes] == ["verified"]
+        assert (root / PATH).read_bytes() == BODY
+        assert not (root / PATH).is_symlink()
+
+    def test_the_plain_path_copy_does_not_clobber_a_neighbour(self, tmp_path: Path) -> None:
+        # The case `_writable_inside` does not cover: a link at the plain path
+        # pointing *inside* the root. `write_bytes` follows it and overwrites a
+        # neighbouring unit; the copy unlinks first.
+        root = tmp_path / "root"
+        (root / "src").mkdir(parents=True)
+        neighbour = root / "src" / "Neighbour.sol"
+        neighbour.write_text("do not touch")
+        (root / PATH).symlink_to(neighbour)
+        other = b"contract Vault { uint256 total; }\n"
+
+        def pin_at(commit: str, digest: str) -> CommitPin:
+            return CommitPin(
+                repo_url="https://github.com/example/vault",
+                commit=commit,
+                path=PATH,
+                sha256=digest,
+            )
+
+        records = [
+            a_record(record_id="one", pin=pin_at("a" * 40, DIGEST)),
+            a_record(record_id="two", pin=pin_at("b" * 40, hashlib.sha256(other).hexdigest())),
+        ]
+
+        def fetch(url: str) -> bytes:
+            return other if "bbbb" in url else BODY
+
+        fetch_records(records, root, fetch=fetch)
+        assert neighbour.read_text() == "do not touch"
 
     def test_a_write_that_would_land_outside_the_root_is_refused(self, tmp_path: Path) -> None:
         # `check_unit_path` refuses a traversing string; this refuses a

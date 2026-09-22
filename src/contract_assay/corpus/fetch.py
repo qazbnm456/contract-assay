@@ -39,8 +39,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 import unicodedata
-from collections import Counter
+import uuid
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -296,6 +298,14 @@ def revisioned_name(pin: SourcePin) -> str | None:
     return str(path.with_name(f"{path.stem}@{pin.commit[:12]}{path.suffix}"))
 
 
+def _resolves_inside(root: Path, candidate: Path) -> bool:
+    """Whether `candidate` really is under `root` once links are followed."""
+    try:
+        return candidate.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
 def _writable_inside(root: Path, target: Path) -> bool:
     """Whether writing `target` writes inside `root`.
 
@@ -329,12 +339,13 @@ def _writable_inside(root: Path, target: Path) -> bool:
         if probe == probe.parent:
             return False
         probe = probe.parent
-    try:
-        # And the target itself, if it is already a link out.
-        if target.is_symlink() and not target.resolve().is_relative_to(resolved_root):
-            return False
-    except OSError:
-        return False
+    # The target itself is deliberately not checked. A review looked for an
+    # escape through a target that is already a link out and found none --
+    # `staging.replace(target)` and `plain.unlink()` both act on the link and
+    # not on what it points at -- while the check did refuse writes that would
+    # have landed inside the root (a dangling link out, a link to a directory
+    # out). A clause whose only measured effect is a false refusal is worse than
+    # no clause.
     return True
 
 
@@ -379,10 +390,7 @@ def checkout_file(root: Path, pin: SourcePin) -> Path | None:
         the distinction was an overclaim.
         """
         try:
-            if not candidate.is_file():
-                return None
-            resolved_root = root.resolve()
-            if candidate.resolve().is_relative_to(resolved_root):
+            if candidate.is_file() and _resolves_inside(root, candidate):
                 return candidate
         except OSError:
             return None
@@ -439,6 +447,23 @@ def fetch_records(
     report = FetchReport()
     pin_of = {record.pin.source_id: record.pin for record in records}
 
+    # One lock per target file. Seven paths in this corpus are pinned by two
+    # `source_id`s carrying the **same** digest, so `collisions` -- which keys on
+    # the set of distinct digests per path -- is false for them and both entries
+    # target one file. At the default eight workers several such pairs are
+    # dispatched inside one window, both wrote a staging file, and the second
+    # thread's `replace` raised `FileNotFoundError` after the first had moved
+    # it: measured, **13 of 18 cold fetches of the shipped corpus crashed**,
+    # with a bare traceback out of typer, on the command the README gives as
+    # step one. Present since `fetch_records` was introduced; nine review rounds
+    # missed it because every round scored against a checkout that already
+    # existed.
+    #
+    # A lock rather than a deduplicated work list, because the report owes one
+    # outcome per `source_id` and the second holder finds the file present and
+    # matching, which is the truthful outcome for it.
+    locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
+
     def one(entry: tuple[str, SourcePin]) -> FetchOutcome:
         source_id, pin = entry
         if isinstance(pin, AddressPin):
@@ -449,6 +474,14 @@ def fetch_records(
                 detail="a deployed address's source of truth is a chain explorer, not a repository",
             )
         assert isinstance(pin, CommitPin)
+        with locks[relative_for(pin)]:
+            return _fetch_one(entry, pin)
+
+    def relative_for(pin: CommitPin) -> str:
+        return (collisions.get(pin.path) and revisioned_name(pin)) or pin.path
+
+    def _fetch_one(entry: tuple[str, SourcePin], pin: CommitPin) -> FetchOutcome:
+        source_id, _ = entry
         shadowed = unwritable.get(pin.path)
         if shadowed is not None:
             return FetchOutcome(
@@ -468,6 +501,31 @@ def fetch_records(
         target = root / relative
         expected = pin.sha256
 
+        if not _writable_inside(root, target):
+            return FetchOutcome(
+                source_id,
+                relative,
+                "unavailable",
+                detail="this path's directory resolves outside --source-root; nothing was "
+                "read or written",
+            )
+        if target.is_file() and not _resolves_inside(root, target):
+            # The **read**, which the idempotence branch below performs.
+            # `is_file()` and `read_bytes()` follow symlinks, so a pre-existing
+            # link out of the checkout was reported `present` with
+            # `digest_checked=True` -- "1 of 1 pinned file(s) available. 1
+            # matched their recorded digest" over bytes this package's own
+            # reader refuses and `run` then calls missing. The write below is
+            # safe either way, because `replace` acts on the link and not on
+            # what it points at, which is why a *dangling* link out is written
+            # rather than refused.
+            return FetchOutcome(
+                source_id,
+                relative,
+                "unavailable",
+                detail="a file is here and it resolves outside --source-root, so it was not "
+                "read; remove the link or fetch into a clean directory",
+            )
         if target.is_file():
             present = _digest(target.read_bytes())
             if expected is None:
@@ -504,20 +562,15 @@ def fetch_records(
                 detail=f"fetched {_digest(body)[:12]}, pinned {expected[:12]}",
             )
 
-        if not _writable_inside(root, target):
-            return FetchOutcome(
-                source_id,
-                relative,
-                "unavailable",
-                detail="this path resolves outside --source-root, or through a link that "
-                "does; nothing was written",
-            )
         target.parent.mkdir(parents=True, exist_ok=True)
         # The digest of the *name* in the suffix, not only the pid: two targets
         # that are one file on a case-insensitive filesystem shared one staging
         # name, and the second thread's `replace` raised `FileNotFoundError`
         # after the first had already moved it.
-        stamp = hashlib.sha256(relative.encode("utf-8")).hexdigest()[:8]
+        # Unique per *entry*, not per target: the lock above is what makes two
+        # entries for one file safe, and this makes a staging file impossible to
+        # share even if that lock is ever lost.
+        stamp = uuid.uuid4().hex[:12]
         staging = target.with_suffix(target.suffix + f".{os.getpid()}.{stamp}.partial")
         staging.write_bytes(body)
         staging.replace(target)

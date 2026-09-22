@@ -93,8 +93,9 @@ def _local_resolver(root: Path):  # type: ignore[no-untyped-def]
     `verify` distinguishes `digest_mismatch` from `source_unresolvable`, and a
     resolver that returned `None` for a mismatch would collapse the two -- a
     cause recorded wrongly points investigation away from the fix. The digest is
-    enforced where the trust boundary is, in `report.scoring.recheck_citations`,
-    which is the path a third party's submission travels.
+    enforced where the trust boundary is, in `report.scoring.VerifiedSource`,
+    which every byte consumer inside one `score` draws from -- the path a third
+    party's submission travels.
 
     Verification against a working tree, not a fetched commit: it cannot confirm
     that the bytes belong to the pinned commit, only that the record is coherent
@@ -587,6 +588,12 @@ def rank_command(
     ground truth are not comparable however similar the numbers look. Scoring
     them here, against one corpus and one weighting, is what makes the row
     comparison mean anything.
+
+    **One verified read per submission, not one per ranking.** `score` runs once
+    per submission and each run builds its own reader, so a checkout that
+    changes between rows gives those rows different bytes. Nothing downstream
+    detects it: a result's corpus digest is over the *records*, not over the
+    resolved sources. Rank from a checkout nobody is writing to.
     """
     held = _records_from(records)
     resolve = _local_resolver(source_root) if source_root is not None else None

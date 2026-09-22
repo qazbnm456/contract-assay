@@ -311,9 +311,10 @@ outcomes from how they happened to format a string:
 
 **What a `--source-root` is trusted for.** One property: the bytes under it are
 the bytes the pins name. Every consumer that draws a conclusion from them
-establishes that property itself, on the bytes it actually read — there is one
-verified read of a unit per invocation, and the citation check, the strength
-comparison and `verify` all use it. A checkout that is not what it claims
+establishes that property itself, on the bytes it actually read. Inside one
+`score`, that is literally one read: the citation check and the strength
+comparison share it, so the bytes that settle a match are the bytes the digest
+covered. `verify` does its own read and its own comparison, per record. A checkout that is not what it claims
 therefore produces a *refusal*, not a number: a submission that plants forged
 source for every unit scores 0.0000 with 434 citations reported unchecked, and a
 checkout that has gone stale says so in its own words rather than reading as a

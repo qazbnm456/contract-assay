@@ -928,8 +928,8 @@ def _why_unchecked(why: str) -> str:
     source *was* available and the flag *was* passed. Measured, an honest
     submission reads 0.9931 with a clean checkout and 0.9356 with one stale
     file, and the sentence sent the reader to check a flag they had given. This
-    file says five times that a cause recorded wrongly points investigation away
-    from the fix.
+    repository says twelve times, across nine files, that a cause recorded
+    wrongly points investigation away from the fix.
     """
     if why == "digest_mismatch":
         return (
