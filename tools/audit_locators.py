@@ -52,9 +52,14 @@ _JUDGING_FILE = re.compile(
     r"github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/blob/(?P<ref>[^/]+)/(?P<path>[^#?\s]+\.md)"
 )
 _BLOB = re.compile(
-    r"github\.com/[\w.-]+/(?P<repo>[\w.-]+)/blob/(?P<ref>[^/\s]+)/(?P<path>[^\s#)\"']+)"
+    r"github\.com/[\w.-]+/(?P<repo>[\w.-]+)/blob/(?P<ref>[^/\s]+)/(?P<path>[^\s#?)\"']+)"
     r"(?:#L(?P<line>\d+))?"
 )
+# `?` is excluded from a path for a measured reason: GitHub permalinks written
+# as `File.sol?plain=1#L10` are common in Sherlock submissions, and keeping the
+# query in the path made four records whose report cites their own file read as
+# "never linked" -- a false accusation of exactly the defect this tool exists to
+# find, which is the costly direction for it to be wrong in.
 _HEADING = re.compile(r"^#+\s*Lines of code\s*$", re.M | re.I)
 _C4 = re.compile(r"code4rena\.com/(?:reports|audits)/(?P<slug>[\w-]+)")
 _REPORT = "https://code4rena.com/reports/{slug}"
