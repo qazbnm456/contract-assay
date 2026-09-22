@@ -225,13 +225,30 @@ class ClassScore:
     """
 
     judged_units: int = 0
-    """Units a completeness record covers and something ran against."""
+    """Distinct files holding a judged prediction. See `judged_predictions`."""
 
     judged_predictions: int = 0
-    """Predictions made in those units. The denominator of precision."""
+    """Predictions the corpus speaks to. The denominator of precision.
+
+    **Three routes reach this, and only the first costs a claim about what a
+    file does not contain:**
+
+    1. the prediction is in a file a `negative_for` record covers, which asserts
+       that no instance of that class is anywhere in it;
+    2. an **adjudication overlaps the prediction's own lines** -- one verdict at
+       one location, which is what `Report.unjudged` asks for;
+    3. the prediction matched a positive record, which already asserts an
+       instance is there.
+
+    Route 2 is the affordable one and the one to reach for. Judging then scales
+    with what submissions claimed rather than with the corpus, and a location
+    judged once is judged for every submission that named it. Written out
+    because these three docstrings described only route 1 for a while, and a
+    reader -- including this file's own author, twice -- concluded from them that
+    the only lever was a negative record per file per class."""
 
     judged_by_strength: Mapping[MatchStrength, int] = field(default_factory=dict)
-    """Matches in judged units, by strength. The numerator of precision."""
+    """Matches among the judged predictions, by strength. Precision's numerator."""
 
     @property
     def pool_is_fully_judged(self) -> bool:
@@ -247,9 +264,12 @@ class ClassScore:
     def unjudged_predictions(self) -> int:
         """Predictions the corpus has no standing to call right or wrong.
 
-        Counted and disclosed, never folded into precision. At present this is
-        almost all of them, because the corpus holds no negative records -- which
-        is a fact about the corpus and is stated as one.
+        Counted and disclosed, never folded into precision. This is the round's
+        own outstanding work: every one of them is an entry in
+        `Report.unjudged`, and **one adjudication at one location clears it** --
+        no assertion about what any file does not contain is required. The
+        corpus holding no negative records is a fact about the corpus, and it is
+        not what makes this number large.
         """
         return self.predictions - self.judged_predictions
 
@@ -299,12 +319,18 @@ class ClassScore:
         standing argument that keeps the findings of an uncovered class out of
         the matrix entirely (§7.2).
 
-        A **negative** record does establish it: `negative_for` asserts that no
-        instance of that class exists anywhere in the pinned file. Precision is
-        therefore defined over the (unit, class) pairs a negative covers, and
-        computed over predictions in those units only -- matches included, since
-        counting a match from an unjudged unit against a denominator that
-        excludes its siblings would inflate the figure in the other direction.
+        Two things do establish it, and the cheap one is the point. A
+        `negative_for` record asserts that no instance of that class exists
+        anywhere in the pinned file, which settles every prediction in it at
+        once and is expensive to write. An **adjudication settles one location**,
+        and that is what `Report.unjudged` asks for -- so precision is reachable
+        without any claim about what a file does not contain, and the bill scales
+        with what submissions claimed rather than with the corpus. A match
+        against a positive record is judged already.
+
+        Matches are included in the denominator either way: counting a match
+        from an unjudged unit against a denominator that excludes its siblings
+        would inflate the figure in the other direction.
 
         Returns None when no unit is judged, which is not the same as "nothing
         was claimed" and is disclosed as its own thing. Reporting a figure
