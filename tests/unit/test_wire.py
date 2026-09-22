@@ -16,6 +16,7 @@ from contract_assay.corpus.records import (
     CommitPin,
     CorpusRecord,
     CorpusSplit,
+    LocatorLabel,
     LocatorProvenance,
     Population,
     Provenance,
@@ -45,6 +46,7 @@ pytestmark = pytest.mark.offline
 
 SHA = "a" * 40
 CLS = VulnerabilityClass.ACCESS_CONTROL
+OTHER_CLS = VulnerabilityClass.REENTRANCY
 WEIGHTS = {DifficultyLevel.S: 1.0, DifficultyLevel.M: 2.0, DifficultyLevel.Q: 3.0}
 
 
@@ -192,6 +194,79 @@ class TestADocumentSaysWhatItWasMeasuredAgainst:
     def test_the_digest_does_not_depend_on_order(self) -> None:
         first, second = a_record("r-1"), a_record("r-2")
         assert corpus_fingerprint([first, second]) == corpus_fingerprint([second, first])
+
+    def test_the_digest_moves_when_a_locator_is_repointed(self) -> None:
+        """The docstring claimed this for a while and it was false.
+
+        The digest material was `record_id:source_id:sha256`, which does not
+        contain a locator, so a record repointed five hundred lines away
+        published the same digest and `results.compare` called the two
+        comparable.
+        """
+        moved = a_record().model_copy(
+            update={
+                "locator": Locator(
+                    file="src/Vault.sol",
+                    contract="Vault",
+                    function="f",
+                    start_line=501,
+                    end_line=502,
+                )
+            }
+        )
+        assert corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([moved])["digest"]
+
+    def test_the_digest_moves_when_an_adjudication_is_added_to_a_record(self) -> None:
+        """The reason this is not merely untidy.
+
+        A `negative_for` added to an existing record is what makes precision
+        available for that (unit, class) pair. Recorded as an edit rather than
+        as a new record it changed no digest, so two results resting on
+        different adjudication sets were called comparable -- while the same
+        judgement written as a new record did change it. A hole open for one of
+        the two ways of writing the same thing down is the shape that survives
+        review.
+        """
+        adjudicated = a_record().model_copy(update={"negative_for": [OTHER_CLS]})
+        assert (
+            corpus_fingerprint([a_record()])["digest"]
+            != corpus_fingerprint([adjudicated])["digest"]
+        )
+
+    def test_the_digest_moves_when_a_class_is_added(self) -> None:
+        """`classes` is recall's denominator."""
+        relabelled = a_record().model_copy(update={"classes": (CLS, OTHER_CLS)})
+        assert (
+            corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([relabelled])["digest"]
+        )
+
+    def test_the_digest_moves_when_a_record_changes_split(self) -> None:
+        """A record moving between splits leaves one corpus and joins another."""
+        moved = a_record().model_copy(update={"split": CorpusSplit.PRIVATE_HOLDOUT})
+        assert corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([moved])["digest"]
+
+    def test_the_digest_moves_when_an_asserted_label_is_added(self) -> None:
+        """`asserted_labels` caps the strength a match against the record can
+        reach, so a corpus that gained one measures something different: a
+        record labelled `function` cannot support an exact-location match."""
+        labelled = a_record().model_copy(update={"asserted_labels": [LocatorLabel.FUNCTION]})
+        assert (
+            corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([labelled])["digest"]
+        )
+
+    def test_the_digest_moves_when_the_locators_provenance_changes(self) -> None:
+        """Same reason: a `derived` span and a `stated` one of the same lines
+        are not the same claim about where the defect is."""
+        derived = a_record().model_copy(update={"locator_provenance": LocatorProvenance.DERIVED})
+        assert corpus_fingerprint([a_record()])["digest"] != corpus_fingerprint([derived])["digest"]
+
+    def test_the_digest_does_not_move_when_a_note_is_edited(self) -> None:
+        """Deliberate. A digest that moved when somebody improved a note would
+        group results apart for a reason that is not a measurement."""
+        annotated = a_record().model_copy(update={"notes": "an improved note"})
+        assert (
+            corpus_fingerprint([a_record()])["digest"] == corpus_fingerprint([annotated])["digest"]
+        )
 
     def test_the_census_counts_positives_by_class(self) -> None:
         got = corpus_fingerprint([a_record("r-1"), a_record("r-2")])

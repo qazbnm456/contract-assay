@@ -68,17 +68,66 @@ def _figure(value: float | None, unavailable: str | None) -> dict[str, Any]:
     return {"value": value, "unavailable": unavailable}
 
 
+def _record_basis(record: CorpusRecord) -> str:
+    """One record, as the fields a figure computed over it depends on.
+
+    Built as a sorted, explicit field list rather than by dumping the model, so
+    that a field added to `CorpusRecord` does not silently join the basis and
+    invalidate every published digest -- and so that a field that *should* join
+    it is a decision somebody made rather than a consequence of a schema change.
+    """
+    locator = record.locator
+    return ":".join(
+        [
+            record.record_id,
+            record.pin.source_id,
+            record.pin.sha256 or "",
+            record.split.value,
+            "" if record.locator_provenance is None else record.locator_provenance.value,
+            ",".join(sorted(label.value for label in record.asserted_labels)),
+            ",".join(sorted(cls.value for cls in record.classes)),
+            ",".join(sorted(cls.value for cls in record.negative_for)),
+            "" if locator is None else f"{locator.file}#{locator.start_line}-{locator.end_line}",
+        ]
+    )
+
+
 def corpus_fingerprint(records: Iterable[CorpusRecord]) -> dict[str, Any]:
     """What this score was measured against, as a digest and a census.
 
-    The digest covers each record's identity *and* the bytes it was verified
-    against, so adding a record, re-pinning one, or repointing a locator all
-    change it. Class counts travel beside it because the commonest reason two
+    **The digest covers every field that decides what a figure means**, not just
+    the record's identity and its bytes. It was the identity and the bytes for a
+    while, and the docstring claimed that "repointing a locator" changed it --
+    which was false, because the locator was not in the material. Measured: a
+    locator moved five hundred lines left the digest identical, as did adding a
+    class to `classes`, as did adding a class to `negative_for`.
+
+    That last one is the reason this is not merely untidy. An adjudication
+    recorded as an **edit** to an existing record -- a `negative_for` added
+    where a judge found no instance -- is what makes precision available for a
+    (unit, class) pair, and it was invisible here. So two results resting on
+    different adjudication sets carried the same `corpus_digest`, and
+    `results.compare` called them comparable and put their totals in one
+    column. An adjudication recorded as a *new* record did change it, so the
+    hole opened only for one of the two ways the same judgement can be written
+    down, which is the shape that survives review.
+
+    In, and why each: `record_id` and the pin's unit and bytes, which is
+    identity; `locator`, because it decides what counts as a match and at what
+    strength; `classes`, because it is recall's denominator; `negative_for`,
+    because it is what precision rests on; `split`, because a record moving
+    between splits leaves one corpus and joins another;
+    `locator_provenance` and `asserted_labels`, because they cap the strength a
+    match against that record can reach.
+
+    Out, deliberately: `notes` and `provenance`. Editing a note changes no
+    figure, and a digest that moved when somebody improved a note would group
+    results apart for a reason that is not a measurement.
+
+    Class counts travel beside the digest because the commonest reason two
     leaderboards disagree is not a scoring change but a corpus that grew.
     """
-    entries = sorted(
-        f"{record.record_id}:{record.pin.source_id}:{record.pin.sha256 or ''}" for record in records
-    )
+    entries = sorted(_record_basis(record) for record in records)
     digest = hashlib.sha256("\n".join(entries).encode("utf-8")).hexdigest()
     census: dict[str, int] = {}
     for record in records:
