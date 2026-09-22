@@ -257,6 +257,21 @@ counts. Completeness is normally the check that catches errors, so a wrong cause
 hiding behind a right count passes the review that would have caught anything
 else.
 
+**A figure reported in conversation and never written down is a figure that
+does not exist.** It has no mechanism to stay true, nothing recomputes it, and
+nothing contradicts it — so it propagates. A class-mapping rate for the incident
+population was reported in a working exchange, attributed to this document,
+used in an estimate that shaped a plan, and could be sourced by neither party
+afterwards. The loss is not the figure; a figure nobody can find is merely
+absent. The damage is that it travelled: through a summary, into an estimate,
+into a decision about what to build. Same family as the docstring instance, and
+worse in the same way — nothing downstream will ever disagree with it.
+
+The rule is the one this section already gives, applied to a number rather than
+to a cause: for each figure, the file that holds it. A measurement worth acting
+on is worth a line in a document, and one not worth a line is not worth acting
+on.
+
 The companion check is cheap and is the one that caught all three: **for each
 cause, one input that produced it.** A cause with no example behind it is a
 guess about why, and a guess about why is indistinguishable from knowledge when
@@ -974,6 +989,24 @@ maintains it for this purpose:
 - **28 of 34** have at least one contract with verified source retrievable at
   that chain, asked of a verification repository that answers with an explicit
   match status. 82%, interval roughly [66%, 92%].
+
+**That 82% does not size the yield, and reading it as though it did is the
+mistake it invites.** It says *some* address a proof-of-concept touches has
+verified source. A record needs the **victim's** source, and the same 34-sample
+measurement further down this document reports that **18 of 34 victims could not
+be identified at all** — by a method, matching a verified contract's own name
+against the project's name, that is itself a broken instrument. So the two
+figures are about the same sample and do not compose: availability was measured
+over addresses, identifiability over victims, and the yield depends on the
+intersection, which nobody has measured.
+
+The yield-relevant measurement is therefore one figure and not a product of
+these two: **of N sampled incidents, for how many can the victim be identified
+from the exploit's call targets, its source retrieved at the fork point, and its
+defect mapped to one of the nine classes.** Until that exists, 849 multiplied by
+anything is an estimate with a borrowed denominator. The availability figure
+stands for what it measured and licenses the route; it does not licence a number
+of records.
 
 An address pin is not weaker than a commit pin. Deployed bytecode is immutable,
 so an address plus a chain plus a fork point is at least as reproducible as a

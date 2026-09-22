@@ -512,6 +512,31 @@ class AddressPin(_Pin):
     because proxy status cannot be known without asking a verification
     repository, and a validator that needed a network call to decide whether a
     field is mandatory would be the only impure validator here.
+
+    **For a proxy, the pin names the implementation and the proxy address is
+    provenance.** `implementation_of` carries the proxy; `address` carries the
+    contract whose bytes the locator describes.
+
+    The reason is the rule every pin here obeys: a pin names the bytes that were
+    analysed. A proxy's own runtime code is a dispatcher, so a defect found in
+    implementation source sits nowhere in it -- a pin naming the proxy with a
+    locator into the implementation would pin bytes the locator does not
+    describe, and the digest would witness the wrong contract. That is the
+    failure `VARIANT_NOT_REGENERABLE` exists to refuse, arriving through a pin
+    rather than through a mutation.
+
+    Settled before the proxy rate was measured, deliberately. The rate decides
+    engineering effort -- a few per cent is resolved by hand, a third needs
+    automated resolution inside the harvest path -- and it decides nothing about
+    which address is correct. A measurement carrying a policy decision it cannot
+    make is a measurement whose result will be read as the decision.
+
+    And the rate itself has to be measured **from the chain**: an implementation
+    storage slot, or a `delegatecall` in the runtime bytecode. A verification
+    repository reports a *recognised* proxy standard rather than proxy-ness --
+    measured, it returned "not a proxy" for two of three contracts whose own
+    names end in `Proxy` (§6.2), so a rate taken from it would under-report and
+    make this look like a small question.
     """
 
     kind: Literal["address"] = "address"
