@@ -754,7 +754,9 @@ def rank_command(
         list[str],
         typer.Option(
             "--submission",
-            help="One submission, as `id=path/to/runs.jsonl`. Repeat for each.",
+            help="One submission, as `id=path/to/runs.jsonl`. Repeat for each. Giving one "
+            "id more than once is one submission measured more than once: its row is "
+            "ranked on the mean total, with each total and the spread published.",
         ),
     ],
     records: Annotated[
@@ -875,7 +877,8 @@ def rank_command(
             measure=measure,
         )
         scores.append(submission)
-        documents[submission_id] = score_document(submission, held)
+        # The first measurement's, matching the row's `score`.
+        documents.setdefault(submission_id, score_document(submission, held))
     # Stated, not inferred. Omitted, `leaderboard` requires every class the
     # submissions share, which is the safe default and rarely the intended one:
     # an exercise ranks on the classes it says it ranks on, and a mean over

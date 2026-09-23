@@ -640,3 +640,43 @@ class TestWhatTheMinimumDoesAndDoesNotDo:
         thin = a_class_score(cls=CLS, records=5, predictions=5, judged=5, hits=3)
         board = leaderboard([score_submission("a", a_report(thin), weights=WEIGHTS)])
         assert len(board.ranked) == 1
+
+
+class TestASubmissionMeasuredMoreThanOnce:
+    """One id given twice is one submission measured twice, not two rows."""
+
+    def test_its_row_is_ranked_on_the_mean_total(self) -> None:
+        board = leaderboard(
+            [
+                a_submission("alice", a_class_score(hits=1)),
+                a_submission("alice", a_class_score(hits=3)),
+                a_submission("bob", a_class_score(hits=2)),
+            ],
+            over=[CLS],
+        )
+        rows = {row.score.submission_id: row for row in board.ranked}
+        assert set(rows) == {"alice", "bob"}
+        alice = rows["alice"]
+        assert alice.measurements == 2
+        assert alice.total == pytest.approx(sum(alice.totals) / 2)
+        assert alice.spread == pytest.approx(max(alice.totals) - min(alice.totals))
+        assert alice.figure(CLS) == pytest.approx(
+            (alice.replicates[0].f1(CLS) + alice.replicates[1].f1(CLS)) / 2
+        )
+        assert rows["bob"].measurements == 1
+        assert rows["bob"].spread is None
+        assert "mean of their totals" in board.statement()
+
+    def test_one_measurement_without_a_total_leaves_the_row_unranked(self) -> None:
+        # A mean over the measurements that happened to have totals would be a
+        # different number measured fewer times.
+        board = leaderboard(
+            [
+                a_submission("alice", a_class_score(hits=2)),
+                a_submission("alice", a_class_score(judged=2)),
+            ],
+            over=[CLS],
+        )
+        assert board.ranked == ()
+        assert [s.submission_id for s in board.unrankable] == ["alice"]
+        assert "not yet adjudicated" in board.unrankable[0].unavailable[CLS]

@@ -270,6 +270,35 @@ class Ranked:
     place: int
     score: SubmissionScore
     total: float
+    replicates: tuple[SubmissionScore, ...] = ()
+    """Every measurement of this submission, when it was measured more than once.
+
+    Empty for a submission measured once, where `score` is the measurement. With
+    several, `score` is the first and `total` is the **mean** of their totals:
+    a model at temperature zero still answers differently from run to run, and
+    one sweep of a small corpus moves a class by a whole record on that alone.
+    Measured before this existed: one harness, seven sweeps of one ten-unit
+    holdout, totals from 0.065 to 0.138.
+    """
+
+    totals: tuple[float, ...] = ()
+
+    def figure(self, cls: VulnerabilityClass) -> float | None:
+        """This row's ranking figure for `cls`: the mean over its measurements."""
+        measured = self.replicates or (self.score,)
+        values = [replicate.figure(cls) for replicate in measured]
+        if any(value is None for value in values):
+            return None
+        return sum(v for v in values if v is not None) / len(values)
+
+    @property
+    def measurements(self) -> int:
+        return len(self.replicates) or 1
+
+    @property
+    def spread(self) -> float | None:
+        """Highest minus lowest total, published beside the mean. `None` for one."""
+        return max(self.totals) - min(self.totals) if len(self.totals) > 1 else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +339,14 @@ class Leaderboard:
                 f"{'is' if one else 'are'} listed with the reason rather than placed "
                 "last: an unrankable submission is not a worse one, and ordering it "
                 "below a ranked one would assert something nobody measured."
+            )
+        repeated = sorted({row.measurements for row in self.ranked if row.measurements > 1})
+        if repeated:
+            counts = " or ".join(str(n) for n in repeated)
+            parts.append(
+                f"Rows measured more than once ({counts} times) are ranked on the mean of "
+                "their totals, and the spread between measurements is published beside each: "
+                "a difference smaller than the spread is not one this board can tell apart."
             )
         if self.incomparable:
             one = len(self.incomparable) == 1
@@ -470,30 +507,59 @@ def leaderboard(
             at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
         )
 
-    rankable: list[tuple[float, SubmissionScore]] = []
+    # A submission id given more than once is one submission measured more than
+    # once. Grouped here, after the whole-board checks above, which apply to
+    # every measurement alike.
+    groups: dict[str, list[SubmissionScore]] = {}
+    for score in scores:
+        groups.setdefault(score.submission_id, []).append(score)
+
+    rankable: list[
+        tuple[float, SubmissionScore, tuple[SubmissionScore, ...], tuple[float, ...]]
+    ] = []
     unrankable: list[SubmissionScore] = []
     incomparable: dict[str, str] = {}
-    for score in scores:
-        objection = _baseline_objection(score, agreed)
+    for submission_id, group in groups.items():
+        objection = next(
+            (found for member in group if (found := _baseline_objection(member, agreed))), None
+        )
         if objection is not None:
-            incomparable[score.submission_id] = objection
-            unrankable.append(score)
+            incomparable[submission_id] = objection
+            unrankable.append(group[0])
             continue
-        total = score.total(wanted)
-        if total is None:
-            unrankable.append(score)
-        else:
-            rankable.append((total, score))
+        totals = [member.total(wanted) for member in group]
+        missing = next((m for m, t in zip(group, totals, strict=True) if t is None), None)
+        if missing is not None:
+            # One measurement without a total makes the mean a mean of the
+            # others, which is a different number measured fewer times. The
+            # row is unrankable, with that measurement's reasons.
+            unrankable.append(missing)
+            continue
+        present = tuple(t for t in totals if t is not None)
+        rankable.append(
+            (
+                sum(present) / len(present),
+                group[0],
+                tuple(group) if len(group) > 1 else (),
+                present if len(group) > 1 else (),
+            )
+        )
 
     # Row order breaks ties by id so two runs print the same table; the *place*
     # does not. Equal totals share a place and the next is skipped (1, 1, 3):
     # handing the tie to whichever id sorts first would award a place nothing
     # measured. Equal means equal -- a tolerance would be a policy about how
     # close is a tie, and that is not this module's to set.
-    rankable.sort(key=lambda pair: (-pair[0], pair[1].submission_id))
+    rankable.sort(key=lambda row: (-row[0], row[1].submission_id))
     ranked = tuple(
-        Ranked(place=1 + sum(1 for other, _ in rankable if other > total), score=score, total=total)
-        for total, score in rankable
+        Ranked(
+            place=1 + sum(1 for other, *_ in rankable if other > total),
+            score=score,
+            total=total,
+            replicates=replicates,
+            totals=totals,
+        )
+        for total, score, replicates, totals in rankable
     )
     return Leaderboard(
         ranked=ranked,

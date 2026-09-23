@@ -307,6 +307,21 @@ class TestTheModelBehindEachRow:
         assert "other" in unranked["incomparable"]
         assert unranked["models"]["main"] == "other"
 
+    def test_a_row_says_how_many_times_it_was_measured(self) -> None:
+        models = (ModelUse(model_id="agreed", role=ModelRole.MAIN),)
+        once = a_submission(a_report(models=models), "bob")
+        twice = [a_submission(a_report(models=models), "alice") for _ in range(2)]
+        board = leaderboard([*twice, once], baseline="agreed")
+        rows = {
+            row["submission_id"]: row
+            for row in leaderboard_document(board, [a_record()], baseline="agreed")["ranked"]
+        }
+        assert rows["alice"]["measurements"] == 2
+        assert len(rows["alice"]["totals"]) == 2
+        assert rows["alice"]["spread"] == 0.0
+        assert (rows["bob"]["measurements"], rows["bob"]["spread"]) == (1, None)
+        assert rows["bob"]["totals"] == [rows["bob"]["total"]]
+
 
 class TestAFieldsTypeIsPartOfItsMeaning:
     """`demonstrated_by` is a record id, and `list()` on a string spreads it.

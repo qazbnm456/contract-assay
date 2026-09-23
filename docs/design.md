@@ -3176,6 +3176,22 @@ Two consequences follow from that and both are enforced:
   their totals were weighted differently per class. That is the exact failure
   the basis exists to prevent, arriving through the field added to prevent it.
 
+### 7.6b One submission, measured more than once
+
+`rank` given the same submission id twice treats it as one submission measured
+twice: the row is ranked on the **mean** of its totals, its per-class figures
+are means, and each total and the spread between them are published beside it.
+One measurement without a total leaves the row unranked, with that
+measurement's reasons -- a mean over the measurements that happened to have
+totals would be a different number, measured fewer times.
+
+The reason is measured, not supposed. One harness, swept seven times over one
+ten-unit holdout at temperature zero, scored totals from 0.065 to 0.138. Part
+of that is the model answering differently between runs, which a mean reduces;
+part is a class of five records moving by a whole record at a time, which it
+does not, and which only a larger corpus fixes. The spread is published so a
+reader can see which differences between rows are smaller than it.
+
 ### 7.7 The boundary a submission surface is built on
 
 A ranking is eventually read on a page, and the page is a different program.

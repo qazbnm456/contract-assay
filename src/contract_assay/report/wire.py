@@ -519,9 +519,14 @@ def leaderboard_document(
                 # `f1_by_class` is the same error as putting one in a field
                 # named precision: everyone who reads it compares it with F1s.
                 f"{row.score.measure.value}_by_class": {
-                    cls.value: _figure(row.score.figure(cls), row.score.unavailable.get(cls))
+                    cls.value: _figure(row.figure(cls), row.score.unavailable.get(cls))
                     for cls in board.over
                 },
+                # How many times this row was measured, each total, and the
+                # spread. The figures above are means when `measurements` > 1.
+                "measurements": row.measurements,
+                "totals": list(row.totals) or [row.total],
+                "spread": row.spread,
                 "report": (documents or {}).get(row.score.submission_id),
             }
             for row in board.ranked
