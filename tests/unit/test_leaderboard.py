@@ -81,10 +81,12 @@ class TestF1NeedsBothSides:
         assert got.f1(CLS) is None
         assert "no positive record" in got.unavailable[CLS]
 
-    def test_a_class_the_submission_ignored_yields_none(self) -> None:
+    def test_a_class_the_submission_ignored_scores_zero(self) -> None:
+        # F1 = 2TP / (2TP + FP + FN) = 0 / R, defined without precision. `None`
+        # made the row unrankable, which rewarded skipping a hard class.
         got = a_submission("alice", a_class_score(predictions=0, judged=0, hits=0))
-        assert got.f1(CLS) is None
-        assert "claimed nothing" in got.unavailable[CLS]
+        assert got.f1(CLS) == 0.0
+        assert CLS not in got.unavailable
 
     def test_a_reason_is_given_per_class(self) -> None:
         # Two causes, two different work items: adjudication owed, corpus owed.

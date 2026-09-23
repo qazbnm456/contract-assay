@@ -127,6 +127,13 @@ class SubmissionScore:
         score = self.report.by_class.get(cls)
         if score is None:
             return None
+        if score.records and not score.predictions:
+            # Defined, and zero: F1 = 2TP / (2TP + FP + FN) = 0 / R. Precision
+            # is 0/0 here, but F1 does not need it -- and `None` would have made
+            # skipping a class better than attempting it, since an absent class
+            # makes the row unrankable and no zero is worse than that. This is
+            # not the case `_f1` guards: nothing is waiting on adjudication.
+            return 0.0
         return _f1(score.precision(self.at_least), score.recall(self.at_least))
 
     def bpref(self, cls: VulnerabilityClass) -> float | None:
@@ -151,8 +158,6 @@ class SubmissionScore:
                 continue
             if not score.records:
                 out[cls] = "the corpus holds no positive record of this class"
-            elif not score.predictions:
-                out[cls] = "the submission claimed nothing in this class"
             elif self.measure is Measure.BPREF:
                 # bpref's two absences are different people's work, and saying
                 # "not yet adjudicated" for the first would send the round to do
@@ -162,11 +167,6 @@ class SubmissionScore:
                     out[cls] = (
                         "the submission declared no ordering, and bpref needs a score "
                         "on every finding of the class"
-                    )
-                elif not non_relevant:
-                    out[cls] = (
-                        "nothing here was judged not-an-instance, so bpref would be "
-                        "recall under another name"
                     )
                 else:
                     out[cls] = f"bpref is unavailable over R={records}, N={non_relevant}"

@@ -240,20 +240,15 @@ def _class_document(
     # for different people: an ordering is the submission's to declare, and a
     # non-relevant verdict is the round's to produce.
     records_r, non_relevant_n = score.bpref_basis(at_least)
-    if score.ranked_judgements is None:
-        bpref_unavailable: str | None = (
+    if score.bpref(at_least) is not None:
+        bpref_unavailable: str | None = None
+    elif not records_r:
+        bpref_unavailable = "the corpus holds no positive record"
+    else:
+        bpref_unavailable = (
             "the submission declared no ordering: bpref needs a score on every "
             "finding of the class, because a rank is ordinal inside its own unit"
         )
-    elif not records_r:
-        bpref_unavailable = "the corpus holds no positive record"
-    elif not non_relevant_n:
-        bpref_unavailable = (
-            "nothing here was judged not-an-instance, so every term would be 1 and "
-            "the figure would be recall under another name"
-        )
-    else:
-        bpref_unavailable = None
     return {
         "class": score.cls.value,
         "records": score.records,

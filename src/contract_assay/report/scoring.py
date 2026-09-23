@@ -429,17 +429,31 @@ class ClassScore:
         denominator, so this is not a precision analogue that ignores misses --
         it declines to rank well by finding little.
 
-        Returns `None` when the submission declared no ordering, and when
-        nothing was judged non-relevant. The second is degenerate rather than
-        merely weak, the same way an all-matches judged set makes precision
-        identically 1.0: with `N = 0` every term is 1 and the result is recall
-        wearing another name.
+        Returns `None` when the class has no positive record, and when the
+        submission claimed something without declaring an ordering. Two cases
+        that used to return `None` are defined, and now return their value:
+
+        - **Nothing claimed** is `0.0`. The sum runs over retrieved relevant
+          items and there are none; `R` is still the denominator. Returning
+          `None` made abstaining in a hard class *better* than attempting it --
+          an absent class makes the total unavailable and the row unrankable,
+          which no zero can be worse than.
+        - **Nothing judged non-relevant** (`N = 0`) is found / `R`: every
+          retrieved relevant item has nobody above it, so each term is 1. This
+          is trec_eval's convention. It equals recall, and that is not a reason
+          to refuse it -- precision is identically 1.0 over an all-hits judged
+          set and is not refused either. Refusing it made the submission with
+          no known-wrong prediction the one that could not be ranked.
+          `bpref_basis` still publishes `N = 0` and `bpref_below_minimum` still
+          flags it, so a reader sees how little the figure rests on.
 
         `min(R, N)` is published beside the figure rather than folded into it,
         and `bpref_below_minimum` says when it is too small to lean on.
         """
-        if self.ranked_judgements is None or not self.records:
+        if not self.records:
             return None
+        if self.ranked_judgements is None:
+            return 0.0 if not self.predictions else None
         ordered = self.ranked_judgements
 
         def found(judged: JudgedPrediction) -> bool:
@@ -451,7 +465,7 @@ class ClassScore:
         # submission -- the same reasoning `precision` gives for its denominator.
         non_relevant = [index for index, j in enumerate(ordered) if not found(j)]
         if not non_relevant:
-            return None
+            return sum(1 for j in ordered if found(j)) / self.records
         cap = min(self.records, len(non_relevant))
         counted = set(non_relevant[:cap])
 

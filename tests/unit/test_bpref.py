@@ -79,10 +79,15 @@ def a_score(
     ordered: bool = True,
 ) -> ClassScore:
     """A class score carrying just what bpref reads."""
+    kept = tuple(j for j in judged if j is not None)
     return ClassScore(
         cls=VulnerabilityClass.ACCESS_CONTROL,
         records=records,
-        ranked_judgements=tuple(j for j in judged if j is not None) if ordered else None,
+        # As many claims as judgements: a real score never has judgements it
+        # did not claim, and `bpref` reads `predictions` to tell "claimed
+        # nothing" from "claimed without an ordering".
+        predictions=len(kept),
+        ranked_judgements=kept if ordered else None,
     )
 
 
@@ -175,9 +180,11 @@ class TestWhatCountsAsRelevant:
         assert score.bpref(MatchStrength.FUNCTION) == pytest.approx(0.0)
 
     def test_the_same_prediction_is_a_hit_at_a_weaker_floor(self) -> None:
-        """R=1, and at a `file` floor both are hits, so N=0 and it is undefined."""
-        score = a_score(JudgedPrediction(score=0.9, strength=WEAK), relevant(0.8), records=1)
-        assert score.bpref(MatchStrength.FILE) is None
+        """R=1, and at a `file` floor both are hits, so N=0: each hit has nobody
+        above it, and two hits over R=1 is 2.0 -- which is why `R` counts
+        records, and a record matched twice is the cap's business, not this one's."""
+        score = a_score(JudgedPrediction(score=0.9, strength=WEAK), relevant(0.8), records=2)
+        assert score.bpref(MatchStrength.FILE) == pytest.approx(1.0)
 
     def test_unjudged_predictions_cannot_change_the_figure(self) -> None:
         """The whole point of the measure, asserted as an equality.
@@ -207,13 +214,45 @@ class TestWhenThereIsNoFigure:
     def test_no_positive_record_yields_none(self) -> None:
         assert a_score(relevant(0.9), refuted(0.8), records=0).bpref(HIT) is None
 
-    def test_nothing_judged_non_relevant_yields_none(self) -> None:
-        """Degenerate rather than weak: every term would be 1 and the result
-        would be recall wearing another name."""
-        assert a_score(relevant(0.9), relevant(0.8), records=2).bpref(HIT) is None
 
-    def test_an_empty_judged_set_yields_none(self) -> None:
-        assert a_score(records=2).bpref(HIT) is None
+class TestTheFiguresThatUsedToBeRefused:
+    """Two cases returned `None` and made the wrong submission unrankable."""
+
+    def test_nothing_judged_non_relevant_is_found_over_r(self) -> None:
+        """N=0: every term is 1, so bpref is hits / R (trec_eval's convention).
+
+        Refusing it made the one submission with no known-wrong prediction the
+        one that could not be ranked. Precision is 1.0 over an all-hits judged
+        set and is not refused; neither is this.
+        """
+        assert a_score(relevant(0.9), relevant(0.8), records=2).bpref(HIT) == pytest.approx(1.0)
+        assert a_score(relevant(0.9), records=4).bpref(HIT) == pytest.approx(0.25)
+
+    def test_nothing_judged_non_relevant_is_still_flagged_thin(self) -> None:
+        score = a_score(relevant(0.9), records=4)
+        assert score.bpref_basis(HIT) == (4, 0)
+        assert score.bpref_below_minimum(HIT)
+
+    def test_claiming_nothing_is_zero_not_absent(self) -> None:
+        """No retrieved item, so the sum is empty and R is still the denominator.
+
+        `None` here meant an abstaining submission's total was unavailable --
+        unrankable, which is better for it than any zero. Asserted as an exact
+        0.0 because the regression is to `None`, and `not x` would pass both.
+        """
+        empty = ClassScore(cls=VulnerabilityClass.ACCESS_CONTROL, records=2, predictions=0)
+        assert empty.ranked_judgements is None
+        assert empty.bpref(HIT) == 0.0
+        assert empty.bpref(HIT) is not None
+
+    def test_claims_without_an_ordering_are_still_refused(self) -> None:
+        """The difference from the case above is `predictions`, and it matters."""
+        unordered = ClassScore(cls=VulnerabilityClass.ACCESS_CONTROL, records=2, predictions=3)
+        assert unordered.bpref(HIT) is None
+
+    def test_an_empty_judged_set_with_claims_is_zero(self) -> None:
+        """Claimed and ordered, nothing judged: no hit was retrieved, so 0.0."""
+        assert a_score(records=2).bpref(HIT) == 0.0
 
 
 class TestTheBasisIsPublished:

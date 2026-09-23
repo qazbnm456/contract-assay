@@ -2500,10 +2500,21 @@ including whoever put it there; the two answer different questions over
 different denominators. Where precision is absent and bpref is not, a reader
 who conflated them would read a bpref of 1.0 as a perfect precision.
 
-Two cases return nothing rather than a number, and they are different people's
-work. `N = 0` is degenerate in precision's own way — every term is 1 and the
-result is recall wearing another name — and that is the round's judging to
-supply. No declared ordering is the submission's to supply.
+One case returns nothing rather than a number: a submission that claimed
+findings in the class without a score on each. The ordering is the
+submission's to supply, and nothing here invents one.
+
+Two cases used to return nothing and now return their value, because the
+refusal made the wrong submission unrankable. **Nothing claimed** is `0.0`: the
+sum runs over retrieved relevant items, there are none, and `R` stays the
+denominator — the same holds for F1, which is `2TP / (2TP + FP + FN) = 0 / R`
+without needing precision. **`N = 0`** is found / `R`, trec_eval's convention:
+each retrieved hit has nobody above it. That equals recall, and precision is
+likewise 1.0 over an all-hits judged set without being refused; `min(R, N) = 0`
+is still published, and still flagged below the minimum. A trial of a
+classroom round found the old rules left every row off the board — one team
+had claimed nothing in two of three classes, and a refusal there is better for
+it than any zero, which is the incentive backwards.
 
 ### 7.5 A score and a declared limit are different kinds of claim
 
