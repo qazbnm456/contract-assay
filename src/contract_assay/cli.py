@@ -369,7 +369,7 @@ def fetch_command(
     # complete checkout from a mostly empty one. A pin a repository cannot
     # serve at all is expected and does not count against it: one record here
     # pins verified source for a deployed address, which is why `verify` reports
-    # 441 of 442 and this command still exits 0 on a good fetch.
+    # 477 of 478 and this command still exits 0 on a good fetch.
     expected_gaps = sum(
         1 for outcome in report.by_state("unavailable") if "chain explorer" in outcome.detail
     )

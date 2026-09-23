@@ -125,7 +125,7 @@ jobs:
         run: |
           contract-assay verify corpus/records --source-root ./checkout > verify.txt || true
           cat verify.txt
-          grep -q "441 records admitted; 1 of 442" verify.txt
+          grep -q "477 records admitted; 1 of 478" verify.txt
 
       - name: Published figures
         run: pytest -m checkout

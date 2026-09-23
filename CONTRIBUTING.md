@@ -32,7 +32,7 @@ $ pytest -m checkout        # the figures the docs publish, over that checkout
 ```
 
 `verify` **exits 1 on the shipped corpus** and that is not a failure you have
-caused: 441 of 442 records are admitted and the last one pins verified source
+caused: 477 of 478 records are admitted and the last one pins verified source
 for a deployed address, which no repository checkout can hold. The gate is that
 your change adds no *new* rejection — run it before and after. `./checkout` is
-134 files and is already in `.gitignore`.
+174 files and is already in `.gitignore`.
