@@ -552,8 +552,8 @@ that is not in the grammar.
 Why a citation must name something outside it: the identifier test used to be
 `token[0].isalpha()`, which `return`, `false` and `unchecked` satisfy -- so
 `} } return false; }` was "substantive" at six tokens, and a review built a
-blind submission out of nothing but braces and keywords. Measured, this clause
-costs an honest submission 0.9954 -> 0.9908, which is two records whose whole
+blind submission out of nothing but braces and keywords. Measured on the 435-record corpus, this
+clause costs an honest submission 0.9954 -> 0.9908, which is two records whose whole
 anchor line is language -- `receive() external payable {}` and
 `return (false, 0);` -- and a third record, `2024-12-plaza-finance-…-1e5ed5cb`,
 which has no citable quote for a different reason (its anchor line is blank, so
@@ -568,10 +568,10 @@ every other time unit was present, `transient` and `layout` from 0.8.28/0.8.29,
 `fixed`/`ufixed`, all of `abi.*`, most of `block.*`, `type(...)`'s members, and
 every Yul builtin -- and 8 records had a line inside their span whose only
 non-language token was one of them. Adding them costs the honest side nothing
-(0.9908 unchanged) and takes the brace-and-keyword family to 0. A missing entry
-costs blind recall; a *wrong* entry silently refuses a true citation forever, so
-the set is maintained from the grammar and any addition is measured against the
-honest figure before it lands.
+(0.9908 unchanged, on the 435-record corpus) and takes the brace-and-keyword
+family to 0. A missing entry costs blind recall; a *wrong* entry silently
+refuses a true citation forever, so the set is maintained from the grammar and
+any addition is measured against the honest figure before it lands.
 
 Elementary types are listed by prefix only -- `uint`, `int`, `bytes` -- and
 their widths are matched in `_is_the_languages_own`, so `uint256` and `bytes32`
@@ -817,7 +817,13 @@ def cited_lines(
     | each record's whole span | 0.9977 | **0.9954** |
 
     Every row is over a checkout `contract-assay fetch` built and read through
-    `corpus.fetch.checkout_file`, **both columns**. Two versions of this table
+    `corpus.fetch.checkout_file`, **both columns**, and both were measured when
+    the corpus held 435 located positives. The table stays as measured: the
+    `equality` column cannot be re-measured without the rule it describes, and
+    updating only the `now` column would rebuild the mixed table the next
+    paragraph describes. Over today's 471, the `now` column reads 0.9915 in the
+    six locator rows and 0.9958 for the whole span -- the same four records
+    short, pinned in `tests/checkout/test_published_figures.py`. Two versions of this table
     mixed checkouts: the first published 0.9885 for the six `now` rows, which
     was a hand-assembled tree missing one revision of one file; the correction
     of that left the `equality` column where it was, so the same table then held
@@ -839,14 +845,14 @@ def cited_lines(
     whose anchor line is blank and which the token floor refuses either way.
 
     **The figure depends on a submission shape neither number states, so both
-    are here.** A submitter that may widen its quote by a line scores 0.9908. A
-    submitter confined to quoting its anchor line alone scores **0.7149**. The
-    124 records it misses are **120 refused by the six-token floor**, three by
+    are here.** A submitter that may widen its quote by a line scores 0.9915. A
+    submitter confined to quoting its anchor line alone scores **0.7304**. The
+    127 records it misses are **123 refused by the six-token floor**, three by
     the naming clause, and one whose source no repository checkout can hold --
-    so 123 of them have no citable anchor line, and the floor's cost is the
+    so 126 of them have no citable anchor line, and the floor's cost is the
     dominant one in that shape. An earlier version of this paragraph said "one
     a blank anchor line", which is not a fourth category: there are three
-    blank-anchor records and all three are inside the 120, where the floor
+    blank-anchor records and all three are inside the 123, where the floor
     refuses them for having no tokens at all.
 
     Accepting part of a span has a price, and it was published wrong twice. A
@@ -928,7 +934,7 @@ def cited_lines(
     story an earlier version of this paragraph told about it was wrong.
 
     The size of what is left is clearest from the other side: a submitter who
-    could name **one real line** of each published span would score 0.9908. The
+    could name **one real line** of each published span would score 0.9915. The
     defence is entirely that it cannot name one, and each review names a few
     more.
 

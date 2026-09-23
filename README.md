@@ -117,7 +117,7 @@ under isolation asks of a submission.
 locator — file, contract, function, start and end line — and `contract-assay
 fetch` builds the scorer's checkout from the same public coordinates you have.
 So a script that quotes the real span at each published locator scores **micro
-recall 0.9954** without finding anything, and the citation check cannot tell
+recall 0.9958** without finding anything, and the citation check cannot tell
 that apart from a detector that did. Measured, not hypothesised.
 
 That is a property of publishing the answers, not a defect in the checking, and
@@ -145,7 +145,7 @@ $ cd contract-assay          # your clone of this repository
 $ pip install -e .
 
 $ contract-assay fetch corpus/records --source-root ./checkout
-173 of 174 pinned file(s) available. 173 matched their recorded digest. ...
+174 of 175 pinned file(s) available. 174 matched their recorded digest. ...
 
 $ contract-assay run --manifest my-detector.json --records corpus/records \
     --source-root ./checkout --out runs.jsonl

@@ -4,7 +4,7 @@ This directory holds **pointers** to results, not results, and no ranking.
 
 **Every number here is self-reported, and the corpus it is over is public.**
 Each record publishes its full locator, so a script that quotes the real span at
-each one scores micro recall 0.9954 having found nothing, and a submission that
+each one scores micro recall 0.9958 having found nothing, and a submission that
 opens no source file at all can reach 0.24 over these records, and 0.07 over
 records it has not seen. What a pointer establishes is that somebody published a
 document and stood behind it; what it does not establish is that the figure came

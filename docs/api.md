@@ -145,16 +145,16 @@ Read both as measurements and not as bounds. This check has been rewritten five
 times, the first three published as zeroes, and every one of them was exceeded
 by the next review. The size of what is left is clearest from the other side: a
 submitter who could name **one real line** of each published span would score
-0.9908. The whole defence is that it cannot name one.
+0.9915. The whole defence is that it cannot name one.
 
 What is **not** closed, and cannot be: this corpus publishes the full locator --
 file, contract, function, start and end line -- and `contract-assay fetch`
 builds the scorer's checkout from the same public coordinates you have. So a
 script that quotes the real span at each published locator scores **micro recall
-0.9954** over a checkout `contract-assay fetch` builds, with precision 0.9815 in
+0.9958** over a checkout `contract-assay fetch` builds, with precision 0.9836 in
 access control and 1.0 everywhere else; quoting one real statement at each
-locator scores 0.9908. Measured, not hypothesised. (Not 435 of
-435: one positive record's source is verified source for a deployed address,
+locator scores 0.9915. Measured, not hypothesised. (Not 471 of
+471: one positive record's source is verified source for a deployed address,
 which no repository fetch reaches.)
 
 That is a property of publishing the answer, not a defect in the checking. It
@@ -321,7 +321,7 @@ outcomes from how they happened to format a string:
   line as well when your statement is short.
 - **Your prediction is scored at the lines your quote matched**, not at the span
   you declared. So locator slop is free in every direction — measured over the
-  whole corpus, an honest submission scores the same 0.9908 with its locator
+  whole corpus, an honest submission scores the same 0.9915 with its locator
   exact, one line wider, five wider, wider above, or wider on both sides — and
   a wide span does not launder a quote into a function it is not in: a quote
   matched in another function is a file match, not a function one. It is not
@@ -356,8 +356,8 @@ second meaning it had no source it could trust and therefore established
 nothing.
 
 **What the floor costs, measured.** A submitter that may widen its quote by a
-line scores 0.9908 over the whole corpus. One confined to quoting a single
-anchor line scores **0.7149**: of the 124 records it misses, 120 are refused
+line scores 0.9915 over the whole corpus. One confined to quoting a single
+anchor line scores **0.7304**: of the 127 records it misses, 123 are refused
 because the anchor line is under six tokens, three by the naming clause, and one
 has no source a repository checkout can hold. Widen, or narrow the
 locator to a run of two lines and quote both.

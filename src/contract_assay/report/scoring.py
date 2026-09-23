@@ -574,9 +574,9 @@ class ScoreReport:
     Measured on an honest submission whose locator is five lines wide on both
     sides: every prediction moves, and `repositioned_into_another_function`
     counts how many landed in a callable other than the one the declared locator
-    resolves to -- 283 of 431 in that case. The figures are unchanged by it
-    (0.9908 either way), which is the point: the mechanism is favourable and it
-    was silent."""
+    resolves to -- 283 of 431 in that case, on the 435-record corpus. The
+    figures are unchanged by it (0.9908 either way), which is the point: the
+    mechanism is favourable and it was silent."""
 
     repositioned_into_another_function: int = 0
     """Of those, the ones whose declared locator named a different callable.
@@ -1278,10 +1278,11 @@ def recheck_citations(
     builds the scorer's checkout from public coordinates, so the submitter's
     bytes and the scorer's bytes are the same bytes and the answer is a
     published field. A review demonstrated the consequence: quoting the *real*
-    span at each published locator scores **micro recall 0.9954** over a
-    checkout `contract-assay fetch` builds, with precision 0.9815 in access
+    span at each published locator scores **micro recall 0.9958** over a
+    checkout `contract-assay fetch` builds, with precision 0.9836 in access
     control and 1.0 everywhere else; quoting one real statement at each locator
-    scores 0.9908. Three earlier versions of this sentence were each wrong:
+    scores 0.9915. Three earlier versions of this sentence were each wrong, all
+    on the 435-record corpus of the time:
     "0.9977 with every counter at zero" (cannot hold: one
     positive record's source resolves from no public coordinates); its
     correction "434 of 435 is the ceiling ... = 0.9908" (two errors in one

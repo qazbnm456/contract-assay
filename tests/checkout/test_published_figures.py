@@ -221,9 +221,9 @@ class TestTheHonestCeiling:
     def test_quoting_the_whole_recorded_span(self, positives, resolve, records) -> None:  # type: ignore[no-untyped-def]
         runs, _ = _submission(positives, resolve, shape="whole-span")
         report = score(runs, records, resolve)
-        assert _micro(report) == (433, 435)
+        assert _micro(report) == (469, 471)
         by_class = {cls.value: score_.precision() for cls, score_ in report.by_class.items()}
-        assert by_class["access_control"] == pytest.approx(0.9815, abs=5e-5)
+        assert by_class["access_control"] == pytest.approx(0.9836, abs=5e-5)
         assert all(
             value == pytest.approx(1.0)
             for name, value in by_class.items()
@@ -248,7 +248,7 @@ class TestLocatorSlopIsFree:
     ) -> None:
         runs, _ = _submission(positives, resolve, shape="statement", above=above, below=below)
         report = score(runs, records, resolve)
-        assert _micro(report) == (431, 435)
+        assert _micro(report) == (467, 471)
 
 
 class TestWhatTheTokenFloorCosts:
@@ -257,15 +257,15 @@ class TestWhatTheTokenFloorCosts:
     def test_a_submitter_confined_to_its_anchor_line(self, positives, resolve, records) -> None:  # type: ignore[no-untyped-def]
         runs, skipped = _submission(positives, resolve, shape="one-line")
         report = score(runs, records, resolve)
-        assert _micro(report) == (311, 435)
-        # 124 records missed, and the docstring's arithmetic is that one of them
+        assert _micro(report) == (344, 471)
+        # 127 records missed, and the docstring's arithmetic is that one of them
         # is not an anchor-line refusal at all: its source resolves from no
         # public coordinates. An earlier version of that sentence closed the
         # arithmetic by inventing a fourth category.
-        assert len(skipped) == 124
+        assert len(skipped) == 127
         unresolvable = [r.record_id for r in positives if resolve(r.pin) is None]
         assert len(unresolvable) == 1
-        assert len(set(skipped) - set(unresolvable)) == 123
+        assert len(set(skipped) - set(unresolvable)) == 126
 
     def test_the_floor_is_the_dominant_refusal_and_the_clause_is_not(  # type: ignore[no-untyped-def]
         self, positives, resolve
@@ -284,7 +284,7 @@ class TestWhatTheTokenFloorCosts:
                 floor += 1
             elif not _names_something_of_its_own(tokens):
                 clause += 1
-        assert (floor, clause) == (120, 3)
+        assert (floor, clause) == (123, 3)
 
 
 class TestTheProseQuotesTheseFigures:
@@ -303,12 +303,28 @@ class TestTheProseQuotesTheseFigures:
     edit to a published figure's prose is then a deliberate one.
     """
 
+    # Current figures (0.9958, 0.9836, 0.9915, 0.7304) over the 471 located
+    # positives, and the ones measured on the 435-record corpus (0.9954,
+    # 0.9815, 0.9908, 0.7149), which stay where a comparison was drawn and are
+    # labelled as such. Both are counted: a historical figure quietly "updated"
+    # would be the mixed-checkout table again.
     PUBLISHED: ClassVar[dict[str, dict[str, int]]] = {
-        "src/contract_assay/report/scoring.py": {"0.9954": 1, "0.9815": 1, "0.9908": 4},
-        "src/contract_assay/detectors/base.py": {"0.9954": 4, "0.9908": 12, "0.7149": 1},
-        "docs/api.md": {"0.9954": 1, "0.9815": 1, "0.9908": 4, "0.7149": 1},
-        "README.md": {"0.9954": 1},
-        "results/README.md": {"0.9954": 1},
+        "src/contract_assay/report/scoring.py": {
+            "0.9908": 3,
+            "0.9958": 1,
+            "0.9836": 1,
+            "0.9915": 1,
+        },
+        "src/contract_assay/detectors/base.py": {
+            "0.9954": 4,
+            "0.9908": 10,
+            "0.9958": 1,
+            "0.9915": 3,
+            "0.7304": 1,
+        },
+        "docs/api.md": {"0.9958": 1, "0.9836": 1, "0.9915": 4, "0.7304": 1},
+        "README.md": {"0.9958": 1},
+        "results/README.md": {"0.9958": 1},
     }
 
     @pytest.mark.parametrize("relative", sorted(PUBLISHED))
