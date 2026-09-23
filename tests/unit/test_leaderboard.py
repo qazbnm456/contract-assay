@@ -187,6 +187,23 @@ class TestTheUnrankableAreNotPlacedLast:
         )
         assert [r.score.submission_id for r in board.ranked] == ["adam", "zoe"]
 
+    def test_equal_totals_share_a_place(self) -> None:
+        # Row order is by id for stability; the place is not. Before this, the
+        # tie went to "adam" because a < z, which is a place nothing measured.
+        board = leaderboard(
+            [
+                a_submission("zoe", a_class_score()),
+                a_submission("adam", a_class_score()),
+                a_submission("mia", a_class_score(hits=1)),
+            ],
+            over=[CLS],
+        )
+        assert [(r.score.submission_id, r.place) for r in board.ranked] == [
+            ("adam", 1),
+            ("zoe", 1),
+            ("mia", 3),
+        ]
+
     def test_the_statement_names_the_floor_and_the_class_set(self) -> None:
         # A ranking at one floor over one class set is a different ranking, and
         # a table without them invites an incomparable comparison.

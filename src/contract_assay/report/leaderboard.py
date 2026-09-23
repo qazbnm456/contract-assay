@@ -485,10 +485,15 @@ def leaderboard(
         else:
             rankable.append((total, score))
 
+    # Row order breaks ties by id so two runs print the same table; the *place*
+    # does not. Equal totals share a place and the next is skipped (1, 1, 3):
+    # handing the tie to whichever id sorts first would award a place nothing
+    # measured. Equal means equal -- a tolerance would be a policy about how
+    # close is a tie, and that is not this module's to set.
     rankable.sort(key=lambda pair: (-pair[0], pair[1].submission_id))
     ranked = tuple(
-        Ranked(place=index, score=score, total=total)
-        for index, (total, score) in enumerate(rankable, start=1)
+        Ranked(place=1 + sum(1 for other, _ in rankable if other > total), score=score, total=total)
+        for total, score in rankable
     )
     return Leaderboard(
         ranked=ranked,
