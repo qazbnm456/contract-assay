@@ -507,6 +507,7 @@ def leaderboard_document(
         "ranked_on": _measure_of(board).value,
         "corpus": corpus_fingerprint(records),
         "baseline": baseline,
+        "any_model": board.any_model,
         "statement": board.statement(),
         "ranked": [
             {

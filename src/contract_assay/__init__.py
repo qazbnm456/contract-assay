@@ -15,7 +15,7 @@ from contract_assay.models import (
     VerifiedFinding,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 """The only place a version is written. `pyproject.toml` reads it from here.
 
 Two hardcoded copies used to exist, and that is worse than untidy:

@@ -319,6 +319,11 @@ class Leaderboard:
 
     over: tuple[VulnerabilityClass, ...] = ()
     at_least: MatchStrength = MatchStrength.FUNCTION
+    any_model: bool = False
+    """The exercise ranks rows whatever main model they ran under.
+
+    Stated on the board and in its statement, because it changes what a gap
+    between two rows is about: the harnesses, and the models behind them."""
 
     def statement(self) -> str:
         """The sentence that goes beside the table.
@@ -339,6 +344,16 @@ class Leaderboard:
                 f"{'is' if one else 'are'} listed with the reason rather than placed "
                 "last: an unrankable submission is not a worse one, and ordering it "
                 "below a ranked one would assert something nobody measured."
+            )
+        if self.any_model:
+            models = sorted(
+                {m for row in self.ranked for m in row.score.report.main_models} or {"none named"}
+            )
+            parts.append(
+                "The exercise ranks rows run under different main models ("
+                + ", ".join(models)
+                + "): each row names its model, and a gap between two rows is as much "
+                "the models' as the harnesses'."
             )
         repeated = sorted({row.measurements for row in self.ranked if row.measurements > 1})
         if repeated:
@@ -418,6 +433,7 @@ def leaderboard(
     *,
     over: Sequence[VulnerabilityClass] | None = None,
     baseline: str | None = None,
+    any_model: bool = False,
 ) -> Leaderboard:
     """Rank what can be ranked and list the rest with a reason.
 
@@ -426,6 +442,11 @@ def leaderboard(
     submissions are still checked against *each other*: if they name different
     main models, none of them is ranked, because picking the majority would
     publish a comparison nobody agreed to.
+
+    `any_model` is that agreement made the other way: the exercise ranks every
+    row whatever model it names -- a classroom where teams bring their own --
+    and the board says so. A single submission naming two models is still a
+    mixture and is still listed apart.
 
     An unrankable submission is *not* placed last. Ordering it below a ranked
     one asserts a comparison nobody measured, and the usual cause is work the
@@ -447,8 +468,10 @@ def leaderboard(
         shared = {cls for score in scores for cls in score.classes}
         wanted = tuple(sorted(shared))
 
+    if any_model and baseline is not None:
+        raise ValueError("a board either agrees one baseline model or ranks any model, not both")
     agreed = baseline
-    if agreed is None:
+    if agreed is None and not any_model:
         distinct = {score.report.main_models for score in scores}
         if len(distinct) > 1:
             # Nothing states which baseline was agreed and the runs disagree.
@@ -567,4 +590,5 @@ def leaderboard(
         incomparable=incomparable,
         over=wanted,
         at_least=scores[0].at_least if scores else MatchStrength.FUNCTION,
+        any_model=any_model,
     )

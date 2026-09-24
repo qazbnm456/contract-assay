@@ -796,6 +796,14 @@ def rank_command(
             "are listed apart rather than ranked.",
         ),
     ] = None,
+    any_model: Annotated[
+        bool,
+        typer.Option(
+            "--any-model",
+            help="Rank rows whatever main model they ran under; the board says so. "
+            "Not with --baseline.",
+        ),
+    ] = False,
     over: Annotated[
         list[str] | None,
         typer.Option(
@@ -893,7 +901,14 @@ def rank_command(
             except ValueError as unknown:
                 typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED, err=True)
                 raise typer.Exit(1) from unknown
-    board = leaderboard(scores, baseline=baseline, over=wanted)
+    if any_model and baseline is not None:
+        typer.secho(
+            "--any-model and --baseline are two answers to one question; give one",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+    board = leaderboard(scores, baseline=baseline, over=wanted, any_model=any_model)
     document = json.dumps(
         leaderboard_document(board, held, documents=documents, baseline=baseline),
         indent=1,

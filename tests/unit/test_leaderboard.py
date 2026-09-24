@@ -321,6 +321,25 @@ class TestTheSameBaselineOrNoComparison:
         assert set(board.incomparable) == {"alice", "bob"}
         assert "nothing states which was agreed" in board.incomparable["alice"]
 
+    def test_an_exercise_that_ranks_any_model_ranks_them_and_says_so(self) -> None:
+        board = leaderboard([under("one", "alice"), under("two", "bob")], any_model=True)
+        assert len(board.ranked) == 2 and board.incomparable == {}
+        assert "different main models (one, two)" in board.statement()
+
+    def test_any_model_still_refuses_a_mixture_and_a_baseline_beside_it(self) -> None:
+        mixed = ScoreReport(
+            by_class={CLS: a_class_score()},
+            models=(
+                ModelUse(model_id="one", role=ModelRole.MAIN, calls=1),
+                ModelUse(model_id="two", role=ModelRole.MAIN, calls=1),
+            ),
+        )
+        scored = score_submission("bob", mixed, weights=WEIGHTS, at_least=MatchStrength.EXACT)
+        board = leaderboard([scored, under("one", "alice")], any_model=True)
+        assert "more than one main model" in board.incomparable["bob"]
+        with pytest.raises(ValueError, match="not both"):
+            leaderboard([under("one", "alice")], baseline="one", any_model=True)
+
     def test_with_no_agreed_baseline_and_one_model_everything_ranks(self) -> None:
         board = leaderboard([under("one", "alice"), under("one", "bob")])
         assert len(board.ranked) == 2

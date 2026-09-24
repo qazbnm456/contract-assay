@@ -609,6 +609,18 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
+### `--any-model`, when the exercise does not agree one model
+
+`--baseline` states the one main model every row must have run under, and a
+row under any other is listed apart. Without it, rows naming different main
+models are all listed apart, because nothing says which comparison was agreed.
+`--any-model` is the third answer: the exercise ranks every row whatever model
+it names — a classroom where teams bring their own harness and model — and the
+board records `"any_model": true` and says in its statement which models it
+mixed. A gap between two rows is then as much the models' as the harnesses'.
+A submission whose own runs name two main models is still a mixture and is
+still listed apart. The two flags are exclusive.
+
 ### `--class-weights`, when a level weighting is too coarse
 
 `--weights` is keyed by difficulty level — `S`, `M`, `Q` — and nine classes
