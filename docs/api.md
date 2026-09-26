@@ -442,7 +442,7 @@ thing to be decided *before* doing.
 ```json
 {
   "submission_id": "team-alpha",
-  "api_version": "1.0",
+  "api_version": "1.1",
   "entry_point": "my_submission.detectors:MissingOwnerCheck",
   "author": "Team Alpha"
 }
