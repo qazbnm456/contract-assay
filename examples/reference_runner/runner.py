@@ -200,7 +200,7 @@ class Answer:
     tokens: int
     failed: str | None = None
     seconds: float = 0.0
-    """Wall clock for the call. Recorded because `docs/rules.md` budgets it from
+    """Wall clock for the call. Recorded because `docs/api.md` §4 budgets it from
     outside, and a harness whose calls take longer than the round allows is not
     a harness that scores badly -- it is one every run of which is killed."""
 

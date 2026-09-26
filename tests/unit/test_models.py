@@ -628,7 +628,7 @@ class TestAClaimedOrderingIsHonoured:
 
     The per-unit cap takes a prefix of `findings` and drops the tail, so list
     position already decides which of a submission's findings are scored --
-    `docs/rules.md` §4 tells participants to order by certainty for that reason.
+    `docs/api.md` §1 tells participants to order by certainty for that reason.
     Nothing recorded that the order meant anything, which makes it an ordering
     no set, dict round-trip or order-indifferent serialisation would preserve,
     and the cap would then drop a different tail with no test able to see it.

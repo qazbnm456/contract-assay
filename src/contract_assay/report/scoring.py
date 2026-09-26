@@ -283,7 +283,7 @@ class ClassScore:
 
     The ordering must be **declared**, by a score on every finding of the class.
     Arrival order will not do, however tempting it is to reach for: within one
-    run it is the submission's own and `docs/rules.md` §4 leans on that, but
+    run it is the submission's own and `docs/api.md` §1 leans on that, but
     across units it is the order this module happens to iterate runs in. bpref
     merges every unit of a class into one list, so using arrival order there
     would read a submission's intent out of a loop in this file.

@@ -12,7 +12,7 @@
 # Every target is a thin wrapper around one documented command. Where a target
 # would have to decide something on your behalf it asks instead, because a
 # Makefile that quietly picks a model, a budget or a weighting has made the
-# statement `docs/rules.md` says you have to make yourself.
+# statement `docs/api.md` §8 says you have to make yourself.
 
 PY ?= .venv/bin/python
 CLI ?= .venv/bin/contract-assay

@@ -542,8 +542,8 @@ class Finding(_Frozen):
     **It also records an invariant that was load-bearing and implicit.** The
     per-unit cap consumes findings in list order and drops the tail
     (`report/scoring.py`), so list position already decides which of a
-    submission's findings are scored and which are discarded -- `docs/rules.md`
-    §4 tells participants to order by certainty for exactly that reason. Nothing
+    submission's findings are scored and which are discarded -- `docs/api.md`
+    §1 tells participants to order by certainty for exactly that reason. Nothing
     recorded that the order meant anything. An ordering carried only by position
     survives no set, no dict round-trip, no re-serialisation that does not
     promise order, and the cap would then silently drop a different tail with no
