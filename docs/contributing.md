@@ -49,8 +49,8 @@ embedding it would attach its terms to an MIT release.
 ## 2. A platform adapter
 
 An adapter turns one platform's reports into drafts. Three exist
-(`corpus/adapters/`), and the shape is fixed by the protocol in
-`corpus/harvest.py`:
+(`src/contract_assay/corpus/adapters/`), and the shape is fixed by the protocol
+in `src/contract_assay/corpus/harvest.py`:
 
 - `candidates(report)` enumerates what the report claims, **before** anything is
   resolved. Every candidate gets exactly one recorded outcome, so a candidate
@@ -69,9 +69,9 @@ replaced a rule that had looked obviously right: the excerpt route trusted the
 line numbers its own excerpts carried until one turned out to be seven lines off
 the file it quoted.
 
-Reuse before re-deriving. `corpus/adapters/markdown.py` holds what is not
-platform knowledge -- permalinks, quoted source, sections, and the
-dominant-citation commit recovery. A rule written twice is a rule honoured once;
+Reuse before re-deriving. `src/contract_assay/corpus/adapters/markdown.py`
+holds what is not platform knowledge -- permalinks, quoted source, sections,
+and the dominant-citation commit recovery. A rule written twice is a rule honoured once;
 that happened four times in this codebase and each instance cost a measurable
 number of records.
 
