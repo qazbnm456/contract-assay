@@ -609,6 +609,45 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
+### Every command, and what it defaults to
+
+`score` and `rank` are above and below. The rest, with the defaults the code
+sets — `--help` on any command says the same:
+
+| Command | What it does |
+| --- | --- |
+| `fetch RECORDS --source-root DIR` | builds the checkout from the records' pins, verifying each digest; a file that does not match is not written |
+| `fetch --units MANIFEST --source-root DIR` | the same from a unit manifest, for a split whose records you do not hold; exactly one of `RECORDS` and `--units` |
+| `units RECORDS [--out FILE]` | writes a unit manifest — the pins and nothing else — to publish a split without its answers; stdout without `--out` |
+| `verify RECORDS --source-root DIR` | checks every record against the checkout and lists each rejection with its cause; exits 1 on any |
+| `verify … --write-digests` | also writes the computed digest back into each admitted record's file |
+| `declarations FILE.sol` | lists what a file declares and on which lines, the index the verifier uses |
+| `run --manifest M --source-root DIR --out RUNS` | runs one or more submissions (`--manifest` repeats) over `--records RECORDS` or `--units MANIFEST`, exactly one |
+| `results [DIR]` | compares result pointers, grouped by the comparability basis; `DIR` defaults to `results` |
+
+`fetch` takes `--workers N`, 1 to 32, default 8. It exits non-zero unless every
+pin a repository can serve arrived intact; a pin only a chain explorer can serve
+does not count against it.
+
+`run`'s options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--model-caller module:function` | none | the model; left out, no model is called |
+| `--limit N` | 0 | stop after `N` units; 0 is all of them |
+| `--wall-seconds N` | 30 | `ctx.limits.wall_seconds`, at least 1 |
+| `--max-calls N` | 4 | `ctx.limits.max_model_calls` |
+| `--max-tokens N` | 20000 | `ctx.limits.max_tokens` |
+| `--predictions-per-unit N` | 9 | at most `N` model findings per unit per class are handed on, in the order returned |
+
+The three budgets are what every run's `ctx.limits` says, with
+`escalation_allowed` derived from your class's level — closed at `S`. `run`
+states them and passes them to your model caller; it does not enforce them
+(see "One thing this module does not provide"), so a caller that meters calls
+and tokens is where they become limits. `run_submission` in the Python API has
+the same defaults. `--predictions-per-unit` matches `score`'s default so that
+what you hand over is what gets counted; the cap that counts is `score`'s.
+
 ### One submission measured more than once
 
 Give one id to `--submission` more than once and it is one submission measured
