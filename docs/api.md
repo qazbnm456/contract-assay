@@ -28,7 +28,7 @@ class Baseline(PredicateDetector):
 That is a **static-analysis baseline with no model in it**: this benchmark's own
 predicates for the class, asserted as findings, quoting the source at each one's
 own locator so its citations pass by construction. Measured on the public split
-it reports 34 access-control predictions against 55 records and recalls 0.11.
+it reports 41 access-control predictions against 62 records and recalls 0.10.
 
 That figure was published as 97 predictions and 0.27 for two commits. It was
 wrong, and how it was wrong is worth keeping: `propose()` lifted **every**
