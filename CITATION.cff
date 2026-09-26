@@ -20,7 +20,7 @@ abstract: >-
   scored only if it quotes the source at the lines it names, and the quote is
   checked against a pinned commit before scoring, so a detector that names a
   plausible line without reading the file measures nothing. Ships a corpus of
-  442 verified records across nine vulnerability classes, drawn from public
+  478 verified records across nine vulnerability classes, drawn from public
   audit platforms, with the adjudication for each record recorded next to it.
 keywords:
   - smart-contract
