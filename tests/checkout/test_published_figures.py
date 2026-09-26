@@ -287,6 +287,56 @@ class TestWhatTheTokenFloorCosts:
         assert (floor, clause) == (123, 3)
 
 
+class TestAForgedCheckoutIsARefusal:
+    """`report.scoring.VerifiedSource` and `docs/api.md`'s `--source-root` note.
+
+    Forged source for every unit, and quotes that are real lines *of the
+    forgery*: the digest gate refuses every one, so the figure is a refusal
+    with a count rather than a number about the wrong bytes.
+    """
+
+    def test_every_citation_on_forged_source_is_unchecked(
+        self, positives, resolve, records
+    ) -> None:  # type: ignore[no-untyped-def]
+        def forged(pin):  # type: ignore[no-untyped-def]
+            text = resolve(pin)
+            return None if text is None else text + "\n// planted\n"
+
+        runs, _ = _submission(positives, forged, shape="whole-span")
+        report = score(runs, records, forged)
+        assert _micro(report) == (0, 471)
+        assert report.unchecked_citations == report.stale_citations == 470
+
+
+class TestTheShapesTheRuleRefuses:
+    """`docs/api.md`'s "Shapes this refuses": how many records each shape reaches.
+
+    Non-adjacent lines need three non-blank lines in the span; an interior
+    comment is a comment-only line strictly between its first and last
+    non-blank lines.
+    """
+
+    def test_how_many_spans_each_shape_reaches(self, positives, resolve) -> None:  # type: ignore[no-untyped-def]
+        def is_comment(line: str) -> bool:
+            return line.startswith(("//", "/*", "*"))
+
+        non_adjacent = interior_comment = resolvable = 0
+        for record in positives:
+            source = resolve(record.pin)
+            if source is None:
+                continue
+            lines = source.split("\n")
+            if record.locator.end_line > len(lines):
+                continue
+            resolvable += 1
+            span = lines[record.locator.start_line - 1 : record.locator.end_line]
+            code = [line.strip() for line in span if line.strip()]
+            non_adjacent += len(code) >= 3
+            interior_comment += any(is_comment(line) for line in code[1:-1])
+        assert (len(positives), non_adjacent) == (471, 449)
+        assert (resolvable, interior_comment) == (470, 207)
+
+
 class TestTheBaselineThreeDeclarationsBuy:
     """`detectors.base.PredicateDetector`, `docs/api.md` §1 and `README.md`.
 
@@ -355,6 +405,9 @@ class TestTheProseQuotesTheseFigures:
             "0.9915": 4,
             "0.7304": 1,
             "41 access-control predictions": 1,
+            "470 citations reported unchecked": 1,
+            "**449 of 471**": 1,
+            "**207 of\n470**": 1,
         },
         "README.md": {"0.9958": 1, "41 access-control predictions": 1},
         "results/README.md": {"0.9958": 1},

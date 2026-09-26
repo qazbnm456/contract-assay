@@ -126,13 +126,13 @@ version of this page put 0.4069 beside 0.0644, which were two different attacks.
 And read these as single digits: the harness that produces them is not committed
 — each review writes its own — and an eighth reconstructed one that matched the
 in-sample half and could not exceed 0.064 held out. A blind attack is a list of guesses, and every list measured here was
-chosen by its yield over the same 435 records it was then scored on. Scored
-leave-one-out — every record under a guess order fitted on the other 434 — the
-family drops to about 0.07. Use the in-sample number to ask how much a *published*
-corpus leaks to somebody willing to fit it; use the held-out one to ask what a
-submission gets on records it has not seen. A competition is the second
-question, and `assay-arena` answers it with records whose locators are not
-published.
+chosen by its yield over the same records it was then scored on — the 435 the
+corpus held when these were measured. Scored leave-one-out — every record under
+a guess order fitted on the other 434 — the family drops to about 0.07. Use the
+in-sample number to ask how much a *published* corpus leaks to somebody willing
+to fit it; use the held-out one to ask what a submission gets on records it has
+not seen. A competition is the second question, and `assay-arena` answers it
+with records whose locators are not published.
 
 Read the in-sample figure as a measure of how hard the attacker worked, not of
 the check: six reviews have raised it with better tooling and the same idea —
@@ -342,7 +342,7 @@ establishes that property itself, on the bytes it actually read. Inside one
 comparison share it, so the bytes that settle a match are the bytes the digest
 covered. `verify` does its own read and its own comparison, per record. A checkout that is not what it claims
 therefore produces a *refusal*, not a number: a submission that plants forged
-source for every unit scores 0.0000 with 434 citations reported unchecked, and a
+source for every unit scores 0.0000 with 470 citations reported unchecked, and a
 checkout that has gone stale says so in its own words rather than reading as a
 weak submission.
 
@@ -364,10 +364,10 @@ locator to a run of two lines and quote both.
 
 **Shapes this refuses, with what they cost.** A quote assembled from
 non-adjacent lines — a model reporting a function by its three interesting lines
-— is refused outright, and **416 of 435** records could take that shape, so a
+— is refused outright, and **449 of 471** records could take that shape, so a
 submission built that way scores zero rather than less. Dropping an interior
-comment line and quoting the code around it is the same refusal, and **196 of
-434** spans contain an interior comment. Blank lines are the exception: they are
+comment line and quoting the code around it is the same refusal, and **207 of
+470** spans contain an interior comment. Blank lines are the exception: they are
 dropped on both sides, so a blank line inside your quote is fine. Quote
 contiguous lines, comments included, or narrow the locator to a run that has
 none.
@@ -718,11 +718,11 @@ submission that proposed every declaration in every file would buy itself an
 unbounded amount of that. And **recall over an unbounded pool is not a
 measurement**: precision waits, recall does not, so without a cap a submission
 can buy recall with volume nobody has judged yet. A review did exactly that —
-668,655 quotes over 435 records, per-class recall published, precision
-unlicensed in all nine classes. Raise it if your exercise funds more
-adjudication; it is one of the eight fields two results must share before they
-compare, so a figure computed under a different cap will not be ranked against
-one computed under this one. The CLI types the option as an integer, so there is
+668,655 quotes over the 435 records the corpus then held, per-class recall
+published, precision unlicensed in all nine classes. Raise it if your exercise
+funds more adjudication; it is one of the eight fields two results must share
+before they compare, so a figure computed under a different cap will not be
+ranked against one computed under this one. The CLI types the option as an integer, so there is
 no way to ask this surface for an uncapped figure; `score(..., predictions_per_
 unit=None)` in the Python API still does that, for tooling that wants the whole
 pool.
