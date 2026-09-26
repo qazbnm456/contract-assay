@@ -115,7 +115,7 @@ class ResultPointer(BaseModel):
     digest, engine version, floor, weighting and prediction cap. Comparable."
 
     `None` for a pointer written before the field existed, which compares only
-    with other such pointers -- the same rule the other six fields follow."""
+    with other such pointers -- the same rule every field of `_BASIS` follows."""
 
     main_model: str | None = None
     """The model behind the figures, or `None` for a deterministic submission.

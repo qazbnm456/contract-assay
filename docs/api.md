@@ -720,7 +720,7 @@ measurement**: precision waits, recall does not, so without a cap a submission
 can buy recall with volume nobody has judged yet. A review did exactly that —
 668,655 quotes over 435 records, per-class recall published, precision
 unlicensed in all nine classes. Raise it if your exercise funds more
-adjudication; it is one of the six fields two results must share before they
+adjudication; it is one of the eight fields two results must share before they
 compare, so a figure computed under a different cap will not be ranked against
 one computed under this one. The CLI types the option as an integer, so there is
 no way to ask this surface for an uncapped figure; `score(..., predictions_per_

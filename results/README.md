@@ -68,8 +68,8 @@ $ contract-assay results
 
 It groups results by **what they were measured against** and compares only
 within a group. Two results disagree about any of `engine_version`,
-`corpus_digest`, `strength_floor`, `weights`, `predictions_per_unit` or
-`main_model` and they are not two measurements of the same thing — the commonest reason two
+`corpus_digest`, `strength_floor`, `weights`, `class_weights`,
+`predictions_per_unit`, `main_model` or `units_scored` and they are not two measurements of the same thing — the commonest reason two
 leaderboards disagree is not a scoring change but a corpus that grew.
 
 A result whose document **refused** to compute a total is listed after the
