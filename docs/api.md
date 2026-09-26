@@ -609,6 +609,36 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
+### One submission measured more than once
+
+Give one id to `--submission` more than once and it is one submission measured
+more than once, not several rows:
+
+```console
+$ contract-assay rank \
+    --submission team-alpha=alpha-sweep-1.jsonl \
+    --submission team-alpha=alpha-sweep-2.jsonl \
+    --submission team-beta=beta.jsonl \
+    --records corpus/records --source-root ./checkout \
+    --weights weights.json --baseline the-agreed-model --out board.json
+```
+
+The row is ranked on the **mean** of its totals, and its per-class figures are
+means too. A model at temperature zero still answers differently between runs,
+and one sweep of a small corpus moves a class by a whole record on that alone.
+The row publishes `measurements`, every total in `totals`, and `spread` —
+highest minus lowest — beside the mean; a gap between two rows smaller than
+their spread is not one the board can tell apart. Every measurement has to
+qualify: one run under the wrong model makes the row incomparable, and one
+measurement without a total makes it unrankable with that measurement's
+reasons, because a mean of the others is a different number measured fewer
+times. The row's `report` is the first measurement's score document.
+
+Equal totals share a place and the next place is skipped — 1, 1, 3. Rows print
+in id order within a tie so two runs give the same table, but the place does
+not follow that order: handing a tie to whichever id sorts first would award a
+place nothing measured. Equal means equal; no tolerance is applied.
+
 ### `--any-model`, when the exercise does not agree one model
 
 `--baseline` states the one main model every row must have run under, and a
@@ -797,6 +827,12 @@ state.**
 its unit, detector and line range. Precision waits on that list, and the list is
 the exercise's own work rather than a defect in the submission — which is also
 why the count in it agrees with the sentence in `precision.unavailable`.
+
+A `ranked` row carries `place`, `total`, `measurements`, `totals` and `spread`.
+`place` is shared by equal totals and skips the places they occupy, so read it
+rather than a row's position in the list. `measurements` is 1 and `spread` is
+`null` for a submission measured once; above 1, `total` and every per-class
+figure in the row are means over `totals`.
 
 `unrankable` rows carry two different kinds of "cannot": `reasons` is per class,
 for figures the corpus or the submission cannot yet support, and `incomparable`
