@@ -35,7 +35,7 @@ help: ## Show this list.
 	@echo "Start with: make setup && make corpus"
 
 setup: ## Install the benchmark and check the install.
-	$(PY) -m pip install -q -e ".[dev]"
+	$(PY) -m pip install -q -e . --group dev
 	@$(CLI) --help >/dev/null && echo "contract-assay is installed."
 	@echo "Next: make corpus"
 
@@ -76,9 +76,10 @@ self-check: corpus run score ## corpus, run and score in one go. MANIFEST=...
 check: ## Lint, type-check and test the benchmark itself.
 	.venv/bin/ruff check .
 	.venv/bin/ruff format --check .
-	.venv/bin/mypy src
+	.venv/bin/mypy
 	.venv/bin/mypy tools
-	$(PY) -m pytest -q -m offline
+	$(PY) -m pytest -q -m offline --cov=contract_assay --cov-fail-under=90
+	$(CLI) results results
 
 format: ## Apply formatting.
 	.venv/bin/ruff check --fix .
