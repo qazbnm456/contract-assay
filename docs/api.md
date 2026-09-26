@@ -684,9 +684,11 @@ different measures are refused a shared board.
 
 `bpref` is **not** precision and is never reported in a field named precision;
 the two answer different questions over different denominators. `value` is
-`null` with a reason when you declared no ordering, or when nothing in the class
-was judged not-an-instance — the second is the round's judging to supply, the
-first is yours.
+`null` with a reason when the class has no positive record, or when you claimed
+something and declared no ordering — the second is yours to supply. When nothing
+in the class was judged not-an-instance, `n` is 0 and `value` is what you found
+over `r`, which equals recall; `below_minimum` is set, so a reader sees that it
+rests on no known-wrong prediction at all.
 
 `rank` takes each submission's *runs*, not its score document, so that every row
 is computed against one corpus with one weighting in one invocation. A
