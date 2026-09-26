@@ -159,17 +159,14 @@ class SubmissionScore:
             if not score.records:
                 out[cls] = "the corpus holds no positive record of this class"
             elif self.measure is Measure.BPREF:
-                # bpref's two absences are different people's work, and saying
-                # "not yet adjudicated" for the first would send the round to do
+                # With records, bpref is absent only for want of an ordering --
+                # nothing judged non-relevant is found over R, not a refusal --
+                # and saying "not yet adjudicated" would send the round to do
                 # judging that would not produce the figure.
-                records, non_relevant = score.bpref_basis(self.at_least)
-                if score.ranked_judgements is None:
-                    out[cls] = (
-                        "the submission declared no ordering, and bpref needs a score "
-                        "on every finding of the class"
-                    )
-                else:
-                    out[cls] = f"bpref is unavailable over R={records}, N={non_relevant}"
+                out[cls] = (
+                    "the submission declared no ordering, and bpref needs a score "
+                    "on every finding of the class"
+                )
             elif not score.pool_is_fully_judged:
                 out[cls] = (
                     f"{score.unjudged_predictions} of its predictions are not yet "

@@ -237,8 +237,9 @@ def _class_document(
     )
     recall_unavailable = None if score.records else "the corpus holds no positive record"
     # bpref, and why it is absent when it is. The two reasons are different work
-    # for different people: an ordering is the submission's to declare, and a
-    # non-relevant verdict is the round's to produce.
+    # for different people: a positive record is the corpus's to hold, and an
+    # ordering is the submission's to declare. Nothing judged non-relevant is
+    # not one of them -- that is found over R, flagged below the minimum.
     records_r, non_relevant_n = score.bpref_basis(at_least)
     if score.bpref(at_least) is not None:
         bpref_unavailable: str | None = None
