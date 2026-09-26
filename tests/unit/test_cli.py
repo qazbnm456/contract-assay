@@ -679,3 +679,40 @@ class TestASweepReportsItsLossesAndNotJustItsCount:
         assert result.exit_code == 0, result.output
         assert "invalid" not in result.output
         assert "model-caller" not in result.output
+
+
+class TestRankRefusesABadFlagBeforeReadingAnything:
+    """`rank` checks its own flags before it loads a corpus or scores a run.
+
+    The records here are malformed, so a check that ran after loading would
+    report the records instead of the flag -- and on a real corpus would report
+    the flag only after every submission had been scored.
+    """
+
+    def invoke(self, tmp_path: Path, *extra: str):  # type: ignore[no-untyped-def]
+        records = tmp_path / "records"
+        records.mkdir()
+        (records / "broken.json").write_text("{", encoding="utf-8")
+        return runner.invoke(
+            app,
+            [
+                "rank",
+                "--submission",
+                f"team={tmp_path / 'absent.jsonl'}",
+                "--records",
+                str(records),
+                "--source-root",
+                str(tmp_path),
+                *extra,
+            ],
+        )
+
+    def test_any_model_with_a_baseline(self, tmp_path: Path) -> None:
+        result = self.invoke(tmp_path, "--any-model", "--baseline", "the-agreed-model")
+        assert result.exit_code == 1
+        assert "two answers to one question" in result.stderr
+
+    def test_an_unknown_class_to_rank_over(self, tmp_path: Path) -> None:
+        result = self.invoke(tmp_path, "--over", "not-a-class")
+        assert result.exit_code == 1
+        assert "'not-a-class' is not a vulnerability class" in result.stderr

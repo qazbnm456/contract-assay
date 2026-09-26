@@ -861,6 +861,27 @@ def rank_command(
             fg=typer.colors.RED,
         )
         raise typer.Exit(2) from None
+    if any_model and baseline is not None:
+        typer.secho(
+            "--any-model and --baseline are two answers to one question; give one",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+    # Stated, not inferred. Omitted, `leaderboard` requires every class the
+    # submissions share, which is the safe default and rarely the intended one:
+    # an exercise ranks on the classes it says it ranks on, and a mean over
+    # whichever classes happened to have figures ranks a submission on its
+    # corpus's readiness instead of on itself.
+    wanted: list[VulnerabilityClass] | None = None
+    if over:
+        wanted = []
+        for name in over:
+            try:
+                wanted.append(VulnerabilityClass(name))
+            except ValueError as unknown:
+                typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED, err=True)
+                raise typer.Exit(1) from unknown
     weighting = _weights_from(weights)
     by_class = _class_weights_from(class_weights)
     held = _records_from(records)
@@ -887,27 +908,6 @@ def rank_command(
         scores.append(submission)
         # The first measurement's, matching the row's `score`.
         documents.setdefault(submission_id, score_document(submission, held))
-    # Stated, not inferred. Omitted, `leaderboard` requires every class the
-    # submissions share, which is the safe default and rarely the intended one:
-    # an exercise ranks on the classes it says it ranks on, and a mean over
-    # whichever classes happened to have figures ranks a submission on its
-    # corpus's readiness instead of on itself.
-    wanted: list[VulnerabilityClass] | None = None
-    if over:
-        wanted = []
-        for name in over:
-            try:
-                wanted.append(VulnerabilityClass(name))
-            except ValueError as unknown:
-                typer.secho(f"{name!r} is not a vulnerability class", fg=typer.colors.RED, err=True)
-                raise typer.Exit(1) from unknown
-    if any_model and baseline is not None:
-        typer.secho(
-            "--any-model and --baseline are two answers to one question; give one",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(1)
     board = leaderboard(scores, baseline=baseline, over=wanted, any_model=any_model)
     document = json.dumps(
         leaderboard_document(board, held, documents=documents, baseline=baseline),
