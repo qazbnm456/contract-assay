@@ -22,7 +22,7 @@ proposing a record.
 ```console
 $ python -m pip install --upgrade pip      # `--group` needs pip >= 25.1
 $ pip install -e . --group dev
-$ ruff check . && ruff format --check . && mypy
+$ ruff check . && ruff format --check . && mypy && mypy tools
 $ pytest -m offline --cov=contract_assay --cov-fail-under=90
 $ contract-assay results results
 

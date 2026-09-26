@@ -125,7 +125,7 @@ it is the same trade SWE-bench and HumanEval make. It means a figure here is a
 real measurement **of an honest submission** — which is what a development
 benchmark is for — and it is not evidence against a motivated one. A competitive
 ranking needs records whose locators are not published; that is what
-[`assay-arena`](../assay-arena) exists for. `docs/api.md` §1 has the numbers,
+`assay-arena` exists for. `docs/api.md` §1 has the numbers,
 including what a submission that opens no source file can still score: **0.24**
 over these records and **0.07** over records it has not seen — or 0.43 and 0.07,
 the same attack grouped to favour the first figure. The first figure
@@ -214,9 +214,9 @@ other test in this repository runs with no model and no network.
 ```bash
 pip install -e . --group dev
 
-ruff check . && ruff format --check .
-mypy
-pytest -m offline
+ruff check . && ruff format --check . && mypy && mypy tools
+pytest -m offline --cov=contract_assay --cov-fail-under=90
+contract-assay results results
 ```
 
 The offline suite runs with no model, no network and no toolchain. It is the
@@ -227,7 +227,7 @@ Four commands:
 
 ```bash
 contract-assay declarations src/Vault.sol          # what a file declares, and where
-contract-assay verify corpus/records/ --source-root .
+contract-assay verify corpus/records/ --source-root ./checkout
 contract-assay score runs.jsonl --records corpus/records --submission-id team-a \
     --source-root ./checkout --weights weights.json --out team-a.json
 contract-assay rank --submission team-a=team-a-runs.jsonl \
