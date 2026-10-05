@@ -63,20 +63,18 @@ $ pip install -e .
 $ contract-assay fetch corpus/records --source-root ./checkout
 174 of 175 pinned file(s) available. 174 matched their recorded digest. ...
 
-$ contract-assay run --manifest my-detector.json --records corpus/records \
-    --source-root ./checkout --out runs.jsonl
-# `my-detector.json` is your manifest -- `examples/reference_detector/manifest.json`
-# is one to copy. Do not also use that name for `--out` below.
+$ contract-assay run --manifest examples/reference_detector/baseline.manifest.json \
+    --records corpus/records --source-root ./checkout --out runs.jsonl
 
 $ contract-assay score runs.jsonl --records corpus/records \
-    --submission-id my-detector --source-root ./checkout --out my-score.json
+    --submission-id baseline --source-root ./checkout --out baseline-score.json
 
 $ contract-assay results        # compare with what others have published
 ```
 
-That gives you per-class recall and a refused aggregate, and the refusal names its two reasons: this engine ships no difficulty weighting, because a weighting states what an exercise values, and precision does not exist for a class until its predictions have been adjudicated. Add `--weights your-weights.json` when you have decided what yours are: `docs/api.md` §6 has the shape and the argument.
+`baseline.manifest.json` names a detector that calls no model, so this runs as it stands. A manifest of your own is a copy of it with your `entry_point`, and `submission.manifest.json` beside it names a detector that asks for a model and needs `--model-caller`, which "Connecting a model" below covers. The score gives you recall for the one class this detector covers, marks the other eight `nothing_ran` because no detector ran for them, and refuses an aggregate, and the refusal names its two reasons: this engine ships no difficulty weighting, because a weighting states what an exercise values, and precision does not exist for a class until its predictions have been adjudicated. Add `--weights your-weights.json` when you have decided what yours are: `docs/api.md` §6 has the shape and the argument.
 
-A submission is three declarations. This is the whole of it:
+A submission is three declarations. This is the whole of `examples/reference_detector/reference_baseline.py`, the detector the command above ran:
 
 ```python
 from contract_assay.detectors import API_VERSION, PredicateDetector
@@ -105,6 +103,8 @@ your harness -> a ModelCaller -> contract-assay run -> runs.jsonl -> contract-as
 
 If you are testing a harness of your own, start from `examples/bring_your_own_harness/`. It holds an adapter with no dependency, a detector for each of the nine classes, and a README on the mistakes that raise no error: a detector that never asks for a model, a harness called once per class instead of once per file, and a cost counted once per class. The same directory has `byo_openai.py`, a caller for any OpenAI-compatible endpoint that uses only the standard library, for trying a detector against a model on Ollama, vLLM or a hosted provider. Use whichever framework you already have, because neither example contains a loop and yours should not either. The contract for both is in `docs/api.md` section 8.
 
+`contract-assay score` reads `DetectorRun` JSON Lines and nothing about how they were made, so a harness that is not written in Python can write them itself instead of going through `run`. `docs/api.md` section 8 has the document, and the scorer re-checks every citation against the source whoever wrote the run.
+
 ## Development
 
 ```bash
@@ -132,6 +132,8 @@ contract-assay rank --submission team-a=team-a-runs.jsonl \
 ## What this is, and what depends on it
 
 An independent benchmark, meant to be depended on and contributed to. It holds the corpus, the interface, the scorer and the refusals that keep its figures honest. It does **not** hold a competition: collecting submissions, holding a deadline, adjudicating a pool and publishing results are a consumer's business, and a consumer's rules and infrastructure belong in that consumer's own project with this one as a dependency. `docs/design.md` §8 states the boundary and why it is worth holding.
+
+If you are building a leaderboard, a submission site or any other consumer on this engine, `docs/api.md` section 8 is the part to read. It covers `score`, `rank`, the documents they write and the refusals a surface built on them must not paper over.
 
 [docs/contributing.md](docs/contributing.md) says what can be contributed -- records, adapters, detectors, classes -- and what review asks of each.
 

@@ -58,7 +58,7 @@ contract Vault {
 @pytest.fixture(scope="module")
 def detector():  # type: ignore[no-untyped-def]
     manifest = SubmissionManifest.model_validate_json(
-        (EXAMPLE / "manifest.json").read_text(encoding="utf-8")
+        (EXAMPLE / "submission.manifest.json").read_text(encoding="utf-8")
     )
     return load_detector(manifest, search_path=EXAMPLE)
 
@@ -195,3 +195,37 @@ class TestTheSelfCheckIsTheOneWorthCopying:
         )
         assert submission.self_check(ctx, good) is None
         assert check_citation(ctx, good) is None
+
+
+class TestTheBaselineRunsOutOfTheBox:
+    """`reference_baseline.py` and `baseline.manifest.json`, which the README's first run uses.
+
+    The first thing a newcomer does is run what the README names, so what it names
+    has to run with no model and no caller. The copied-and-adapted file is a
+    manifest that resolves and a detector that asks for nothing.
+    """
+
+    @pytest.fixture
+    def baseline(self):  # type: ignore[no-untyped-def]
+        manifest = SubmissionManifest.model_validate_json(
+            (EXAMPLE / "baseline.manifest.json").read_text(encoding="utf-8")
+        )
+        return load_detector(manifest, search_path=EXAMPLE)
+
+    def test_it_loads_through_the_real_loader(self, baseline) -> None:  # type: ignore[no-untyped-def]
+        assert baseline.detector_id == "baseline-access-control"
+        assert baseline.class_id is VulnerabilityClass.ACCESS_CONTROL
+
+    def test_it_asks_for_no_model(self, baseline) -> None:  # type: ignore[no-untyped-def]
+        # A detector that asked for one would come back `model_not_permitted` on
+        # every unit under a bare `contract-assay run`, which is the failure this
+        # file exists to keep out of the first run.
+        ctx = a_context()
+        assert call_plan(baseline, ctx, call_evidence(baseline, ctx)) is None
+
+    def test_it_finds_something_and_every_citation_holds(self, baseline) -> None:  # type: ignore[no-untyped-def]
+        run = run_detector(baseline, a_context())
+        assert run.outcome is Outcome.VULNERABLE
+        assert run.produced_without_a_model
+        assert run.findings
+        assert all(f.status is CitationStatus.VERIFIED for f in run.findings)

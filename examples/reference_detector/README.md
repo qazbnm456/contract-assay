@@ -1,6 +1,6 @@
-# A reference detector
+# Reference detectors
 
-`submission.py` is a complete `Detector` with every layer written by hand, and `manifest.json` is what a submission declares about itself before its code runs. It is the one worked example of `evidence()`, `plan()` and `verdict()` together, and those are the layers that decide how a detector does when a host calls the model for you. You do not need it to submit a detector, because the interface is `docs/api.md` and the smallest working detector is three declarations. Copy it when you want a starting point that does more than that.
+Two detectors that show the interface at both ends. `reference_baseline.py` is the smallest working submission: three declarations and no model, which the README's first run uses. `submission.py` is a complete `Detector` with every layer written by hand, and it is the one worked example of `evidence()`, `plan()` and `verdict()` together, which are the layers that decide how a detector does when a host calls the model for you. Each has a manifest beside it, because `contract-assay run` loads a detector from a manifest and a manifest names exactly one.
 
 Nothing here is imported by the package, and nothing here calls a model on its own. The package defines what to ask (`Detector.plan`) and never asks it, so that an instrument whose correctness depended on the thing it measures cannot mistake a broken instrument for a weak model. A model is a function you supply to `contract-assay run`, and `examples/bring_your_own_harness/` has two: an adapter for a harness of your own, and `byo_openai.py` for any OpenAI-compatible endpoint.
 
@@ -8,8 +8,8 @@ Nothing here is imported by the package, and nothing here calls a model on its o
 
 | File | What it is for |
 | --- | --- |
-| `submission.py` | A `Detector` with `evidence()`, `plan()` and `verdict()` all written out, and a `self_check()` for the quotes it reports. |
-| `manifest.json` | The manifest that names it. |
+| `reference_baseline.py` and `baseline.manifest.json` | The three-declaration detector. It asks for no model, so `contract-assay run` accepts it with nothing else. Copy the manifest and change the `entry_point` to start your own. |
+| `submission.py` and `submission.manifest.json` | A `Detector` with `evidence()`, `plan()` and `verdict()` all written out, and a `self_check()` for the quotes it reports. It asks for a model, so `run` needs a caller. |
 
 ## Running it against a model
 
@@ -23,7 +23,7 @@ $ export BYO_MODEL=qwen2.5-coder:32b                # the name your endpoint giv
 $ export BYO_BASE_URL=http://localhost:11434/v1     # the default, Ollama's address
 
 $ PYTHONPATH=examples/bring_your_own_harness contract-assay run \
-    --manifest examples/reference_detector/manifest.json \
+    --manifest examples/reference_detector/submission.manifest.json \
     --records corpus/records --source-root ./checkout \
     --model-caller byo_openai:call --limit 5 --out runs.jsonl
 

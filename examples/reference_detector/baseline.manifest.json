@@ -1,0 +1,6 @@
+{
+  "submission_id": "baseline-access-control",
+  "api_version": "1.1",
+  "entry_point": "reference_baseline:Baseline",
+  "author": "contract-assay"
+}

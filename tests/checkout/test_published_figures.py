@@ -341,23 +341,25 @@ class TestTheBaselineThreeDeclarationsBuy:
     """`detectors.base.PredicateDetector`, `docs/api.md` §1 and `README.md`.
 
     The baseline the docs tell an entrant to beat, run the way `contract-assay
-    run` runs it: every unit the records pin, no model. Once published at 97
-    predictions and 0.27, then 34 against 55 records; the corpus grew under the
-    second figure and nothing re-ran it.
+    run` runs it: loaded from the manifest the README names, over every unit the
+    records pin, with no model. Once published at 97 predictions and 0.27, then 34
+    against 55 records; the corpus grew under the second figure and nothing re-ran
+    it.
     """
 
     def test_the_access_control_baseline(self, records, resolve) -> None:  # type: ignore[no-untyped-def]
-        from contract_assay.detectors import API_VERSION, PredicateDetector
+        from contract_assay.detectors.loading import SubmissionManifest, load_detector
         from contract_assay.harness import run_submission, units_from
 
-        class Baseline(PredicateDetector):
-            detector_id = "baseline-access-control"
-            class_id = VulnerabilityClass.ACCESS_CONTROL
-            api_version = API_VERSION
+        shipped = ROOT / "examples" / "reference_detector"
+        manifest = SubmissionManifest.model_validate_json(
+            (shipped / "baseline.manifest.json").read_text(encoding="utf-8")
+        )
+        baseline = load_detector(manifest, search_path=shipped)
 
         units, missing = units_from(records, CHECKOUT)
         assert len(missing) == 1
-        report = score(list(run_submission([Baseline()], units)), records, resolve)
+        report = score(list(run_submission([baseline], units)), records, resolve)
         cls = report.by_class[VulnerabilityClass.ACCESS_CONTROL]
         assert (cls.predictions, cls.records) == (41, 62)
         # Recall at the function floor, the one the docs quote: 6 of 62.
