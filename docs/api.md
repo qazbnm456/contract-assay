@@ -2,7 +2,7 @@
 
 What you implement to submit a detector, what this project promises not to break, and what it checks before believing anything your code returns.
 
-Everything here concerns `contract_assay.detectors`. If this document and the code disagree, one of them is a bug — see `docs/design.md` for the same rule applied to the rest of the system.
+Everything here concerns `contract_assay.detectors`. If this document and the code disagree, one of them is a bug. See `docs/design.md` for the same rule applied to the rest of the system.
 
 ## 1. A detector in three layers
 
@@ -25,7 +25,7 @@ That is a **static-analysis baseline with no model in it**: this benchmark's own
 
 That figure was published as 97 predictions and 0.27 for two commits. It was wrong, and how it was wrong is worth keeping: `propose()` lifted **every** evidence item, including the ones the predicate marked `indeterminate` -- the three-valued answer this system exists to keep apart from "absent". Roughly two thirds of the baseline's predictions were the evidence layer's own disclaimers republished as claims, each carrying a `reasoning` string asserting the property the item had declined to establish. A review found it; the fix is one `if not ref.is_established: continue`.
 
-It is a real number, and it is not a strong detector. Its predicates establish that a *shape* is present, and a shape is not a defect — it names many more locations than hold defects, and the adjudication queue it produces is the honest cost of that. **You beat it by being more selective, not by finding more.**
+It is a real number, and it is not a strong detector. Its predicates establish that a *shape* is present, and a shape is not a defect: it names many more locations than hold defects, and the adjudication queue it produces is the honest cost of that. **You beat it by being more selective, not by finding more.**
 
 Subclass `Detector` instead and you get the same defaults minus the assertion: it runs, it produces well-formed runs, and it claims nothing. That is the right base for a submission whose job is to filter a model's output rather than to assert from source.
 
@@ -41,19 +41,19 @@ parsed = Syntax.of(ctx.source)  # functions, calls, writes, guards,
 refs = run_all(parsed, ctx.path, classes=[VulnerabilityClass.REENTRANCY])
 ```
 
-Every site carries `start_line`, `end_line`, `host` (contract and function) and `text` — the **exact** source it spans — plus `site.locator(path)` in the shape a `Finding` wants. Quote `site.text` *at* `site.locator(path)`: a finding's quote is re-read against the source unconditionally and has to be whole lines of the span the locator names, so a pair that came from the same site passes by construction. A quote typed from memory, or one that starts mid-line, fails — and a failed citation reads as a detector that found nothing rather than one that was wrong.
+Every site carries `start_line`, `end_line`, `host` (contract and function) and `text` (the **exact** source it spans) plus `site.locator(path)` in the shape a `Finding` wants. Quote `site.text` *at* `site.locator(path)`: a finding's quote is re-read against the source unconditionally and has to be whole lines of the span the locator names, so a pair that came from the same site passes by construction. A quote typed from memory, or one that starts mid-line, fails, and a failed citation reads as a detector that found nothing rather than one that was wrong.
 
 Override a layer when you can establish something the default cannot. The layers run in a fixed order:
 
 | Order | Layer | Model? | Default if you write nothing |
 | --- | --- | --- | --- |
 | 1 | `evidence(ctx)` | never | this benchmark's predicates for your class |
-| 2 | `propose(ctx, evidence)` | never | nothing — `PredicateDetector` asserts one finding per evidence item |
+| 2 | `propose(ctx, evidence)` | never | nothing: `PredicateDetector` asserts one finding per evidence item |
 | 3 | `plan(ctx, evidence)` → the model | optional | no model is called |
 | 4 | `verdict(ctx, finding, evidence)` | never | rejects nothing |
 | 5 | `classify(ctx, findings)` | never | returns nothing (classification mode only) |
 
-`propose()` is what makes a deterministic submission able to report anything at all. Before it existed, findings reached a run only through the host's model call, so a detector with `plan()` returning `None` could report nothing but `clean` — while this document called static analysis the benchmark's own control group. A proposed finding is trusted no more than a model's: same citation check, in the same order, then the same `verdict()`.
+`propose()` is what makes a deterministic submission able to report anything at all. Before it existed, findings reached a run only through the host's model call, so a detector with `plan()` returning `None` could report nothing but `clean`, while this document called static analysis the benchmark's own control group. A proposed finding is trusted no more than a model's: same citation check, in the same order, then the same `verdict()`.
 
 **A detector that runs no model is a first-class submission**, and now demonstrably so rather than only in principle.
 
@@ -63,11 +63,11 @@ Override a layer when you can establish something the default cannot. The layers
 
 The scorer re-reads every quote you mark verified, against its own copy of the source, and refuses a submission that is incoherent: a quote that is not whole lines of the span it declared, a quote too short to establish anything, a locator naming a file other than the unit it declares, or source whose digest disagrees with the record's pin.
 
-How far that goes, measured over the whole corpus rather than argued. Every dictionary family is at zero: a 181-entry dictionary of generic Solidity idioms sprayed at every published locator (once **0.913**), generic mid-line runs of six or more tokens (once **0.126**), lines of nothing but braces and keywords (once 0.0138). What is **not** at zero is an attack built on what the corpus publishes: the record gives you the function's *name*, so `function {F}() external {` is the right text for a zero-argument function's declaration line. The strongest such submission measured — whole lines built from a fixed generic vocabulary, declared over windows derived from the published line numbers — scores **0.24** in-sample with **0.07** held out — or 0.43 in-sample and 0.07 held out, the same attack grouped to favour the first figure.
+How far that goes, measured over the whole corpus rather than argued. Every dictionary family is at zero: a 181-entry dictionary of generic Solidity idioms sprayed at every published locator (once **0.913**), generic mid-line runs of six or more tokens (once **0.126**), lines of nothing but braces and keywords (once 0.0138). What is **not** at zero is an attack built on what the corpus publishes: the record gives you the function's *name*, so `function {F}() external {` is the right text for a zero-argument function's declaration line. The strongest such submission measured (whole lines built from a fixed generic vocabulary, declared over windows derived from the published line numbers) scores **0.24** in-sample with **0.07** held out, or 0.43 in-sample and 0.07 held out, the same attack grouped to favour the first figure.
 
-**Both halves of a pair have to come from one configuration.** An earlier version of this page put 0.4069 beside 0.0644, which were two different attacks. And read these as single digits: the harness that produces them is not committed — each review writes its own — and an eighth reconstructed one that matched the in-sample half and could not exceed 0.064 held out. A blind attack is a list of guesses, and every list measured here was chosen by its yield over the same records it was then scored on — the 435 the corpus held when these were measured. Scored leave-one-out — every record under a guess order fitted on the other 434 — the family drops to about 0.07. Use the in-sample number to ask how much a *published* corpus leaks to somebody willing to fit it; use the held-out one to ask what a submission gets on records it has not seen. A competition is the second question, and `assay-arena` answers it with records whose locators are not published.
+**Both halves of a pair have to come from one configuration.** An earlier version of this page put 0.4069 beside 0.0644, which were two different attacks. And read these as single digits: the harness that produces them is not committed (each review writes its own) and an eighth reconstructed one that matched the in-sample half and could not exceed 0.064 held out. A blind attack is a list of guesses, and every list measured here was chosen by its yield over the same records it was then scored on, the 435 the corpus held when these were measured. Scored leave-one-out (every record under a guess order fitted on the other 434), the family drops to about 0.07. Use the in-sample number to ask how much a *published* corpus leaks to somebody willing to fit it; use the held-out one to ask what a submission gets on records it has not seen. A competition is the second question, and `assay-arena` answers it with records whose locators are not published.
 
-Read the in-sample figure as a measure of how hard the attacker worked, not of the check: six reviews have raised it with better tooling and the same idea — 0.14, 0.22, 0.23, 0.41, 0.43 — and each value was published here as a property of the rule and beaten within a round. The held-out figure has moved far less, 0.041 → 0.060 → 0.064 → 0.071 — eighteen records to thirty-one — and it is still moving.
+Read the in-sample figure as a measure of how hard the attacker worked, not of the check: six reviews have raised it with better tooling and the same idea (0.14, 0.22, 0.23, 0.41, 0.43) and each value was published here as a property of the rule and beaten within a round. The held-out figure has moved far less, 0.041 → 0.060 → 0.064 → 0.071 (eighteen records to thirty-one) and it is still moving.
 
 Read both as measurements and not as bounds. This check has been rewritten five times, the first three published as zeroes, and every one of them was exceeded by the next review. The size of what is left is clearest from the other side: a submitter who could name **one real line** of each published span would score 0.9915. The whole defence is that it cannot name one.
 
@@ -77,7 +77,7 @@ That is a property of publishing the answer, not a defect in the checking. It me
 
 - A figure here is a real measurement **of an honest submission**, which is what a development benchmark is for, and what you should use it as.
 - It is **not evidence** against a motivated one, and a public leaderboard built on it ranks willingness to copy.
-- A competitive ranking needs records whose locators are not published. That is `CorpusSplit.PRIVATE_HOLDOUT`, curated by whoever runs the competition from reports the entrants have not seen — see `assay-arena`'s `docs/operations.md` step 3. It is deliberately not a slice of this corpus: `docs/design.md` has the measurement showing what carving one would cost.
+- A competitive ranking needs records whose locators are not published. That is `CorpusSplit.PRIVATE_HOLDOUT`, curated by whoever runs the competition from reports the entrants have not seen. See `assay-arena`'s `docs/operations.md` step 3. It is deliberately not a slice of this corpus: `docs/design.md` has the measurement showing what carving one would cost.
 
 The corpus stays wholly public because that is what a benchmark is for. The consequence for rankings is stated here rather than hidden behind a check that cannot carry it.
 
@@ -87,16 +87,16 @@ Worth being exact about, because the shape invites the opposite reading. Four th
 
 | Decided by | What | Overridable? |
 | --- | --- | --- |
-| `check_citation` | whether the quote is really at the cited lines | no — the host's, runs before any verdict |
+| `check_citation` | whether the quote is really at the cited lines | no: the host's, runs before any verdict |
 | `gate` | whether a unit may be skipped at all | no |
-| the scorer | whether a prediction matches a ground-truth record, and at what strength | no — a submission never sees the records |
+| the scorer | whether a prediction matches a ground-truth record, and at what strength | no: a submission never sees the records |
 | the scorer | recall, precision, F1, the aggregate | no |
 
 A proposed finding gets no exemption from any of them. It is cheaper to produce than a model's and is checked identically.
 
-`verdict()` can do exactly one thing: **discard your own findings.** It cannot make the corpus agree with one. Rejecting a true finding costs you recall and buys you precision, which is the trade a detector exists to make — and every rejection is recorded by name, so the cost of each rule of yours is a number rather than a matter of faith.
+`verdict()` can do exactly one thing: **discard your own findings.** It cannot make the corpus agree with one. Rejecting a true finding costs you recall and buys you precision, which is the trade a detector exists to make, and every rejection is recorded by name, so the cost of each rule of yours is a number rather than a matter of faith.
 
-### `evidence()` — deterministic facts
+### `evidence()`: deterministic facts
 
 Structural observations, each with a location. It must not consult a model, the network, or the clock. The reason is a guarantee the whole benchmark rests on: evidence is recorded *whatever the model concludes*. A model may decline to report, or report wrongly; it cannot remove an evidence item. A verdict asserted against the evidence is therefore visible as exactly that.
 
@@ -104,7 +104,7 @@ Name a predicate for the **property** it establishes, not for the form in which 
 
 An `EvidenceRef` carries two payloads, and putting a value in the wrong one is a silent scoring bug rather than a style slip:
 
-- `detail` is **compared**. Every value in it must be stable under any edit that preserves the property — argument indices, literal values, statement ordering, and language builtins such as `block.timestamp`, which no author can rename.
+- `detail` is **compared**. Every value in it must be stable under any edit that preserves the property: argument indices, literal values, statement ordering, and language builtins such as `block.timestamp`, which no author can rename.
 - `diagnostic` is **never compared**. Local identifiers go here: state variable names, parameter names, helper names. Renaming any of them preserves behaviour, so a comparison would report a difference where nothing changed.
 
 Put the unstable values in `diagnostic` rather than dropping them. Evidence a human cannot read is evidence nobody trusts.
@@ -114,7 +114,7 @@ Two habits that will cost you accuracy if you ignore them:
 - **Test shapes, not names.** Identifiers are chosen by whoever wrote the contract and can be changed without changing behaviour. A predicate keyed on a parameter being called `amountOutMin` measures naming habits. Ask instead whether the argument in that position is a literal zero, or a parameter never read anywhere else in the function.
 - **Do not case-fold identifiers.** Solidity is case-sensitive. `owner` and `Owner` are different symbols, and folding them manufactures matches the compiler would never make.
 
-### `verdict()` — strict, and it must say why
+### `verdict()`: strict, and it must say why
 
 Return the checks that reject a finding; an empty sequence means it stands.
 
@@ -124,8 +124,8 @@ Each `FailedCheck` carries a `RejectionKind`, and getting it wrong corrupts the 
 
 | `RejectionKind` | Means | The run becomes |
 | --- | --- | --- |
-| `VERDICT` | you applied a rule and the claim did not meet it | a measurement — `clean` |
-| `CITATION` | the claim could not be checked against source at all | not a measurement — `invalid` |
+| `VERDICT` | you applied a rule and the claim did not meet it | a measurement: `clean` |
+| `CITATION` | the claim could not be checked against source at all | not a measurement: `invalid` |
 
 Returning an error as a judgement converts infrastructure failures into model conclusions. Returning a judgement as an error throws away a measurement you earned.
 
@@ -133,7 +133,7 @@ Returning an error as a judgement converts infrastructure failures into model co
 
 **The order you return findings in already decides which of them are scored.** The per-unit cap takes a *prefix* of your list and drops the tail (§4 of the arena's rules, and `capped_predictions` in the score document so you can see it bite). A submission that returns its weakest finding first loses its best one. That has always been true; what is new is that you can now say so.
 
-`Finding.score` is an optional float, higher meaning stronger. When you supply it, **the harness refuses a run whose list order disagrees with its own scores** — because the cap would then resolve that disagreement in favour of position and discard the finding you scored highest, which is a trap rather than a preference. Either every finding in a run carries a score or none does: a partially scored list leaves the unscored ones in an order that means nothing.
+`Finding.score` is an optional float, higher meaning stronger. When you supply it, **the harness refuses a run whose list order disagrees with its own scores**, because the cap would then resolve that disagreement in favour of position and discard the finding you scored highest, which is a trap rather than a preference. Either every finding in a run carries a score or none does: a partially scored list leaves the unscored ones in an order that means nothing.
 
 Why a score and not a rank. A rank is ordinal inside the list it came from, so a rank-one from a unit you were sure about and a rank-one from a unit you were guessing in are not the same claim, and no figure can interleave them. A score is comparable across the units of *one* submission, which is what any per- submission figure needs; scores from different submissions never have to be comparable to each other, and nothing here compares them.
 
@@ -141,17 +141,17 @@ It is optional so that a deterministic detector with no notion of confidence nee
 
 ### What you do *not* control
 
-**Citation re-verification.** After your `verdict()` returns, the harness re-reads the source at each finding's locator and compares it to the finding's `quote`. It runs for every finding on every run, you cannot skip it, and there is no method to override — the data contract says a finding is re-verified unconditionally, and that is only true if the harness owns it.
+**Citation re-verification.** After your `verdict()` returns, the harness re-reads the source at each finding's locator and compares it to the finding's `quote`. It runs for every finding on every run, you cannot skip it, and there is no method to override: the data contract says a finding is re-verified unconditionally, and that is only true if the harness owns it.
 
 Every failure is a `CITATION` rejection, so the run becomes `invalid` rather than `clean`. A finding whose quote is not where it says establishes nothing about whether the class is present at that location.
 
 The comparison policy is fixed by the harness and identical for every submission, so that two detectors reporting the same defect cannot get different outcomes from how they happened to format a string:
 
 - Leading and trailing whitespace is stripped **per line**, and blank lines are ignored. Indentation is not semantic; a quote reproduced with its indentation shifted has still quoted the code.
-- Both sides are split into tokens — an identifier, a number, or one other character — and compared as token sequences. So whitespace *between* tokens does not matter either: `total-=amount;` and `total -= amount ;` are the same quote. Note that a multi-character operator is two tokens here, which is why the floor below is six and not five.
-- **The quote must be whole lines of the source, contiguous, inside the span your locator declares.** It need not be all of the span — a locator a line or two wider than the lines you quoted is fine, which is the common case for a finding about a function — but it must not start or stop mid-line. A mid-line fragment is refused because that is where a blind guess lives: `for (uint256 i = 0; i <` is ten tokens, generic, and inside hundreds of spans, and a rule that accepted it scored 0.126 over the whole corpus reading no source.
-- **A quote must carry at least six tokens, one of them naming something the language does not supply.** A member name counts as the language's only after a dot, so `msg.sender` is language and a variable called `sender` is a name of your own. Below that it is a line anybody can type — `} else {`, `msg.sender,`, `) internal {` — and a line of nothing but braces and keywords, `} } return false; }`, is six tokens of the same thing: a review scored 0.0138 over the whole corpus out of lines of that shape. One variable, function or type name of your file's own is enough. Quote the neighbouring line as well when your statement is short.
-- **Your prediction is scored at the lines your quote matched**, not at the span you declared. So locator slop is free in every direction — measured over the whole corpus, an honest submission scores the same 0.9915 with its locator exact, one line wider, five wider, wider above, or wider on both sides — and a wide span does not launder a quote into a function it is not in: a quote matched in another function is a file match, not a function one. It is not *nothing*, either, and an earlier version of this page claimed it was: a blind submission gains about 0.05 in-sample from widening, most of it upward, because widening upward pulls the function's own declaration line into the pool. The report counts how many of your predictions were moved, and how many landed in a callable your locator did not name.
+- Both sides are split into tokens (an identifier, a number, or one other character) and compared as token sequences. So whitespace *between* tokens does not matter either: `total-=amount;` and `total -= amount ;` are the same quote. Note that a multi-character operator is two tokens here, which is why the floor below is six and not five.
+- **The quote must be whole lines of the source, contiguous, inside the span your locator declares.** It need not be all of the span (a locator a line or two wider than the lines you quoted is fine, which is the common case for a finding about a function) but it must not start or stop mid-line. A mid-line fragment is refused because that is where a blind guess lives: `for (uint256 i = 0; i <` is ten tokens, generic, and inside hundreds of spans, and a rule that accepted it scored 0.126 over the whole corpus reading no source.
+- **A quote must carry at least six tokens, one of them naming something the language does not supply.** A member name counts as the language's only after a dot, so `msg.sender` is language and a variable called `sender` is a name of your own. Below that it is a line anybody can type (`} else {`, `msg.sender,`, `) internal {`) and a line of nothing but braces and keywords, `} } return false; }`, is six tokens of the same thing: a review scored 0.0138 over the whole corpus out of lines of that shape. One variable, function or type name of your file's own is enough. Quote the neighbouring line as well when your statement is short.
+- **Your prediction is scored at the lines your quote matched**, not at the span you declared. So locator slop is free in every direction (measured over the whole corpus, an honest submission scores the same 0.9915 with its locator exact, one line wider, five wider, wider above, or wider on both sides) and a wide span does not launder a quote into a function it is not in: a quote matched in another function is a file match, not a function one. It is not *nothing*, either, and an earlier version of this page claimed it was: a blind submission gains about 0.05 in-sample from widening, most of it upward, because widening upward pulls the function's own declaration line into the pool. The report counts how many of your predictions were moved, and how many landed in a callable your locator did not name.
 - The lines have to be in the file's own order, and contiguous in it. Blank lines are dropped on both sides, so a blank line between two quoted lines does not matter; a line of *code* between them does.
 - A quote that is blank once normalised is a failure, not a pass.
 
@@ -161,11 +161,11 @@ Five failures are distinguished, because they say different things about a detec
 
 **What the floor costs, measured.** A submitter that may widen its quote by a line scores 0.9915 over the whole corpus. One confined to quoting a single anchor line scores **0.7304**: of the 127 records it misses, 123 are refused because the anchor line is under six tokens, three by the naming clause, and one has no source a repository checkout can hold. Widen, or narrow the locator to a run of two lines and quote both.
 
-**Shapes this refuses, with what they cost.** A quote assembled from non-adjacent lines — a model reporting a function by its three interesting lines — is refused outright, and **449 of 471** records could take that shape, so a submission built that way scores zero rather than less. Dropping an interior comment line and quoting the code around it is the same refusal, and **207 of 470** spans contain an interior comment. Blank lines are the exception: they are dropped on both sides, so a blank line inside your quote is fine. Quote contiguous lines, comments included, or narrow the locator to a run that has none.
+**Shapes this refuses, with what they cost.** A quote assembled from non-adjacent lines (a model reporting a function by its three interesting lines) is refused outright, and **449 of 471** records could take that shape, so a submission built that way scores zero rather than less. Dropping an interior comment line and quoting the code around it is the same refusal, and **207 of 470** spans contain an interior comment. Blank lines are the exception: they are dropped on both sides, so a blank line inside your quote is fine. Quote contiguous lines, comments included, or narrow the locator to a run that has none.
 
 **The cheapest way to satisfy all of this** is to build the quote by slicing the source at the locator you are about to report, which is what the bundled `PredicateDetector` does. `self_check()` in `examples/reference_runner/submission.py` runs the host's check during development so a mismatch is a message you see immediately rather than a run that scored zero.
 
-**Skipping.** There is no `gate()` method to override. Whether a source unit is passed over is decided by `detectors.gate`, outside your submission, and it blocks only where there is provably nothing to read — the file does not parse, or it declares no contract, library or interface. A per-detector skip would be indistinguishable in the record from a detector that looked and found nothing, so the interface does not offer one.
+**Skipping.** There is no `gate()` method to override. Whether a source unit is passed over is decided by `detectors.gate`, outside your submission, and it blocks only where there is provably nothing to read: the file does not parse, or it declares no contract, library or interface. A per-detector skip would be indistinguishable in the record from a detector that looked and found nothing, so the interface does not offer one.
 
 **Escalation.** `ctx.limits.escalation_allowed` tells you whether a larger model may be requested. It is closed at difficulty `S` and open above it, and every escalation is recorded along with whether it changed the verdict.
 
@@ -177,7 +177,7 @@ All inputs arrive in one frozen `AnalysisContext`:
 | --- | --- |
 | `source_id`, `path` | identity of the unit under analysis |
 | `source` | the Solidity source |
-| `tier` | `semantic` or `syntactic` — the strongest backend that could read it |
+| `tier` | `semantic` or `syntactic`: the strongest backend that could read it |
 | `level` | difficulty grade of your class, `S`/`M`/`Q` |
 | `limits` | wall clock, model calls, tokens, whether escalation is open |
 | `facts` | evidence the harness computed before you ran |
@@ -189,17 +189,17 @@ Read `facts` instead of recomputing. It matters most at the `semantic` tier: tho
 
 ## 3. Classification mode
 
-When `ctx.labels` is set, `classify()` is called and may return `ClassificationClaim`s: a tag, an optional subtag, a severity, and a prose description. These are *repository-level* claims — no file, no function, no line.
+When `ctx.labels` is set, `classify()` is called and may return `ClassificationClaim`s: a tag, an optional subtag, a severity, and a prose description. These are *repository-level* claims: no file, no function, no line.
 
 They are kept off `Finding` deliberately. A `Finding` carries a locator and a quote, so it can be checked against source and refuted. "This repository has a high-severity access-control bug" carries neither and cannot be. Merging the two would let an unfalsifiable claim inherit the credibility of a verified one.
 
 **Severity appears here and nowhere else.** `Finding` has no severity field and will not gain one. Reproducing a severity a named auditor recorded is a claim with a ground truth to be wrong about; inventing one is a value judgement dressed as an observation.
 
-The taxonomy arrives as data in `LabelSpaceSpec`, supplied by whoever runs the exercise. Use `validate_claim(claim, spec)` to check your claims yourself — it returns every problem, not the first. A claim whose tag falls outside the label space is **not** dropped: it is retained and counts against you as a false positive. Dropping it would make invalid output free.
+The taxonomy arrives as data in `LabelSpaceSpec`, supplied by whoever runs the exercise. Use `validate_claim(claim, spec)` to check your claims yourself: it returns every problem, not the first. A claim whose tag falls outside the label space is **not** dropped: it is retained and counts against you as a false positive. Dropping it would make invalid output free.
 
 ## 4. Submitting
 
-A submission is a module plus a manifest. The manifest declares the entry point rather than the package registering itself on import, because the only way to learn what a self-registering package contains is to execute it — which is the thing to be decided *before* doing.
+A submission is a module plus a manifest. The manifest declares the entry point rather than the package registering itself on import, because the only way to learn what a self-registering package contains is to execute it, which is the thing to be decided *before* doing.
 
 ```json
 {
@@ -222,11 +222,11 @@ Submissions run as untrusted code under external isolation. Assume all of:
 
 ## 5. Nothing you return is taken on trust
 
-The interface describes what your methods return. Across this boundary that is a claim, and it is checked -- with one exactness worth stating, because this paragraph read as a stronger promise than the code makes. Every returned value is validated against its model, and anything unusable becomes `Outcome.INVALID` with `InvalidReason.SCHEMA_VIOLATION` — reported as harness health, never entering a confusion matrix, and never recorded as `clean`.
+The interface describes what your methods return. Across this boundary that is a claim, and it is checked -- with one exactness worth stating, because this paragraph read as a stronger promise than the code makes. Every returned value is validated against its model, and anything unusable becomes `Outcome.INVALID` with `InvalidReason.SCHEMA_VIOLATION`, reported as harness health, never entering a confusion matrix, and never recorded as `clean`.
 
 Specifically:
 
-- Returning `None` where a sequence belongs is an error, **including from `verdict()`**. The charitable reading — "no rejections" — would mean a `verdict()` that falls off an exception path accepts every finding it is given.
+- Returning `None` where a sequence belongs is an error, **including from `verdict()`**. The charitable reading, "no rejections", would mean a `verdict()` that falls off an exception path accepts every finding it is given.
 - Returning a `str` is an error, even though strings iterate.
 - Raising is an error, and is reported against the stage that raised (`evidence`, `plan`, `verdict`, `classify`) so the failure is attributable.
 - Items are validated individually, and the failure names the position.
@@ -248,7 +248,7 @@ Covered by the commitment: every name exported from `contract_assay.detectors.__
 
 Not covered: anything prefixed with an underscore, anything under `contract_assay.corpus`, and the harness internals that call these methods.
 
-Within a major version, this project will add fields and enum members but will not remove or rename them, will not change a method signature, and will not tighten an existing validation rule. Inputs travel in `AnalysisContext` precisely so that new capabilities can arrive as fields rather than as parameters — adding a parameter to `evidence()` would break every submission ever written.
+Within a major version, this project will add fields and enum members but will not remove or rename them, will not change a method signature, and will not tighten an existing validation rule. Inputs travel in `AnalysisContext` precisely so that new capabilities can arrive as fields rather than as parameters: adding a parameter to `evidence()` would break every submission ever written.
 
 Adding an enum member is a minor change, so do not write exhaustive matches over `TaskOutput` or `VulnerabilityClass` without a default branch.
 
@@ -258,7 +258,7 @@ It does not sandbox anything. `load_detector` imports a module, and importing a 
 
 ## 7. Checklist
 
-- [ ] `detector_id`, `class_id` and `api_version` declared — missing any fails at class definition, not mid-run.
+- [ ] `detector_id`, `class_id` and `api_version` declared: missing any fails at class definition, not mid-run.
 - [ ] `evidence()` consults no model, network or clock.
 - [ ] Predicates test shapes, not identifier names; no case-folding.
 - [ ] Every `FailedCheck` carries the `RejectionKind` that matches what happened.
@@ -269,7 +269,7 @@ It does not sandbox anything. `load_detector` imports a module, and importing a 
 
 ## 8. Running submissions, and the documents that come out
 
-This section is for whoever *runs* the exercise rather than whoever writes a detector: a marking script, a queue worker, a web front end. The scoring engine is here, and a surface built on it should call it rather than reimplement any part of it — §7.6's refusals are one `or 0` away from becoming defaults, and the loss shows up in the cell a reader believes.
+This section is for whoever *runs* the exercise rather than whoever writes a detector: a marking script, a queue worker, a web front end. The scoring engine is here, and a surface built on it should call it rather than reimplement any part of it: §7.6's refusals are one `or 0` away from becoming defaults, and the loss shows up in the cell a reader believes.
 
 ### The model is yours to name
 
@@ -296,7 +296,7 @@ run = run_detector(
 
 Findings with neither raise. "No model is named" and "no model ran" are different claims, and only one of them supports a comparison against a baseline; a run that says nothing would leave a leaderboard reporting an unknown model as the agreed one.
 
-Sub-models are declared the same way with `role=ModelRole.SUB`. They do not block a comparison — which helpers a harness calls is part of what the exercise compares — and their calls and tokens count against the same budgets.
+Sub-models are declared the same way with `role=ModelRole.SUB`. They do not block a comparison (which helpers a harness calls is part of what the exercise compares) and their calls and tokens count against the same budgets.
 
 ### Two commands
 
@@ -317,13 +317,13 @@ $ contract-assay rank \
 
 ### Every command, and what it defaults to
 
-`score` and `rank` are above and below. The rest, with the defaults the code sets — `--help` on any command says the same:
+`score` and `rank` are above and below. The rest, with the defaults the code sets, `--help` on any command says the same:
 
 | Command | What it does |
 | --- | --- |
 | `fetch RECORDS --source-root DIR` | builds the checkout from the records' pins, verifying each digest; a file that does not match is not written |
 | `fetch --units MANIFEST --source-root DIR` | the same from a unit manifest, for a split whose records you do not hold; exactly one of `RECORDS` and `--units` |
-| `units RECORDS [--out FILE]` | writes a unit manifest — the pins and nothing else — to publish a split without its answers; stdout without `--out` |
+| `units RECORDS [--out FILE]` | writes a unit manifest (the pins and nothing else) to publish a split without its answers; stdout without `--out` |
 | `verify RECORDS --source-root DIR` | checks every record against the checkout and lists each rejection with its cause; exits 1 on any |
 | `verify … --write-digests` | also writes the computed digest back into each admitted record's file |
 | `declarations FILE.sol` | lists what a file declares and on which lines, the index the verifier uses |
@@ -343,7 +343,7 @@ $ contract-assay rank \
 | `--max-tokens N` | 20000 | `ctx.limits.max_tokens` |
 | `--predictions-per-unit N` | 9 | at most `N` model findings per unit per class are handed on, in the order returned |
 
-The three budgets are what every run's `ctx.limits` says, with `escalation_allowed` derived from your class's level — closed at `S`. `run` states them and passes them to your model caller; it does not enforce them (see "One thing this module does not provide"), so a caller that meters calls and tokens is where they become limits. `run_submission` in the Python API has the same defaults. `--predictions-per-unit` matches `score`'s default so that what you hand over is what gets counted; the cap that counts is `score`'s.
+The three budgets are what every run's `ctx.limits` says, with `escalation_allowed` derived from your class's level: closed at `S`. `run` states them and passes them to your model caller; it does not enforce them (see "One thing this module does not provide"), so a caller that meters calls and tokens is where they become limits. `run_submission` in the Python API has the same defaults. `--predictions-per-unit` matches `score`'s default so that what you hand over is what gets counted; the cap that counts is `score`'s.
 
 When a model call fails, `run` records `transport_failure` and prints the most common causes once the sweep ends, because the run itself holds only the reason code. When `--model-caller` is named and no detector asked for a model, it says that too. "Calling the model" below covers both.
 
@@ -360,17 +360,17 @@ $ contract-assay rank \
     --weights weights.json --baseline the-agreed-model --out board.json
 ```
 
-The row is ranked on the **mean** of its totals, and its per-class figures are means too. A model at temperature zero still answers differently between runs, and one sweep of a small corpus moves a class by a whole record on that alone. The row publishes `measurements`, every total in `totals`, and `spread` — highest minus lowest — beside the mean; a gap between two rows smaller than their spread is not one the board can tell apart. Every measurement has to qualify: one run under the wrong model makes the row incomparable, and one measurement without a total makes it unrankable with that measurement's reasons, because a mean of the others is a different number measured fewer times. The row's `report` is the first measurement's score document.
+The row is ranked on the **mean** of its totals, and its per-class figures are means too. A model at temperature zero still answers differently between runs, and one sweep of a small corpus moves a class by a whole record on that alone. The row publishes `measurements`, every total in `totals`, and `spread` (highest minus lowest) beside the mean; a gap between two rows smaller than their spread is not one the board can tell apart. Every measurement has to qualify: one run under the wrong model makes the row incomparable, and one measurement without a total makes it unrankable with that measurement's reasons, because a mean of the others is a different number measured fewer times. The row's `report` is the first measurement's score document.
 
-Equal totals share a place and the next place is skipped — 1, 1, 3. Rows print in id order within a tie so two runs give the same table, but the place does not follow that order: handing a tie to whichever id sorts first would award a place nothing measured. Equal means equal; no tolerance is applied.
+Equal totals share a place and the next place is skipped: 1, 1, 3. Rows print in id order within a tie so two runs give the same table, but the place does not follow that order: handing a tie to whichever id sorts first would award a place nothing measured. Equal means equal; no tolerance is applied.
 
 ### `--any-model`, when the exercise does not agree one model
 
-`--baseline` states the one main model every row must have run under, and a row under any other is listed apart. Without it, rows naming different main models are all listed apart, because nothing says which comparison was agreed. `--any-model` is the third answer: the exercise ranks every row whatever model it names — a classroom where teams bring their own harness and model — and the board records `"any_model": true` and says in its statement which models it mixed. A gap between two rows is then as much the models' as the harnesses'. A submission whose own runs name two main models is still a mixture and is still listed apart. The two flags are exclusive.
+`--baseline` states the one main model every row must have run under, and a row under any other is listed apart. Without it, rows naming different main models are all listed apart, because nothing says which comparison was agreed. `--any-model` is the third answer: the exercise ranks every row whatever model it names (a classroom where teams bring their own harness and model) and the board records `"any_model": true` and says in its statement which models it mixed. A gap between two rows is then as much the models' as the harnesses'. A submission whose own runs name two main models is still a mixture and is still listed apart. The two flags are exclusive.
 
 ### `--class-weights`, when a level weighting is too coarse
 
-`--weights` is keyed by difficulty level — `S`, `M`, `Q` — and nine classes share those three, so it says four of them are equally hard. `--class-weights` takes a weight per class instead and replaces the level weighting entirely:
+`--weights` is keyed by difficulty level (`S`, `M`, `Q`) and nine classes share those three, so it says four of them are equally hard. `--class-weights` takes a weight per class instead and replaces the level weighting entirely:
 
 ```console
 $ contract-assay rank --submission team-alpha=alpha.jsonl \
@@ -385,7 +385,7 @@ This engine still supplies no weights and computes none. A class weighting arriv
 
 ### `bpref`, the figure that exists while judging is outstanding
 
-That message — `110 prediction(s) await adjudication before precision exists` — is precision's all-or-nothing gate, and it is not a warning about quality. One unjudged prediction and the class has no precision, no F1, and no place on a board. In an exercise with rounds that means the board cannot exist until the judging finishes.
+That message, `110 prediction(s) await adjudication before precision exists`, is precision's all-or-nothing gate, and it is not a warning about quality. One unjudged prediction and the class has no precision, no F1, and no place on a board. In an exercise with rounds that means the board cannot exist until the judging finishes.
 
 Every class block therefore also carries `bpref`, which ignores unjudged predictions rather than counting them either way:
 
@@ -398,27 +398,27 @@ Every class block therefore also carries `bpref`, which ignores unjudged predict
 }
 ```
 
-**To get one, score your findings.** `bpref` needs an ordering across the whole class, and that is what `Finding.score` is for — a rank is ordinal inside the unit it came from, so per-unit ranks cannot be merged into one list. Score every finding of a class or none: a partly scored class is refused rather than filled in, because placing the unscored ones somewhere by default would invent a confidence you withheld. See "Ordering your findings, and `score`" above.
+**To get one, score your findings.** `bpref` needs an ordering across the whole class, and that is what `Finding.score` is for: a rank is ordinal inside the unit it came from, so per-unit ranks cannot be merged into one list. Score every finding of a class or none: a partly scored class is refused rather than filled in, because placing the unscored ones somewhere by default would invent a confidence you withheld. See "Ordering your findings, and `score`" above.
 
 **Read `min_r_n` before the value.** bpref divides by it, so at `n: 1` a single adjudication moves the figure between 0 and 1. `below_minimum` says when it is under the stated threshold.
 
-**A board can be built on it.** `contract-assay rank --rank-on bpref` ranks on bpref instead of F1, which is how an exercise gets a board before its judging is finished. The document then says `"ranked_on": "bpref"` and each row's per-class column is `bpref_by_class` rather than `f1_by_class` — keyed by what it holds, for the same reason the field is not called precision. Submissions ranked on different measures are refused a shared board.
+**A board can be built on it.** `contract-assay rank --rank-on bpref` ranks on bpref instead of F1, which is how an exercise gets a board before its judging is finished. The document then says `"ranked_on": "bpref"` and each row's per-class column is `bpref_by_class` rather than `f1_by_class`, keyed by what it holds, for the same reason the field is not called precision. Submissions ranked on different measures are refused a shared board.
 
-`bpref` is **not** precision and is never reported in a field named precision; the two answer different questions over different denominators. `value` is `null` with a reason when the class has no positive record, or when you claimed something and declared no ordering — the second is yours to supply. When nothing in the class was judged not-an-instance, `n` is 0 and `value` is what you found over `r`, which equals recall; `below_minimum` is set, so a reader sees that it rests on no known-wrong prediction at all.
+`bpref` is **not** precision and is never reported in a field named precision; the two answer different questions over different denominators. `value` is `null` with a reason when the class has no positive record, or when you claimed something and declared no ordering: the second is yours to supply. When nothing in the class was judged not-an-instance, `n` is 0 and `value` is what you found over `r`, which equals recall; `below_minimum` is set, so a reader sees that it rests on no known-wrong prediction at all.
 
 `rank` takes each submission's *runs*, not its score document, so that every row is computed against one corpus with one weighting in one invocation. A leaderboard assembled from figures cannot check that they were.
 
-`--over` names the classes the ranking covers, and is the exercise's statement rather than something to infer. Omitted, every class the submissions share must have an F1 — safe, and rarely what was meant: a mean over whichever classes happened to have figures ranks a submission on its corpus's readiness instead of on itself. One class whose pool is fully judged is a real ranking; eight classes where one is waiting on adjudication is no ranking at all.
+`--over` names the classes the ranking covers, and is the exercise's statement rather than something to infer. Omitted, every class the submissions share must have an F1. That is safe, and rarely what was meant: a mean over whichever classes happened to have figures ranks a submission on its corpus's readiness instead of on itself. One class whose pool is fully judged is a real ranking; eight classes where one is waiting on adjudication is no ranking at all.
 
-`--weights` is yours to supply — the engine ships none, because a weighting states what the exercise values. Without it the per-class figures are still reported and the aggregate is refused, with that as its stated reason.
+`--weights` is yours to supply: the engine ships none, because a weighting states what the exercise values. Without it the per-class figures are still reported and the aggregate is refused, with that as its stated reason.
 
-`--predictions-per-unit` is **not** that kind of parameter, and it has a default: nine, the most records any single unit-class pair in the corpus holds, so a perfect submission is never capped. It scores at most that many findings per source unit per class, in the order the runs returned them — counting the ones whose citations failed, because a refused citation is still a claim you made about a location — and reports the rest as `capped_predictions`.
+`--predictions-per-unit` is **not** that kind of parameter, and it has a default: nine, the most records any single unit-class pair in the corpus holds, so a perfect submission is never capped. It scores at most that many findings per source unit per class, in the order the runs returned them (counting the ones whose citations failed, because a refused citation is still a claim you made about a location) and reports the rest as `capped_predictions`.
 
-Two reasons, and the second is why it is a default rather than an option. **Precision waits on adjudication and adjudication is somebody's afternoon**: a submission that proposed every declaration in every file would buy itself an unbounded amount of that. And **recall over an unbounded pool is not a measurement**: precision waits, recall does not, so without a cap a submission can buy recall with volume nobody has judged yet. A review did exactly that — 668,655 quotes over the 435 records the corpus then held, per-class recall published, precision unlicensed in all nine classes. Raise it if your exercise funds more adjudication; it is one of the eight fields two results must share before they compare, so a figure computed under a different cap will not be ranked against one computed under this one. The CLI types the option as an integer, so there is no way to ask this surface for an uncapped figure; `score(..., predictions_per_ unit=None)` in the Python API still does that, for tooling that wants the whole pool.
+Two reasons, and the second is why it is a default rather than an option. **Precision waits on adjudication and adjudication is somebody's afternoon**: a submission that proposed every declaration in every file would buy itself an unbounded amount of that. And **recall over an unbounded pool is not a measurement**: precision waits, recall does not, so without a cap a submission can buy recall with volume nobody has judged yet. A review did exactly that: 668,655 quotes over the 435 records the corpus then held, per-class recall published, precision unlicensed in all nine classes. Raise it if your exercise funds more adjudication; it is one of the eight fields two results must share before they compare, so a figure computed under a different cap will not be ranked against one computed under this one. The CLI types the option as an integer, so there is no way to ask this surface for an uncapped figure; `score(..., predictions_per_ unit=None)` in the Python API still does that, for tooling that wants the whole pool.
 
-The quota is per *unit*, and a unit is the pinned file across revisions — not the `source_id`, which carries the commit. The corpus pins eight paths at two commits each, and a quota on `source_id` gave the records on those paths eighteen guesses instead of nine.
+The quota is per *unit*, and a unit is the pinned file across revisions, not the `source_id`, which carries the commit. The corpus pins eight paths at two commits each, and a quota on `source_id` gave the records on those paths eighteen guesses instead of nine.
 
-Two things about where it is enforced. It is enforced **here**, at scoring, because this is the only layer that sees a whole submission's runs at once — a cap applied per run cannot see that two detectors for one class already used the quota between them, and a cap applied by whatever *ran* the submission is a cap inside the process running the code it limits. And the order is the submission's own: a harness that puts its best finding first is making exactly the choice the cap asks it to make, so re-ranking for it would take the choice away and then charge it for the result.
+Two things about where it is enforced. It is enforced **here**, at scoring, because this is the only layer that sees a whole submission's runs at once: a cap applied per run cannot see that two detectors for one class already used the quota between them, and a cap applied by whatever *ran* the submission is a cap inside the process running the code it limits. And the order is the submission's own: a harness that puts its best finding first is making exactly the choice the cap asks it to make, so re-ranking for it would take the choice away and then charge it for the result.
 
 `rank` declines to rank rows scored under different caps, for the same reason it declines rows under different baseline models: their precisions are over different pools.
 
@@ -469,8 +469,8 @@ Every measurement is `{"value": …, "unavailable": …}`:
 
 A `null` value always has a reason beside it. **Render the value and you print an empty cell; default it and you have published a number this engine refused to state.**
 
-`adjudication_queue` lists every prediction nothing in the corpus judges, with its unit, detector and line range. Precision waits on that list, and the list is the exercise's own work rather than a defect in the submission — which is also why the count in it agrees with the sentence in `precision.unavailable`.
+`adjudication_queue` lists every prediction nothing in the corpus judges, with its unit, detector and line range. Precision waits on that list, and the list is the exercise's own work rather than a defect in the submission, which is also why the count in it agrees with the sentence in `precision.unavailable`.
 
 A `ranked` row carries `place`, `total`, `measurements`, `totals` and `spread`. `place` is shared by equal totals and skips the places they occupy, so read it rather than a row's position in the list. `measurements` is 1 and `spread` is `null` for a submission measured once; above 1, `total` and every per-class figure in the row are means over `totals`.
 
-`unrankable` rows carry two different kinds of "cannot": `reasons` is per class, for figures the corpus or the submission cannot yet support, and `incomparable` is set when the figures exist and the comparison does not — a different baseline model, none named, or two. An unrankable row is not a worse one, and placing it last would assert a comparison nobody measured.
+`unrankable` rows carry two different kinds of "cannot": `reasons` is per class, for figures the corpus or the submission cannot yet support, and `incomparable` is set when the figures exist and the comparison does not: a different baseline model, none named, or two. An unrankable row is not a worse one, and placing it last would assert a comparison nobody measured.

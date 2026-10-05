@@ -6,7 +6,7 @@ This directory holds **pointers** to results, not results, and no ranking.
 
 ## Why it is shaped this way
 
-A leaderboard in a benchmark's own repository makes its maintainers the adjudicators of their own instrument. This project already refuses that one level down — a detector's author cannot adjudicate its own predictions, because precision would then be 1 by construction — and the same argument applies to the benchmark's authors and the benchmark's own ranking.
+A leaderboard in a benchmark's own repository makes its maintainers the adjudicators of their own instrument. This project already refuses that one level down (a detector's author cannot adjudicate its own predictions, because precision would then be 1 by construction) and the same argument applies to the benchmark's authors and the benchmark's own ranking.
 
 So your result lives wherever you put it: a repository, a paper, a post. What lands here is a small JSON file naming what you measured, where the document is, and who published it. Every field in it comes out of the score document the engine wrote, so a pointer either matches the document it points at or it does not.
 
@@ -24,7 +24,7 @@ So your result lives wherever you put it: a repository, a paper, a post. What la
 
    The weighting is yours to supply and this repository ships none: it states what an exercise values, and `docs/api.md` §6 has the shape. Without it the per-class figures still appear and the aggregate is refused, with that as its stated reason.
 
-2. Build the pointer from the document rather than by hand — a pointer typed out is a number somebody typed:
+2. Build the pointer from the document rather than by hand; a pointer typed out is a number somebody typed:
 
    ```python
    import json
@@ -46,9 +46,9 @@ So your result lives wherever you put it: a repository, a paper, a post. What la
 $ contract-assay results
 ```
 
-It groups results by **what they were measured against** and compares only within a group. Two results disagree about any of `engine_version`, `corpus_digest`, `strength_floor`, `weights`, `class_weights`, `predictions_per_unit`, `main_model` or `units_scored` and they are not two measurements of the same thing — the commonest reason two leaderboards disagree is not a scoring change but a corpus that grew.
+It groups results by **what they were measured against** and compares only within a group. Two results disagree about any of `engine_version`, `corpus_digest`, `strength_floor`, `weights`, `class_weights`, `predictions_per_unit`, `main_model` or `units_scored` and they are not two measurements of the same thing. The commonest reason two leaderboards disagree is not a scoring change but a corpus that grew.
 
-A result whose document **refused** to compute a total is listed after the ranked ones and marked with the document's own sentence. It is not sorted to the bottom: ordering it below a ranked result asserts a comparison nobody measured, and the usual cause is work the exercise owes — unadjudicated predictions, or a class the corpus does not cover — rather than anything the submission did.
+A result whose document **refused** to compute a total is listed after the ranked ones and marked with the document's own sentence. It is not sorted to the bottom: ordering it below a ranked result asserts a comparison nobody measured, and the usual cause is work the exercise owes (unadjudicated predictions, or a class the corpus does not cover) rather than anything the submission did.
 
 ## What a pointer may not do
 
