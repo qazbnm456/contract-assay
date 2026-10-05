@@ -407,7 +407,7 @@ class TestTheProseQuotesTheseFigures:
             "41 access-control predictions": 1,
             "470 citations reported unchecked": 1,
             "**449 of 471**": 1,
-            "**207 of\n470**": 1,
+            "**207 of 470**": 1,
         },
         "README.md": {"0.9958": 1, "41 access-control predictions": 1},
         "results/README.md": {"0.9958": 1},
