@@ -4,8 +4,8 @@ The benchmark never imports this module; `byo_caller.py` does. It exists so the
 example runs end to end before you have connected anything, and so that the
 shape of what the adapter needs from you is written down in one place:
 
-- **claims in your own taxonomy.** `category` is whatever your harness calls a
-  finding. The benchmark's classes are fixed (`VulnerabilityClass`), and
+- **claims in your own taxonomy**, for the one-pass shape. `category` is whatever your
+  harness calls a finding. The benchmark's classes are fixed (`VulnerabilityClass`), and
   `byo_caller.CATEGORY_TO_CLASS` is where yours are mapped onto them.
 - **a quote that is whole lines of the span the claim names.** Slice the source
   by line at the lines you report and the two cannot disagree. A paraphrase, or
@@ -20,7 +20,7 @@ It is here to give the adapter something to adapt.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,3 +57,16 @@ def analyze(source: str) -> Analysis:
     # Report what your harness really spent. A stand-in that makes no model call
     # says so with zeros, and `model_id` still names what produced the claims.
     return Analysis(claims=claims, model_id="byo-stand-in", calls=0, tokens=0)
+
+
+def analyze_class(source: str, class_id: str, instruction: str) -> Analysis:
+    """Run your harness over one source file for one class. Replace this too if you use it.
+
+    For a harness that works one vulnerability class at a time, for example one with a
+    skill for each class. `class_id` is the benchmark's name for the class, such as
+    `reentrancy`, and `instruction` is what the detector for that class asks, so this is
+    where your harness picks the skill or the prompt. Every claim returned belongs to
+    that class, so there is no category to map.
+    """
+    found = analyze(source)
+    return replace(found, claims=found.claims if class_id == "access_control" else ())

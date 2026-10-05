@@ -12,6 +12,25 @@ An assay measures what a sample actually contains. This one measures what a dete
 >
 > `examples/bring_your_own_harness/` is how the second one is produced, by anybody, including against a local endpoint. It is deliberately outside the package: an instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model.
 
+## Where to start
+
+Most people come here for one of three reasons, and each has its own first steps.
+
+**To see the benchmark run**, follow [Using it](#using-it). Three commands fetch the pinned sources, run a baseline that calls no model, and score it, and the run takes a few seconds.
+
+**To find out how a harness of your own does**, work through these in order. A harness here is anything that can read a Solidity file and report where the vulnerabilities are: a script, an agent with a skill for each vulnerability type, or a pipeline around a model.
+
+1. Run the baseline once, as in [Using it](#using-it). That tells you the checkout and the commands work before any of your code is involved.
+2. Copy `examples/bring_your_own_harness/` and read its README. A detector there is one vulnerability class plus an instruction, and your harness is called through one function when a detector asks for a model.
+3. Make your harness answer for one source file, with a line range and the exact quoted lines for each finding. If it works one class at a time, use `call_per_class`, which hands it each detector's class and instruction. If it audits a whole file at once, use `call`, which runs it once per file and files the claims by class.
+4. Run five units with `--limit 5`, read what `run` prints about invalid runs and failed calls, fix those, and then run the whole corpus.
+5. Score the runs with `contract-assay score`. A class you wrote no detector for shows a recall of 0.0 marked `nothing_ran`, because nothing was run for it.
+6. To set the result beside other people's, score with the same `--weights` and `--predictions-per-unit` as theirs, and publish a pointer as [results/README.md](results/README.md) describes. `contract-assay results` compares only results that were measured against the same things.
+
+Every locator in this corpus is public, so a score here measures an honest submission and says nothing about one built to game it. [What a figure over this corpus is](#what-a-figure-over-this-corpus-is) has the numbers, and a ranking that means something needs records whose locators stay unpublished.
+
+**To build a leaderboard or a submission site on this engine**, read `docs/api.md` section 8. It covers `score`, `rank`, the documents they write and the refusals a surface built on them must not paper over. This repository publishes no ranking of its own, for the reason given in [Using it](#using-it).
+
 ## Why this exists
 
 Benchmarks for LLM vulnerability detection tend to score at the wrong granularity. If a run counts as a hit whenever a model reports *anything* in a repository carrying the right label, then a model pointing at the wrong function in the wrong file scores identically to one that found the bug. The resulting numbers are not wrong so much as unrelated to the question.

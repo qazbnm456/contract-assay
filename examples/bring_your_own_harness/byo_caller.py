@@ -1,9 +1,17 @@
 """The adapter: your harness behind the benchmark's one seam. No dependency.
 
 `contract-assay run` loops over every source unit and every detector and calls
-this function when a detector asks for a model. This module turns that call
-into one call of your harness and turns what it returns into a `ModelReply`.
-That is the whole job:
+a function of this module when a detector asks for a model. The function turns
+that call into a call of your harness and turns what it returns into a
+`ModelReply`. That is the whole job, and there are two shapes of it:
+
+- `call` is for a harness that audits a whole file in one pass. It runs the
+  harness once per file and files each claim under the class its category maps to.
+- `call_per_class` is for a harness that works one class at a time, such as one
+  with a skill for each vulnerability type. It runs the harness for each detector
+  and hands it that detector's class and instruction.
+
+Pass the one you use as `--model-caller`:
 
     contract-assay run --manifest access_control.manifest.json \\
         --records corpus/records --source-root ./checkout \\
@@ -15,8 +23,8 @@ manifest's detector module in that manifest's directory only, so keep the
 manifests, `byo_detectors.py` and this file together and the command works from
 anywhere.
 
-Four things here are not obvious, and each of them produces figures that look
-fine when it is skipped:
+Four things about `call` are not obvious, and each of them produces figures that
+look fine when it is skipped. A failure is a value in both shapes.
 
 1. Your harness runs once per unit, not once per detector. The loop is units
    outside and detectors inside, so a harness covering several classes would be
@@ -37,8 +45,9 @@ fine when it is skipped:
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable
 
-from byo_harness import Analysis, analyze
+from byo_harness import Analysis, Claim, analyze, analyze_class
 
 from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec, check_citation
 from contract_assay.harness import ModelReply
@@ -80,31 +89,25 @@ def _analysis_for(ctx: AnalysisContext, detector: Detector) -> tuple[Analysis | 
     return _last, True
 
 
-def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
-    analysis, first = _analysis_for(ctx, detector)
-    if isinstance(analysis, Exception):
-        return ModelReply(failed=f"{type(analysis).__name__}: {analysis}")
-
-    if first:
-        for limit, spent, name in (
-            (ctx.limits.max_model_calls, analysis.calls, "calls"),
-            (ctx.limits.max_tokens, analysis.tokens, "tokens"),
-        ):
-            if spent > limit:
-                # Not enforced here, and not by `run` either: a competition host
-                # meters from outside and refuses the call. Said out loud so an
-                # overrun is not first discovered there.
-                print(
-                    f"  {ctx.path}: {spent} {name} exceeds the {limit} a round allows",
-                    file=sys.stderr,
-                )
-        for category in sorted({c.category for c in analysis.claims} - CATEGORY_TO_CLASS.keys()):
+def _warn_over_budget(ctx: AnalysisContext, analysis: Analysis) -> None:
+    for limit, spent, name in (
+        (ctx.limits.max_model_calls, analysis.calls, "calls"),
+        (ctx.limits.max_tokens, analysis.tokens, "tokens"),
+    ):
+        if spent > limit:
+            # Not enforced here, and not by `run` either: a competition host meters from
+            # outside and refuses the call. Said out loud so an overrun is not first
+            # discovered there.
             print(
-                f"  {ctx.path}: dropped claims in category {category!r}, "
-                "which CATEGORY_TO_CLASS does not map",
+                f"  {ctx.path}: {spent} {name} exceeds the {limit} a round allows",
                 file=sys.stderr,
             )
 
+
+def _findings(
+    detector: Detector, ctx: AnalysisContext, claims: Iterable[Claim]
+) -> tuple[Finding, ...]:
+    """The claims as findings, each one's quote checked the way the benchmark will check it."""
     findings = tuple(
         Finding(
             detector_id=detector.detector_id,
@@ -112,8 +115,7 @@ def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> Model
             quote=c.quote,
             reasoning=c.reasoning,
         )
-        for c in analysis.claims
-        if CATEGORY_TO_CLASS.get(c.category) is detector.class_id
+        for c in claims
     )
     for finding in findings:
         failure = check_citation(ctx, finding)
@@ -126,6 +128,29 @@ def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> Model
                 f"({failure.detail or failure.check})",
                 file=sys.stderr,
             )
+    return findings
+
+
+def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+    """For a harness that audits a whole file in one pass: run it once, file claims by class."""
+    analysis, first = _analysis_for(ctx, detector)
+    if isinstance(analysis, Exception):
+        return ModelReply(failed=f"{type(analysis).__name__}: {analysis}")
+
+    if first:
+        _warn_over_budget(ctx, analysis)
+        for category in sorted({c.category for c in analysis.claims} - CATEGORY_TO_CLASS.keys()):
+            print(
+                f"  {ctx.path}: dropped claims in category {category!r}, "
+                "which CATEGORY_TO_CLASS does not map",
+                file=sys.stderr,
+            )
+
+    findings = _findings(
+        detector,
+        ctx,
+        (c for c in analysis.claims if CATEGORY_TO_CLASS.get(c.category) is detector.class_id),
+    )
     return ModelReply(
         findings=findings,
         models=(
@@ -134,6 +159,31 @@ def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> Model
                 role=ModelRole.MAIN,
                 calls=analysis.calls if first else 0,
                 tokens=analysis.tokens if first else 0,
+            ),
+        ),
+    )
+
+
+def call_per_class(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+    """For a harness that works one class at a time: run it for each detector.
+
+    The detector's `plan()` names what to look for and its `class_id` says which class,
+    so the harness gets both and every claim it returns belongs to that class. Nothing is
+    shared between detectors, so each call is charged what it cost.
+    """
+    try:
+        analysis = analyze_class(ctx.source, detector.class_id.value, spec.instruction)
+    except Exception as failure:
+        return ModelReply(failed=f"{type(failure).__name__}: {failure}")
+    _warn_over_budget(ctx, analysis)
+    return ModelReply(
+        findings=_findings(detector, ctx, analysis.claims),
+        models=(
+            ModelUse(
+                model_id=analysis.model_id,
+                role=ModelRole.MAIN,
+                calls=analysis.calls,
+                tokens=analysis.tokens,
             ),
         ),
     )

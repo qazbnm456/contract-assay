@@ -233,6 +233,90 @@ class TestTheAdapter:
         assert len(attempts) == 1
 
 
+class TestAHarnessThatWorksOneClassAtATime:
+    """`call_per_class`: each detector's class and instruction go to the harness, in turn."""
+
+    def test_the_harness_is_asked_once_for_each_class_with_that_classs_instruction(
+        self, byo: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        asked: list[tuple[str, str]] = []
+        real = byo.analyze_class
+
+        def recording(source: str, class_id: str, instruction: str):  # type: ignore[no-untyped-def]
+            asked.append((class_id, instruction))
+            return real(source, class_id, instruction)
+
+        monkeypatch.setattr(byo, "analyze_class", recording)
+        runs = list(run_submission(all_detectors(), [a_unit()], model=byo.call_per_class))
+        assert sorted(c for c, _ in asked) == sorted(c.value for c in VulnerabilityClass)
+        # What each detector's `plan()` said is what its class was asked.
+        assert all(instruction for _, instruction in asked)
+        assert len({instruction for _, instruction in asked}) == len(VulnerabilityClass)
+        hit = next(run for run in runs if run.class_id is VulnerabilityClass.ACCESS_CONTROL)
+        assert hit.outcome is Outcome.VULNERABLE
+        assert [f.status for f in hit.findings] == [CitationStatus.VERIFIED]
+        assert {run.outcome for run in runs if run is not hit} == {Outcome.CLEAN}
+
+    def test_each_call_is_charged_what_it_cost(
+        self, byo: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Nothing is shared between detectors here, so nothing is charged once for all.
+        real = byo.analyze_class
+
+        def costly(source: str, class_id: str, instruction: str):  # type: ignore[no-untyped-def]
+            return replace(real(source, class_id, instruction), model_id="m", calls=2, tokens=100)
+
+        monkeypatch.setattr(byo, "analyze_class", costly)
+        runs = list(run_submission(all_detectors(), [a_unit()], model=byo.call_per_class))
+        assert sum(m.calls for run in runs for m in run.models) == 2 * len(VulnerabilityClass)
+        assert sum(m.tokens for run in runs for m in run.models) == 100 * len(VulnerabilityClass)
+
+    def test_a_failure_is_one_invalid_run_with_its_cause_for_that_class_only(
+        self, byo: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = byo.analyze_class
+
+        def flaky(source: str, class_id: str, instruction: str):  # type: ignore[no-untyped-def]
+            if class_id == "reentrancy":
+                raise RuntimeError("the reentrancy skill timed out")
+            return real(source, class_id, instruction)
+
+        monkeypatch.setattr(byo, "analyze_class", flaky)
+        causes: list[str] = []
+        runs = list(
+            run_submission(
+                all_detectors(),
+                [a_unit()],
+                model=byo.call_per_class,
+                on_failure=lambda unit, detector, cause: causes.append(cause),
+            )
+        )
+        invalid = [run for run in runs if run.outcome is Outcome.INVALID]
+        assert [run.class_id for run in invalid] == [VulnerabilityClass.REENTRANCY]
+        assert causes == ["RuntimeError: the reentrancy skill timed out"]
+        assert any(run.outcome is Outcome.VULNERABLE for run in runs)
+
+    def test_a_claim_that_fails_its_citation_is_reported_and_still_returned(
+        self,
+        byo: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        real = byo.analyze_class
+
+        def half_a_line(source: str, class_id: str, instruction: str):  # type: ignore[no-untyped-def]
+            found = real(source, class_id, instruction)
+            return replace(
+                found, claims=tuple(replace(c, quote="require(tx.origin") for c in found.claims)
+            )
+
+        monkeypatch.setattr(byo, "analyze_class", half_a_line)
+        runs = list(run_submission(all_detectors(), [a_unit()], model=byo.call_per_class))
+        hit = next(run for run in runs if run.class_id is VulnerabilityClass.ACCESS_CONTROL)
+        assert hit.invalid_reason is InvalidReason.CITATION_UNVERIFIED
+        assert "src/Wallet.sol:5-5" in capsys.readouterr().err
+
+
 class TestTheCommandAsItIsDocumented:
     """`contract-assay run` with the example's own manifests, from a directory that is not its own.
 

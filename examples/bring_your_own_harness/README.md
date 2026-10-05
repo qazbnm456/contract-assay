@@ -2,7 +2,7 @@
 
 This directory is the shortest path from a vulnerability-detection harness you built to a score on this benchmark. It needs nothing beyond `contract_assay`, and it runs end to end before you have connected anything.
 
-Your harness stays yours. The benchmark reads the corpus, calls your code once per source file, checks every citation against the source, and writes the runs. You supply one function that turns a call into your harness's findings, and you do not write a loop.
+Your harness stays yours. The benchmark reads the corpus, calls your code for each source file, checks every citation against the source, and writes the runs. You supply one function that turns a call into your harness's findings, and you do not write a loop.
 
 ```text
 your harness -> byo_caller.call -> contract-assay run -> runs.jsonl -> contract-assay score
@@ -12,8 +12,8 @@ your harness -> byo_caller.call -> contract-assay run -> runs.jsonl -> contract-
 
 | File | What it is for |
 | --- | --- |
-| `byo_harness.py` | A stand-in for your harness. Replace `analyze` and leave the rest. |
-| `byo_caller.py` | The adapter. `call` is what `contract-assay run` calls when a detector asks for a model. |
+| `byo_harness.py` | A stand-in for your harness. Replace `analyze`, or `analyze_class` if your harness works one class at a time, and leave the rest. |
+| `byo_caller.py` | The adapter, in two shapes. `call` is for a harness that audits a whole file in one pass, and `call_per_class` is for one that works a class at a time. `contract-assay run` calls whichever you name when a detector asks for a model. |
 | `byo_detectors.py` | One detector per vulnerability class, each of which asks for the model. |
 | `byo_openai.py` | A second caller, for trying a detector against any OpenAI-compatible endpoint with no framework. |
 | `<class>.manifest.json` | A manifest naming the detector for one class. A manifest holds a single entry point, so there is one per class. |
@@ -35,15 +35,17 @@ $ contract-assay score runs.jsonl --records corpus/records \
     --submission-id my-harness --source-root ./checkout --out score.json
 ```
 
-Pass `--manifest` once for each class your harness covers. `byo_caller:call` is a module name: the loader looks for it in the working directory and in the directory of each manifest, and it looks for a manifest's detector module in that manifest's directory, so keep the manifests, `byo_detectors.py` and `byo_caller.py` together and the command works from anywhere.
+Pass `--manifest` once for each class your harness covers, and name `byo_caller:call_per_class` instead of `byo_caller:call` if your harness works a class at a time. `byo_caller:call` is a module name: the loader looks for it in the working directory and in the directory of each manifest, and it looks for a manifest's detector module in that manifest's directory, so keep the manifests, `byo_detectors.py` and `byo_caller.py` together and the command works from anywhere.
 
 ## Connect your harness
+
+First decide which shape your harness has, because the adapter has a function for each. A harness that audits a whole file in one pass and reports findings in its own categories fits `call`, which runs it once per file and files each claim under the class its category maps to. A harness that works one vulnerability class at a time, for example one with a skill for each class, fits `call_per_class`, which runs it for each detector and hands it that detector's class and instruction. In that shape the detectors do the routing: `plan()` in `byo_detectors.py` returns the instruction for its class from `INSTRUCTIONS`, so that is where you say which skill or prompt a class gets, and every claim your harness returns belongs to the class it was asked about.
 
 Replace the body of `analyze` in `byo_harness.py` with a call into your harness. It takes one source file as a string and returns an `Analysis`: the claims your harness made, the name of the model behind them, and what the analysis cost. Raise an exception when it fails, and the adapter records the failure instead of guessing. `analyze` does not have to be a library call: a harness that is a coding agent, such as Claude Code or Codex with your skills, fits by being started as a subprocess from `analyze` with the source, and its answer parsed into claims. Name the model it used in `model_id`, and report the calls and tokens it spent, or leave them at zero when the tool does not say, since a host that sees zero knows the figures were never reported.
 
 Each claim needs a line range and a quote, and the quote must be whole lines of the source at that range. A paraphrase, or half a line, fails the citation check, and the run comes back `invalid` instead of wrong, which reads like a harness that finds nothing. Slice the source by line at the range you are about to report and compare it with the quote. The adapter also runs `check_citation` from `contract_assay.detectors.base`, the comparison the benchmark itself makes, on every claim it returns and prints the ones that fail, so you see the cause of an `invalid` run before you read a score. It returns those claims anyway, because dropping a claim that fails its check would turn an `invalid` run into a `clean` one.
 
-The benchmark has nine fixed classes and your harness has its own categories. `CATEGORY_TO_CLASS` in `byo_caller.py` maps one onto the other, and a claim whose category is not in it is dropped, because a finding carries no class of its own and cannot be scored without one. The adapter prints the category it dropped, so a misspelt key does not turn every run into `clean` without a word. Keep the manifests for the classes your harness covers and delete the rest.
+For `call`, the benchmark has nine fixed classes and your harness has its own categories. `CATEGORY_TO_CLASS` in `byo_caller.py` maps one onto the other, and a claim whose category is not in it is dropped, because a finding carries no class of its own and cannot be scored without one. The adapter prints the category it dropped, so a misspelt key does not turn every run into `clean` without a word. Keep the manifests for the classes your harness covers and delete the rest.
 
 ## Report what the analysis cost
 
@@ -51,9 +53,9 @@ The benchmark has nine fixed classes and your harness has its own categories. `C
 
 Once your harness is connected, open `score.json` after the first run and read `models`. A token count of zero means the figures were never reported, whatever the score says. The stand-in reports zeros on purpose, so the first run you make before connecting anything shows zero too.
 
-## Why the adapter is shaped this way
+## Why `call` is shaped this way
 
-The loop runs every detector over one unit before it moves to the next, so a harness covering nine classes would be called nine times on the same file. The adapter runs it once per unit and gives each detector the claims that belong to its class. It charges the cost to the first detector and reports zero for the rest, because charging every detector would multiply what you spent by the number of classes.
+The loop runs every detector over one unit before it moves to the next, so a harness covering nine classes would be called nine times on the same file. `call` runs it once per unit and gives each detector the claims that belong to its class. It charges the cost to the first detector and reports zero for the rest, because charging every detector would multiply what you spent by the number of classes.
 
 A failure is returned as `ModelReply(failed=...)` and never raised. The run is then `invalid` with the cause printed, which is a different fact from finding nothing. If you know what the failed call cost, name it in `models`.
 
