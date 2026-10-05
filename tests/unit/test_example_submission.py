@@ -36,7 +36,7 @@ from contract_assay.models import (
 
 pytestmark = pytest.mark.offline
 
-EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "reference_runner"
+EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "reference_detector"
 PATH = "src/Vault.sol"
 VAULT = """\
 contract Vault {

@@ -650,7 +650,7 @@ class TestASweepReportsItsLossesAndNotJustItsCount:
             else ""
         )
         # Three declarations is the smallest working submission, as
-        # `examples/reference_runner/submission.py` says at the top. Overriding
+        # `examples/reference_detector/submission.py` says at the top. Overriding
         # `plan` is the only thing this fixture adds, and only when the test is
         # about a detector that asks for a model.
         (workspace / f"{name}.py").write_text(

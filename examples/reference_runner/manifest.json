@@ -1,6 +1,0 @@
-{
-  "submission_id": "example-runner",
-  "api_version": "1.1",
-  "entry_point": "submission:UnguardedStateWrite",
-  "author": "the reference runner example"
-}

@@ -65,7 +65,7 @@ $ contract-assay fetch corpus/records --source-root ./checkout
 
 $ contract-assay run --manifest my-detector.json --records corpus/records \
     --source-root ./checkout --out runs.jsonl
-# `my-detector.json` is your manifest -- `examples/reference_runner/manifest.json`
+# `my-detector.json` is your manifest -- `examples/reference_detector/manifest.json`
 # is one to copy. Do not also use that name for `--out` below.
 
 $ contract-assay score runs.jsonl --records corpus/records \
@@ -89,7 +89,7 @@ class Baseline(PredicateDetector):
     api_version = API_VERSION
 ```
 
-That is a static-analysis baseline with no model in it: this benchmark's own predicates for the class, asserted as findings, citing the source at each one's own locator. On the public split it makes 41 access-control predictions against 62 records and recalls 0.10. It is a real number and a weak detector: **you beat it by being more selective, not by finding more.** `docs/api.md` §1 has the five layers and what each default does, and `examples/reference_runner/submission.py` writes every one of them by hand.
+That is a static-analysis baseline with no model in it: this benchmark's own predicates for the class, asserted as findings, citing the source at each one's own locator. On the public split it makes 41 access-control predictions against 62 records and recalls 0.10. It is a real number and a weak detector: **you beat it by being more selective, not by finding more.** `docs/api.md` §1 has the five layers and what each default does, and `examples/reference_detector/submission.py` writes every one of them by hand.
 
 No model is called unless you name one (`--model-caller module:function`) and a detector asks for one, because `plan()` returns `None` by default, which means no model. This package imports no provider. An instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model.
 
