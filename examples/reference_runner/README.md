@@ -1,41 +1,37 @@
-# A reference runner
+# A reference submission
 
-`contract_assay` does not call a model. This directory does, so that the figures the benchmark reports can be reproduced by somebody who did not write it.
+`submission.py` is a complete `Detector` with every layer written by hand, and `manifest.json` is what a submission declares about itself before its code runs. Read the detector to see what each layer is for, and copy it when you want a starting point that does more than the three declarations the interface asks for.
 
-The separation is the design. An instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model, so the package defines what to ask (`Detector.plan`) and never asks it, and every test in it runs with no model and no network. Nothing here is imported by the package, and `pip install contract-assay` gets you no model library.
-
-The runner is a model caller. `contract-assay run` reads the corpus, loops over units and detectors, and writes the runs, and `runner.py` supplies the one function it calls when a detector asks for a model. If you are testing a harness of your own, start from `examples/bring_your_own_harness/`, which shows the same seam without a model library in the way.
+Nothing here is imported by the package, and nothing here calls a model on its own. The package defines what to ask (`Detector.plan`) and never asks it, so that an instrument whose correctness depended on the thing it measures cannot mistake a broken instrument for a weak model. A model is a function you supply to `contract-assay run`, and `examples/bring_your_own_harness/` has two: an adapter for a harness of your own, and `byo_openai.py` for any OpenAI-compatible endpoint.
 
 ## What is in here
 
 | File | What it is for |
 | --- | --- |
-| `submission.py` | A complete `Detector` with every layer written by hand. Read it to see what each layer is for. |
-| `manifest.json` | What a submission declares about itself before its code runs. |
-| `runner.py` | `rlm_caller`, a model caller over any OpenAI-compatible endpoint, built on rlm-harness. |
-| `requirements.txt` | What the example needs and the package does not. |
+| `submission.py` | A `Detector` with `evidence()`, `plan()` and `verdict()` all written out, and a `self_check()` for the quotes it reports. |
+| `manifest.json` | The manifest that names it. |
 
-## Running it
+## Running it against a model
+
+The detector asks for a model, so `run` needs a caller. `byo_openai.py` is one that works with Ollama, LM Studio, vLLM or a hosted provider, and `PYTHONPATH` lets `run` find it from here.
 
 ```console
-$ pip install -e . -r examples/reference_runner/requirements.txt
-$ export RLM_MODEL=qwen2.5-coder:32b                # the name your endpoint gives the model
-$ export RLM_BASE_URL=http://localhost:11434/v1     # any OpenAI-compatible endpoint
-$ export RLM_API_KEY=local
+$ pip install -e .
+$ contract-assay fetch corpus/records --source-root ./checkout
 
-$ contract-assay run --manifest examples/reference_runner/manifest.json \
+$ export BYO_MODEL=qwen2.5-coder:32b                # the name your endpoint gives the model
+$ export BYO_BASE_URL=http://localhost:11434/v1     # the default, Ollama's address
+
+$ PYTHONPATH=examples/bring_your_own_harness contract-assay run \
+    --manifest examples/reference_runner/manifest.json \
     --records corpus/records --source-root ./checkout \
-    --model-caller runner:rlm_caller --limit 5 --out runs.jsonl
+    --model-caller byo_openai:call --limit 5 --out runs.jsonl
 
 $ contract-assay score runs.jsonl --records corpus/records \
-    --submission-id example-runner --source-root ./checkout --out score.json
+    --submission-id example-submission --source-root ./checkout --out score.json
 ```
 
-`ModelCaller` takes no model argument, so the model comes from `RLM_MODEL`, and `RLM_SUB_MODEL` names a helper model when there is one. The module reads them when it is imported, which means a missing value ends the command with one error line instead of failing every unit. Any endpoint works: Ollama, LM Studio, vLLM or a hosted provider.
-
-Start with `--limit 5`. The first run checks two things a misconfigured endpoint gets wrong while appearing to work, and the score is not one of them. The first is a non-zero token count in the `models` section of the score document, because a provider that reports no usage meters every run at zero, and every budget built on that is decoration. The second is a quote that is whole lines of the span its locator names, because a model that paraphrases, or returns half a line, fails its citation check on every claim and the runs come back `invalid`. Slice `ctx.source` by line at the locator you are about to report and the two cannot disagree. `submission.py` has a `self_check()` for exactly this, and you can call it during development to see the problem before it shows up in a score.
-
-When a call fails, `contract-assay run` prints the cause, such as a missing provider or a timeout, next to the count of invalid runs. When a call takes longer than `--wall-seconds`, the caller prints that as well, because a round kills a call that overruns.
+Start with `--limit 5`. The first run checks two things a misconfigured endpoint gets wrong while appearing to work, and the score is not one of them: a non-zero token count in the `models` section of the score document, and a quote that is whole lines of the span its locator names. `examples/bring_your_own_harness/README.md` says what each failure looks like. `submission.py` has a `self_check()` for the second, and you can call it during development to see the problem before it shows up in a score.
 
 ## If you are writing a submission for a competition
 

@@ -13,8 +13,9 @@ all -- which is a real submission, since a deterministic detector is this
 benchmark's own control group -- and a model is supplied as a `ModelCaller`
 resolved from an import path, exactly the way a submission is. The package
 therefore stays free of a provider, and a user with a model writes a function
-rather than a loop. `examples/bring_your_own_harness/` is the smallest one, with no
-dependency, and `examples/reference_runner/` is one over a real endpoint.
+rather than a loop. `examples/bring_your_own_harness/` holds two, neither with a
+dependency: an adapter for a harness of your own, and a caller for any
+OpenAI-compatible endpoint.
 
 This is deliberately not the loop a competition uses. A host running somebody
 else's harness must meter the calls from outside the process running it, confine

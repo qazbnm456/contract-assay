@@ -5,9 +5,8 @@ teaches the wrong shape and the mistake is discovered by whoever copied it. So
 the example is loaded through the *real* loader here, not imported, and run
 through the real phases.
 
-The model caller is not tested here. `test_reference_runner_caller.py` covers it
-against a fake model library, and `tests/live/` covers it against a real endpoint,
-which the default gate excludes.
+The model callers are not tested here. `test_bring_your_own_harness.py` and
+`test_byo_openai.py` cover them.
 """
 
 from __future__ import annotations

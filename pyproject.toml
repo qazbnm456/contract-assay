@@ -49,9 +49,10 @@ all = ["contract-assay[slither]"]
 # There is no `llm` extra, and the omission is deliberate. This package imports
 # no model library: `Detector.plan()` states what to ask and nothing here asks
 # it, because an instrument whose correctness depended on the thing it measures
-# could not tell a broken instrument from a weak model. What a consumer needs to
-# call a model is in `examples/reference_runner/requirements.txt`, which is
-# where a dependency nothing here imports belongs.
+# could not tell a broken instrument from a weak model. A consumer that calls a
+# model needs nothing the standard library lacks, and
+# `examples/bring_your_own_harness/byo_openai.py` does it with urllib; a framework
+# of your own is yours to install, because nothing here imports it.
 
 [project.scripts]
 contract-assay = "contract_assay.cli:run_cli"
@@ -136,12 +137,6 @@ module = ["certifi.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Third-party analysis backends ship no type information. `dspy` and
-# `rlm_harness` appear only in `examples/`, which is not part of the package.
-module = ["dspy.*", "rlm_harness.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 # Third-party analysis backends ship no type information.
 module = ["slither.*", "crytic_compile.*", "tree_sitter.*", "tree_sitter_solidity.*"]
 ignore_missing_imports = true
@@ -151,7 +146,6 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
 markers = [
     "offline: runs with no model, no network, and no sandbox runtime",
-    "live: requires a configured LM; excluded from the default CI gate",
     "solc: requires a resolvable solc toolchain",
     "checkout: needs a source checkout built by `contract-assay fetch`",
 ]

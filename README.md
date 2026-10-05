@@ -10,7 +10,7 @@ An assay measures what a sample actually contains. This one measures what a dete
 >
 > **What produced the predictions that recall was measured over.** This package calls no model. `Detector.plan()` says what to ask and nothing here asks it, so the findings those figures were computed over were written by a person reading each contract against the detector's own contract. The matching arithmetic is the real one, over real corpus records at real locations; what it measures is *what these detectors' predicates admit at those locations*, not what a model behind them scores. Those are different numbers and only the second is a model's.
 >
-> `examples/reference_runner/` is how the second one is produced, by anybody, including against a local endpoint. It is deliberately outside the package: an instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model.
+> `examples/bring_your_own_harness/` is how the second one is produced, by anybody, including against a local endpoint. It is deliberately outside the package: an instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model.
 
 ## Why this exists
 
@@ -103,9 +103,7 @@ This package does not call a model, and installing it gets you no model library.
 your harness -> a ModelCaller -> contract-assay run -> runs.jsonl -> contract-assay score
 ```
 
-If you are testing a harness of your own, start from `examples/bring_your_own_harness/`. It holds an adapter with no dependency, a detector for each of the nine classes, and a README on the mistakes that raise no error: a detector that never asks for a model, a harness called once per class instead of once per file, and a cost counted once per class. If you want a worked caller over a real endpoint, `examples/reference_runner/` is one built on [rlm-harness](https://github.com/qazbnm456/rlm-harness) that works with any OpenAI-compatible endpoint, hosted or local. Neither one contains a loop, and yours should not either. The contract for both is in `docs/api.md` section 8.
-
-`pytest -m live` is the one test that needs a model, and you name the model with `CONTRACT_ASSAY_LIVE_MODEL`. It establishes the two things a misconfigured endpoint gets wrong while appearing to work: that usage is reported at all, and that the model quotes rather than paraphrases. Every other test in this repository runs with no model and no network.
+If you are testing a harness of your own, start from `examples/bring_your_own_harness/`. It holds an adapter with no dependency, a detector for each of the nine classes, and a README on the mistakes that raise no error: a detector that never asks for a model, a harness called once per class instead of once per file, and a cost counted once per class. The same directory has `byo_openai.py`, a caller for any OpenAI-compatible endpoint that uses only the standard library, for trying a detector against a model on Ollama, vLLM or a hosted provider. Use whichever framework you already have, because neither example contains a loop and yours should not either. The contract for both is in `docs/api.md` section 8.
 
 ## Development
 

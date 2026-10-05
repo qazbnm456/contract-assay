@@ -440,7 +440,7 @@ Where your harness plugs in depends on what it is. A harness driven by a model, 
 
 A finding carries no class. Its class is its detector's, and a detector declares one, so a harness with a taxonomy of its own maps it onto the nine classes and needs one detector and one manifest for each class it covers. `run_submission` calls every detector for one unit before it moves to the next, so a caller serving several classes should run its harness once per unit, hand each detector the claims for its class, and charge the cost to one of them. A class with records and no detector is not left out of the score. It shows `recall` 0.0, and `score` says that nothing ran for it by marking the class `nothing_ran` in the document, naming it in the statement and printing its name when it finishes, so the zero is not read as a measurement.
 
-`examples/bring_your_own_harness/` is a caller with no dependency that does all of this, and `examples/reference_runner/` is one over an OpenAI-compatible endpoint.
+`examples/bring_your_own_harness/` holds a caller with no dependency that does all of this, and a second one, `byo_openai.py`, that calls any OpenAI-compatible endpoint with the standard library alone.
 
 Three obligations come with calling a model on a submission's behalf, and each one produces figures that look fine when it is skipped:
 

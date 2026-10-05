@@ -15,6 +15,7 @@ your harness -> byo_caller.call -> contract-assay run -> runs.jsonl -> contract-
 | `byo_harness.py` | A stand-in for your harness. Replace `analyze` and leave the rest. |
 | `byo_caller.py` | The adapter. `call` is what `contract-assay run` calls when a detector asks for a model. |
 | `byo_detectors.py` | One detector per vulnerability class, each of which asks for the model. |
+| `byo_openai.py` | A second caller, for trying a detector against any OpenAI-compatible endpoint with no framework. |
 | `<class>.manifest.json` | A manifest naming the detector for one class. A manifest holds a single entry point, so there is one per class. |
 
 ## Run it
@@ -66,8 +67,26 @@ A class you ran no detector for is not hidden. `score` lists every class that ha
 
 A harness that makes no model call belongs in `Detector.propose()`, which returns findings the detector asserts from the source alone. Leave `plan()` returning `None` and pass no `--model-caller`. The runs are then recorded as produced without a model, which is true of them. Routing the same engine through `ModelReply` would put its name in `score.json` as the model, and that is wrong for something that is not one.
 
+## Try a detector against a model endpoint
+
+`byo_openai.py` is the other direction. Your harness is the thing being measured in the sections above, and here a detector is, with a model behind it. It makes one request to any OpenAI-compatible chat endpoint for each detector and unit, adds the numbered source to the detector's instruction, and reads findings back as JSON. It needs only the standard library, so it works the same on Ollama, LM Studio, vLLM or a hosted provider, and it is the plainest example of a `ModelCaller` that talks to a model.
+
+```console
+$ export BYO_MODEL=qwen2.5-coder:32b              # the name your endpoint gives the model
+$ export BYO_BASE_URL=http://localhost:11434/v1   # the default, Ollama's address
+$ export BYO_API_KEY=...                          # only if the endpoint wants one
+
+$ contract-assay run \
+    --manifest examples/bring_your_own_harness/access_control.manifest.json \
+    --records corpus/records --source-root ./checkout \
+    --model-caller byo_openai:call --limit 5 --out runs.jsonl
+```
+
+Start with `--limit 5`, because the first run checks two things a misconfigured endpoint gets wrong while appearing to work. A token count of zero in the `models` section of the score document means the provider reports no usage, and every budget built on that number is decoration. A run that comes back `invalid` on every unit usually means the model paraphrases its quotes, and the line `run` prints for each failed citation shows what it returned. A larger model, or `BYO_TEMPERATURE=0` for models that accept it, is the usual fix.
+
+When a call fails, `contract-assay run` prints the cause beside the count of invalid runs: an HTTP status and the start of the server's message, a refused connection, or the part of the reply that could not be used. A reply with one malformed finding fails the whole call. Dropping that finding would leave a run that reads `clean` because the output could not be parsed.
+
 ## What this path does not do
 
 `contract-assay run` does not confine your process, and it checks citations against the file your own process also read. A competition host meters your calls from outside, confines the process, and re-checks every citation against its own copy of the source, so a harness that passes here can still be refused there for exceeding a budget. None of that changes what you write.
 
-If you want a worked example over a real model endpoint, `examples/reference_runner/` is a caller built on rlm-harness.
