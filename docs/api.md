@@ -558,6 +558,8 @@ loss shows up in the cell a reader believes.
 
 ### The model is yours to name
 
+If you are measuring your own harness, use `contract-assay run` or `harness.run_submission` and read "Calling the model" below. `run_detector` is the step beneath them, for a host that owns the loop.
+
 `plan()` says what to ask; the model is called **outside** the detector, by you.
 That is what lets an exercise put every submission through one agreed model. It
 also means the engine cannot observe which model ran, so you tell it:
@@ -633,7 +635,7 @@ does not count against it.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--model-caller module:function` | none | the model; left out, no model is called |
+| `--model-caller module:function` | none | a function returning a `ModelReply`, found in the working directory or the manifest's directory; left out, no model is called |
 | `--limit N` | 0 | stop after `N` units; 0 is all of them |
 | `--wall-seconds N` | 30 | `ctx.limits.wall_seconds`, at least 1 |
 | `--max-calls N` | 4 | `ctx.limits.max_model_calls` |
@@ -647,6 +649,8 @@ states them and passes them to your model caller; it does not enforce them
 and tokens is where they become limits. `run_submission` in the Python API has
 the same defaults. `--predictions-per-unit` matches `score`'s default so that
 what you hand over is what gets counted; the cap that counts is `score`'s.
+
+When a model call fails, `run` records `transport_failure` and prints the most common causes once the sweep ends, because the run itself holds only the reason code. When `--model-caller` is named and no detector asked for a model, it says that too. "Calling the model" below covers both.
 
 ### One submission measured more than once
 
@@ -816,28 +820,31 @@ different pools.
 
 ### Calling the model
 
-This package does not. `plan()` states what to ask and nothing here asks it, so
-a consumer supplies the model — and `examples/reference_runner/` is a worked one,
-on any OpenAI-compatible endpoint.
+This package does not call a model. `plan()` states what to ask and nothing here asks it, so a consumer supplies the model, and what it supplies is a function. `contract-assay run` and `harness.run_submission` already read the corpus, loop over units and detectors, name what produced each finding, and write the runs. A consumer that writes that loop again ends up reading a source file without checking its digest, or leaving a run's producer unnamed, which the benchmark then refuses.
 
-Three obligations come with calling a model on a submission's behalf, and each
-one produces figures that look fine when it is skipped:
+A model is a `ModelCaller`:
 
-1. **A run must name what produced its findings.** `models=[ModelUse(…)]`, or
-   `produced_without_a_model=True`. A run that leaves the producer unnamed is
-   refused: a figure that cannot say what produced it cannot be compared with
-   one produced by something else.
-2. **A failed call still happened.** Tokens spent on a call that returned
-   nothing are spent, and a budget counting only successes lets a harness retry
-   without limit.
-3. **"We stopped it" and "it found nothing" are different facts.** A run cut
-   short by a budget or a timeout is `invalid` with a reason, never `clean`.
+```python
+def call(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply: ...
+```
 
-A host running *someone else's* harness owes three more, and none of them change
-what a submission author writes: meter the calls from outside the process
-running the submission, confine that process, and re-check every citation
-against the host's own copy of the source. `check_citation` is exported for the
-third.
+`spec` is what the detector's `plan()` asked for, and `ctx` is the unit, with its source, its path and its budgets. The reply has three fields. `findings` are the claims, each a `Finding` with a locator and a quote. `models` lists what was called, as `ModelUse` entries with the calls and tokens it cost. `failed` is a sentence saying why the call produced nothing, and it is how a failure is reported: a call that fails returns a reply and does not raise. A reply with findings and no `models` is recorded as a failed call with that cause, and so is a call that raises or returns something other than a `ModelReply`, so one unit's caller cannot end a sweep.
+
+`--model-caller module:function` resolves the function by import path, from the working directory and from the directory of each manifest. `run_submission(detectors, units, model=call)` takes the function directly and yields one `DetectorRun` per detector and unit as it goes. It also takes `on_failure`, which receives the cause of every failed call. A run records only that a call failed, so `contract-assay run` collects the causes through that hook and prints the most common ones when it finishes. It says so as well when a caller was named and no detector asked for a model: `plan()` returns `None` by default, and a run in which the caller is never called is a run in which every detector reports `clean`.
+
+Where your harness plugs in depends on what it is. A harness driven by a model, or by anything whose cost has to be metered, is a `ModelCaller`. An analysis engine that asserts findings from the source with no model belongs in `Detector.propose()`, with `plan()` returning `None` and no `--model-caller`, and its runs are recorded as produced without a model. Routing an engine through `ModelReply` puts its name in the score document as the model.
+
+A finding carries no class. Its class is its detector's, and a detector declares one, so a harness with a taxonomy of its own maps it onto the nine classes and needs one detector and one manifest for each class it covers. `run_submission` calls every detector for one unit before it moves to the next, so a caller serving several classes should run its harness once per unit, hand each detector the claims for its class, and charge the cost to one of them. A class with records and no detector is not left out of the score. It shows `recall` 0.0, and a `runs.measured` of 0 is the only sign that it was never measured.
+
+`examples/bring_your_own_harness/` is a caller with no dependency that does all of this, and `examples/reference_runner/` is one over an OpenAI-compatible endpoint.
+
+Three obligations come with calling a model on a submission's behalf, and each one produces figures that look fine when it is skipped:
+
+1. **A run must name what produced its findings.** `models=[ModelUse(…)]`, or `produced_without_a_model=True`. A run that leaves the producer unnamed is refused: a figure that cannot say what produced it cannot be compared with one produced by something else.
+2. **A failed call still happened.** Tokens spent on a call that returned nothing are spent, and a budget counting only successes lets a harness retry without limit.
+3. **"We stopped it" and "it found nothing" are different facts.** A run cut short by a budget or a timeout is `invalid` with a reason, never `clean`.
+
+A host running *someone else's* harness owes three more, and none of them change what a submission author writes: meter the calls from outside the process running the submission, confine that process, and re-check every citation against the host's own copy of the source. `check_citation` is exported for the third.
 
 ### What the documents guarantee
 

@@ -178,17 +178,9 @@ class Baseline(PredicateDetector):
     api_version = API_VERSION
 ```
 
-That is a static-analysis baseline with no model in it — this benchmark's own
-predicates for the class, asserted as findings, citing the source at each one's
-own locator. On the public split it makes 41 access-control predictions against
-62 records and recalls 0.10. It is a real number and a weak detector: **you beat
-it by being more selective, not by finding more.** `docs/api.md` §1 has the five layers and what each default
-does; `examples/reference_runner/` writes every one of them by hand, including
-a model caller.
+That is a static-analysis baseline with no model in it: this benchmark's own predicates for the class, asserted as findings, citing the source at each one's own locator. On the public split it makes 41 access-control predictions against 62 records and recalls 0.10. It is a real number and a weak detector: **you beat it by being more selective, not by finding more.** `docs/api.md` §1 has the five layers and what each default does, and `examples/reference_runner/submission.py` writes every one of them by hand.
 
-No model is called unless you name one (`--model-caller module:function`), and
-this package imports no provider. An instrument whose own correctness depended
-on the thing it measures could not tell a broken instrument from a weak model.
+No model is called unless you name one (`--model-caller module:function`) and a detector asks for one, because `plan()` returns `None` by default, which means no model. This package imports no provider. An instrument whose own correctness depended on the thing it measures could not tell a broken instrument from a weak model.
 
 `results/` holds pointers to published results, not a ranking. A leaderboard in
 a benchmark's own repository makes its maintainers the adjudicators of their own
@@ -197,17 +189,15 @@ cannot adjudicate its own predictions.
 
 ## Connecting a model
 
-This package does not call one, and installing it gets you no model library.
-`examples/reference_runner/` is a worked consumer built on
-[rlm-harness](https://github.com/qazbnm456/rlm-harness): copy `submission.py` to
-start a detector of your own, and run `runner.py` against any
-OpenAI-compatible endpoint -- hosted or local -- to produce runs this engine can
-score.
+This package does not call a model, and installing it gets you no model library. A model is a function you supply, and `contract-assay run` calls it:
 
-`pytest -m live` is the one test that needs a model. It establishes the two
-things a misconfigured endpoint gets wrong while appearing to work: that usage
-is reported at all, and that the model quotes rather than paraphrases. Every
-other test in this repository runs with no model and no network.
+```text
+your harness -> a ModelCaller -> contract-assay run -> runs.jsonl -> contract-assay score
+```
+
+If you are testing a harness of your own, start from `examples/bring_your_own_harness/`. It holds an adapter with no dependency, a detector for each of the nine classes, and a README on the mistakes that raise no error: a detector that never asks for a model, a harness called once per class instead of once per file, and a cost counted once per class. If you want a worked caller over a real endpoint, `examples/reference_runner/` is one built on [rlm-harness](https://github.com/qazbnm456/rlm-harness) that works with any OpenAI-compatible endpoint, hosted or local. Neither one contains a loop, and yours should not either. The contract for both is in `docs/api.md` section 8.
+
+`pytest -m live` is the one test that needs a model, and you name the model with `CONTRACT_ASSAY_LIVE_MODEL`. It establishes the two things a misconfigured endpoint gets wrong while appearing to work: that usage is reported at all, and that the model quotes rather than paraphrases. Every other test in this repository runs with no model and no network.
 
 ## Development
 

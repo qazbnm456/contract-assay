@@ -7,7 +7,7 @@ deliberately:
     pip install -e . -r examples/reference_runner/requirements.txt
     export RLM_BASE_URL=http://localhost:11434/v1
     export RLM_API_KEY=local
-    pytest -m live --model qwen2.5-coder:32b
+    CONTRACT_ASSAY_LIVE_MODEL=qwen2.5-coder:32b pytest -m live
 
 What it checks is not a score. Two things a misconfigured endpoint gets wrong
 **while appearing to work**, both of which make a working harness look like one
@@ -20,7 +20,8 @@ that finds nothing:
    locator fails the citation check, and the run comes back `invalid` -- which
    means it measured nothing, not that it was wrong.
 
-Everything else about the runner is established offline, without a model, in
+Everything else about the caller is established offline, without a model, in
+`tests/unit/test_reference_runner_caller.py`, and the detector in
 `tests/unit/test_example_submission.py`.
 """
 
@@ -34,6 +35,7 @@ import pytest
 
 from contract_assay.detectors.base import AnalysisContext, SubmissionLimits, check_citation
 from contract_assay.detectors.loading import SubmissionManifest, load_detector
+from contract_assay.harness import SourceUnit, run_submission
 from contract_assay.models import CitationStatus, DifficultyLevel, EvidenceTier, Outcome
 
 pytestmark = pytest.mark.live
@@ -55,6 +57,8 @@ def runner():  # type: ignore[no-untyped-def]
     pytest.importorskip("rlm_harness", reason="pip install -r requirements.txt in the example")
     if not (os.environ.get("RLM_BASE_URL") or os.environ.get("ANTHROPIC_API_KEY")):
         pytest.skip("set RLM_BASE_URL (or an API key) to run the live test")
+    # The caller reads its model when it is imported, so the test names it first.
+    os.environ.setdefault("RLM_MODEL", model_name())
     sys.path.insert(0, str(EXAMPLE))
     try:
         import runner as module
@@ -88,21 +92,15 @@ def model_name() -> str:
     return os.environ.get("CONTRACT_ASSAY_LIVE_MODEL", "claude-sonnet-5")
 
 
+def a_unit() -> SourceUnit:
+    return SourceUnit(
+        source_id="commit:vault@aaa:src/Vault.sol", path="src/Vault.sol", source=VAULT
+    )
+
+
 class TestTheEndpointIsWiredUp:
     def test_one_unit_produces_a_metered_run(self, runner, detector) -> None:  # type: ignore[no-untyped-def]
-        model = model_name()
-        run = runner.run_one(
-            detector,
-            runner.Unit(
-                source_id="commit:vault@aaa:src/Vault.sol", path="src/Vault.sol", source=VAULT
-            ),
-            model=model,
-            sub_model=model,
-            wall_seconds=60,
-            max_calls=4,
-            max_tokens=20_000,
-            predictions_per_unit=3,
-        )
+        [run] = run_submission([detector], [a_unit()], model=runner.rlm_caller)
 
         # The run has to name what produced it, whatever it concluded. A figure
         # that cannot say what produced it cannot be compared with one produced
@@ -121,18 +119,12 @@ class TestTheEndpointIsWiredUp:
         )
 
     def test_a_returned_finding_quotes_the_source(self, runner, detector) -> None:  # type: ignore[no-untyped-def]
-        model = model_name()
         ctx = a_context()
-        answer = runner.ask(
-            detector,
-            ctx,
-            detector.instruction,
-            model=model,
-            sub_model=model,
-        )
-        if answer.failed is not None:
-            pytest.fail(f"the call failed: {answer.failed}")
-        if not answer.findings:
+        spec = detector.plan(ctx, detector.evidence(ctx))
+        reply = runner.rlm_caller(detector, spec, ctx)
+        if reply.failed is not None:
+            pytest.fail(f"the call failed: {reply.failed}")
+        if not reply.findings:
             pytest.skip(
                 "the model reported nothing on this file, which is a result rather "
                 "than a wiring problem -- rerun against a file it does report on"
@@ -140,26 +132,14 @@ class TestTheEndpointIsWiredUp:
         # (2) Quoted, not paraphrased. A paraphrase fails the citation check and
         # the run comes back `invalid`: it measured nothing, which is a different
         # fact from being wrong and reads like a harness that finds nothing.
-        failures = [check_citation(ctx, finding) for finding in answer.findings]
+        failures = [check_citation(ctx, finding) for finding in reply.findings]
         assert any(failure is None for failure in failures), (
             "every finding failed its citation check. The model is paraphrasing "
             "rather than quoting; try RLM_ADAPTER=json, or a larger model"
         )
 
     def test_the_run_verifies_end_to_end(self, runner, detector) -> None:  # type: ignore[no-untyped-def]
-        model = model_name()
-        run = runner.run_one(
-            detector,
-            runner.Unit(
-                source_id="commit:vault@aaa:src/Vault.sol", path="src/Vault.sol", source=VAULT
-            ),
-            model=model,
-            sub_model=model,
-            wall_seconds=60,
-            max_calls=4,
-            max_tokens=20_000,
-            predictions_per_unit=3,
-        )
+        [run] = run_submission([detector], [a_unit()], model=runner.rlm_caller)
         if run.outcome is Outcome.INVALID:
             pytest.fail(f"the call failed: {run.invalid_reason}")
         # Whatever it concluded, the record has to be internally consistent: a

@@ -5,8 +5,9 @@ teaches the wrong shape and the mistake is discovered by whoever copied it. So
 the example is loaded through the *real* loader here, not imported, and run
 through the real phases.
 
-The runner itself is not tested here -- it needs a model. `tests/live/` has that
-one, excluded from the default gate.
+The model caller is not tested here. `test_reference_runner_caller.py` covers it
+against a fake model library, and `tests/live/` covers it against a real endpoint,
+which the default gate excludes.
 """
 
 from __future__ import annotations
