@@ -296,6 +296,9 @@ def _class_document(
             "skipped": score.skipped_runs,
             "qualified_negatives": score.qualified_negatives,
         },
+        # Beside the counts and apart from them: `runs` says how many came out, and
+        # this says whether anything was run at all, which a recall of 0.0 cannot.
+        "nothing_ran": score.nothing_ran,
         "missed_record_ids": list(score.missed_record_ids),
         "declared_limits": _limits(report, score.cls),
     }

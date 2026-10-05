@@ -655,6 +655,66 @@ class TestADeclaredLimit:
         assert report.unexplained_misses == {}
 
 
+class TestAClassNothingRanAgainstIsSaidOutLoud:
+    """A recall of 0.0 reads the same whether a detector looked or nobody ran one.
+
+    The figure is not changed, because a class that is left out must not score
+    better than one that was attempted. What was missing is any way to tell the
+    two zeros apart, so a submission covering some classes read as one that found
+    nothing in the rest.
+    """
+
+    def test_a_class_with_records_and_no_run_is_marked(self) -> None:
+        report = score([], [a_record()], resolver())
+        assert report.by_class[CLS].nothing_ran
+
+    def test_its_recall_is_still_zero_and_not_withheld(self) -> None:
+        report = score([], [a_record()], resolver())
+        assert report.by_class[CLS].recall() == 0.0
+
+    def test_the_statement_names_it_and_says_the_zero_is_an_absence(self) -> None:
+        statement = score([], [a_record()], resolver()).statement()
+        assert "1 class with records had no run from any detector: reentrancy" in statement
+        assert "an absence of runs and not a result" in statement
+        assert "`nothing_ran`" in statement
+
+    def test_several_classes_are_listed_and_the_grammar_follows(self) -> None:
+        records = [
+            a_record(),
+            a_record(
+                record_id="vault-slippage-1", cls=VulnerabilityClass.SLIPPAGE, start=9, end=12
+            ),
+        ]
+        statement = score([], records, resolver()).statement()
+        assert (
+            "2 classes with records had no run from any detector: reentrancy, slippage" in statement
+        )
+        assert "Their records count as missed" in statement
+
+    def test_a_detector_that_ran_and_found_nothing_is_a_measurement_not_an_absence(self) -> None:
+        report = score([a_run([])], [a_record()], resolver())
+        assert not report.by_class[CLS].nothing_ran
+        assert "had no run from any detector" not in report.statement()
+
+    def test_a_run_of_any_outcome_counts_as_having_run(self) -> None:
+        # An invalid run measured nothing, and it is still a detector that ran. It is
+        # reported as harness health, and calling it an absence would hide that.
+        report = score([a_run([], outcome=Outcome.INVALID)], [a_record()], resolver())
+        assert not report.by_class[CLS].nothing_ran
+
+    def test_only_the_class_that_was_skipped_is_named(self) -> None:
+        records = [
+            a_record(),
+            a_record(
+                record_id="vault-slippage-1", cls=VulnerabilityClass.SLIPPAGE, start=9, end=12
+            ),
+        ]
+        report = score([a_run([])], records, resolver())
+        assert not report.by_class[CLS].nothing_ran
+        assert report.by_class[VulnerabilityClass.SLIPPAGE].nothing_ran
+        assert "1 class with records had no run from any detector: slippage" in report.statement()
+
+
 class TestDeclaringReadsBetterThanNotDeclaring:
     """The incentive, pinned rather than left emergent.
 

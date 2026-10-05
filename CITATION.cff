@@ -14,7 +14,7 @@ authors:
     orcid: https://orcid.org/0009-0000-4700-7128
 repository-code: https://github.com/qazbnm456/contract-assay
 license: MIT
-version: 0.1.2
+version: 0.1.3
 abstract: >-
   Benchmark infrastructure for LLM smart contract auditing. A prediction is
   scored only if it quotes the source at the lines it names, and the quote is

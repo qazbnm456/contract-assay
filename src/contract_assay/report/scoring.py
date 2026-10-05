@@ -514,6 +514,16 @@ class ClassScore:
         total = self.measured_runs + self.invalid_runs
         return self.measured_runs / total if total else None
 
+    @property
+    def nothing_ran(self) -> bool:
+        """Whether no detector for this class produced a run of any outcome.
+
+        Not the same as a detector that ran and found nothing. That is a measured
+        zero, and this is a zero that nothing measured: recall is 0 over the
+        class's records either way, and only this tells the two apart.
+        """
+        return not (self.measured_runs or self.invalid_runs or self.skipped_runs)
+
 
 @dataclass(frozen=True, slots=True)
 class ScoreReport:
@@ -953,6 +963,19 @@ class ScoreReport:
                 f"layer could not decide, so {'its' if qualified == 1 else 'their'} "
                 "negative is qualified rather than a finding of absence. Counted here "
                 "and in no confusion matrix."
+            )
+
+        unrun = [
+            cls.value for cls, s in sorted(self.by_class.items()) if s.records and s.nothing_ran
+        ]
+        if unrun:
+            several = len(unrun) != 1
+            parts.append(
+                f"{_plural(len(unrun), 'class', 'classes')} with records had no run from any "
+                f"detector: {', '.join(unrun)}. {'Their' if several else 'Its'} records count "
+                "as missed in recall, so leaving a class out cannot raise a figure, but nothing "
+                f"measured {'them' if several else 'it'}: a recall of 0.0 there is an absence "
+                "of runs and not a result, and the class is marked `nothing_ran`."
             )
 
         invalid = sum(s.invalid_runs for s in self.by_class.values())

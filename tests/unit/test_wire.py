@@ -121,6 +121,33 @@ class TestEveryDisagreementReachesAJsonReader:
         }
 
 
+class TestAZeroThatNothingMeasuredIsMarked:
+    """`runs` counts what came out, and a class nothing ran for has all zeros there.
+
+    That is the same shape as a detector that ran, found nothing and was
+    skipped, so the document carries the one thing that tells them apart.
+    """
+
+    def test_each_class_says_whether_anything_ran_for_it(self) -> None:
+        ran, absent = CLS, VulnerabilityClass.SLIPPAGE
+        report = ScoreReport(
+            by_class={
+                ran: ClassScore(cls=ran, records=2, measured_runs=2),
+                absent: ClassScore(cls=absent, records=3),
+            }
+        )
+        document = score_document(a_submission(report), [a_record()])
+        flags = {entry["class"]: entry["nothing_ran"] for entry in document["classes"]}
+        assert flags == {ran.value: False, absent.value: True}
+
+    def test_the_figure_itself_is_not_withheld(self) -> None:
+        absent = VulnerabilityClass.SLIPPAGE
+        report = ScoreReport(by_class={absent: ClassScore(cls=absent, records=3)})
+        [entry] = score_document(a_submission(report), [a_record()])["classes"]
+        assert entry["recall"] == {"value": 0.0, "unavailable": None}
+        assert entry["runs"]["measured"] == 0
+
+
 class TestAFigureAndItsAbsenceAreTheSameShape:
     """A missing key is a zero to every consumer that writes `or 0`."""
 

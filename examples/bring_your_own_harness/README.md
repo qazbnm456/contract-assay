@@ -60,7 +60,7 @@ A failure is returned as `ModelReply(failed=...)` and never raised. The run is t
 
 A detector's `plan()` returns `None` by default, and `None` means no model. A detector with three declarations and no `plan()` never reaches your adapter, and every run comes back `clean` with no error. `byo_detectors.py` overrides `plan()`, and `contract-assay run` says so when `--model-caller` is named and no detector asked for a model.
 
-A class you ran no detector for is not hidden. `score` lists every class that has records, shows `recall` 0.0 for the ones you skipped, and marks them only by `runs.measured` being 0. Read that field before reading the recall.
+A class you ran no detector for is not hidden. `score` lists every class that has records and shows `recall` 0.0 for the ones you skipped, and it also prints their names when it finishes and marks each `nothing_ran` in the document, so a zero from no detector is not mistaken for a zero from a detector that found nothing.
 
 ## If your harness is an analyzer and not a model
 

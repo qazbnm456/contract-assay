@@ -784,6 +784,17 @@ def score_command(
     out.write_text(document + "\n", encoding="utf-8")
     queued = len(report.unjudged)
     typer.echo(f"wrote {out} -- {queued} prediction(s) await adjudication before precision exists")
+    unrun = sorted(cls.value for cls, s in report.by_class.items() if s.records and s.nothing_ran)
+    if unrun:
+        # Its recall is 0.0 and reads like a result. Nothing ran for it, which is the
+        # first thing a newcomer covering some of the classes needs to be told.
+        typer.secho(
+            f"  {len(unrun)} class(es) with records had no run from any detector "
+            f"({', '.join(unrun)}): their recall is 0.0 because nothing ran, not because "
+            "anything was measured.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 @app.command("rank")

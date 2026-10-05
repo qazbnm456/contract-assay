@@ -561,6 +561,68 @@ class TestTheCapIsTheSameOnBothSurfaces:
         )
 
 
+class TestScoreSaysWhichClassesNothingRanFor:
+    """A recall of 0.0 for a class nobody ran a detector for reads like a result.
+
+    Somebody covering two classes of nine sees seven zeros beside their two
+    figures, and the document says which are absent while the line a person
+    reads after the command does not.
+    """
+
+    def a_clean_run_for(self, workspace: Path, class_id: str) -> Path:
+        run = {
+            "detector_id": "d",
+            "class_id": class_id,
+            "source_id": CommitPin(
+                repo_url="https://github.com/example/vault", commit=COMMIT, path="src/Vault.sol"
+            ).source_id,
+            "outcome": "clean",
+            "evidence_tier": "syntactic",
+            "produced_without_a_model": True,
+        }
+        path = workspace / "runs.jsonl"
+        path.write_text(json.dumps(run) + "\n", encoding="utf-8")
+        return path
+
+    def score_to_a_file(self, workspace: Path, runs: Path):  # type: ignore[no-untyped-def]
+        write_record(workspace, a_record())
+        return runner.invoke(
+            app,
+            [
+                "score",
+                str(runs),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--submission-id",
+                "s",
+                "--out",
+                str(workspace / "score.json"),
+            ],
+        )
+
+    def test_the_class_is_named_after_the_summary_line(self, workspace: Path) -> None:
+        # The record is a slippage record and the only run is for access control.
+        result = self.score_to_a_file(workspace, self.a_clean_run_for(workspace, "access_control"))
+        assert result.exit_code == 0, result.output
+        assert "1 class(es) with records had no run from any detector (slippage)" in result.output
+        assert "not because anything was measured" in result.output
+
+    def test_the_document_carries_the_same_fact(self, workspace: Path) -> None:
+        self.score_to_a_file(workspace, self.a_clean_run_for(workspace, "access_control"))
+        document = json.loads((workspace / "score.json").read_text(encoding="utf-8"))
+        [entry] = document["classes"]
+        assert entry["class"] == "slippage"
+        assert entry["nothing_ran"] is True
+        assert "had no run from any detector: slippage" in document["statement"]
+
+    def test_a_class_that_was_run_is_not_flagged(self, workspace: Path) -> None:
+        result = self.score_to_a_file(workspace, self.a_clean_run_for(workspace, "slippage"))
+        assert result.exit_code == 0, result.output
+        assert "no run from any detector" not in result.output
+
+
 class TestASweepReportsItsLossesAndNotJustItsCount:
     """`wrote 140 run(s)` was printed by a sweep where 130 were invalid.
 
