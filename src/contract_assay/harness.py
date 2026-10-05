@@ -13,7 +13,8 @@ all -- which is a real submission, since a deterministic detector is this
 benchmark's own control group -- and a model is supplied as a `ModelCaller`
 resolved from an import path, exactly the way a submission is. The package
 therefore stays free of a provider, and a user with a model writes a function
-rather than a loop. `examples/reference_runner/` is a worked caller.
+rather than a loop. `examples/bring_your_own_harness/` is the smallest one, with no
+dependency, and `examples/reference_runner/` is one over a real endpoint.
 
 This is deliberately not the loop a competition uses. A host running somebody
 else's harness must meter the calls from outside the process running it, confine
@@ -72,8 +73,9 @@ class ModelReply:
 
     `models` is not optional politeness. A run carrying findings must name what
     produced them or the benchmark refuses it: a figure that cannot say what
-    produced it cannot be compared with one produced by something else. Putting
-    it in the return type is how a caller is stopped from forgetting.
+    produced it cannot be compared with one produced by something else. A caller
+    that forgets is recorded as a failed call, with that cause, rather than
+    allowed to end the sweep -- the type alone does not stop the omission.
 
     A failed call returns `findings=()` with whatever `models` records the cost,
     and `failed` set. It is never an exception: a transport failure ending the
@@ -224,6 +226,7 @@ def run_submission(
     max_tokens: int = 20_000,
     predictions_per_unit: int | None = DEFAULT_PREDICTIONS_PER_UNIT,
     on_unit: Callable[[int, SourceUnit], None] | None = None,
+    on_failure: Callable[[SourceUnit, Detector, str], None] | None = None,
 ) -> Iterator[DetectorRun]:
     """Run every detector against every unit, yielding one run at a time.
 
@@ -243,6 +246,12 @@ def run_submission(
     defending the cap with "the order is the submission's own, so spending slots
     on guesses is its choice" was describing a choice the documented workflow
     never offered.
+
+    `on_failure` receives the cause of every model call that failed, and exists
+    because a run records only that it failed: `InvalidReason` has no value that
+    says *what* the transport did, so a raised `HTTP 429` and a caller with the
+    wrong signature are the same `transport_failure` in the output. The cause is
+    the first thing anybody goes looking for, and without this it is nowhere.
     """
     for index, unit in enumerate(units):
         if on_unit is not None:
@@ -262,12 +271,11 @@ def run_submission(
                 ),
             )
             try:
-                # Called here to learn whether a model is wanted, and the result
-                # is handed to `run_detector` so neither runs twice. Before this,
-                # both ran again inside `run_detector`: 2x the dominant cost of a
-                # sweep, and -- the part that is not just cost -- the evidence
-                # recorded on the run came from a different invocation than the
-                # one the model's prompt was built from.
+                # Called here to learn whether a model is wanted and what to ask
+                # it. `run_detector` calls both again to build the run's own
+                # record, so a detector's `evidence()` and `plan()` have to give
+                # the same answer twice: the evidence on the run is from that
+                # second call, and the model's prompt was built from this one.
                 evidence = call_evidence(detector, ctx)
                 spec = call_plan(detector, ctx, evidence)
             except SubmissionFault as fault:
@@ -334,7 +342,20 @@ def run_submission(
                     failed=f"the model caller returned {type(reply).__name__} rather than a "
                     "ModelReply; a failed call is a value, not an exception, and not a guess"
                 )
+            if reply.failed is None and reply.findings and not reply.models:
+                # `run_detector` raises for findings with no producer, and that
+                # `ValueError` ended the whole sweep: one unit's caller forgot
+                # `models` and every later unit was lost. The omission is the
+                # caller's, so it is recorded as the caller's failed call, with
+                # the cause that names the fix.
+                reply = ModelReply(
+                    failed=f"the model caller returned {len(reply.findings)} finding(s) with "
+                    "no `models`; name what produced them with "
+                    "ModelReply(models=(ModelUse(...),))"
+                )
             if reply.failed is not None:
+                if on_failure is not None:
+                    on_failure(unit, detector, reply.failed)
                 yield DetectorRun(
                     detector_id=detector.detector_id,
                     class_id=detector.class_id,

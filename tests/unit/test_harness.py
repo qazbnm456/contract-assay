@@ -275,6 +275,79 @@ class TestTheLoop:
         run = next(iter(run_submission([Planner()], [a_unit()], model=caller)))
         assert len(run.findings) == DEFAULT_PREDICTIONS_PER_UNIT
 
+    def test_a_failed_call_reports_its_cause_to_the_host(self) -> None:
+        # A run records that a call failed and nothing about what the transport
+        # did: `HTTP 429` and a caller with the wrong signature are the same
+        # `transport_failure` in the output. Measured, with a caller that raised.
+        class Planner(Detector):
+            detector_id = "planner-cause"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="look")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            raise RuntimeError("HTTP 429")
+
+        causes: list[tuple[str, str, str]] = []
+        runs = list(
+            run_submission(
+                [Planner()],
+                [a_unit()],
+                model=caller,
+                on_failure=lambda unit, detector, cause: causes.append(
+                    (unit.source_id, detector.detector_id, cause)
+                ),
+            )
+        )
+        assert [run.invalid_reason for run in runs] == [InvalidReason.TRANSPORT_FAILURE]
+        assert causes == [(a_unit().source_id, "planner-cause", "RuntimeError: HTTP 429")]
+
+    def test_findings_with_no_models_cost_one_unit_and_name_the_fix(self) -> None:
+        # `run_detector` raises for findings with no producer, and that
+        # `ValueError` ended the whole sweep: one unit's caller forgot `models`
+        # and every later unit was lost. The omission is the caller's, so it is
+        # recorded as the caller's failed call.
+        class Planner(Detector):
+            detector_id = "planner-forgot-models"
+            class_id = VulnerabilityClass.ACCESS_CONTROL
+            api_version = API_VERSION
+
+            def plan(
+                self, ctx: AnalysisContext, evidence: Sequence[EvidenceRef]
+            ) -> ModelTaskSpec | None:
+                return ModelTaskSpec(instruction="look")
+
+        def caller(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            return ModelReply(
+                findings=(
+                    Finding(
+                        detector_id=detector.detector_id,
+                        locator=Locator(file=PATH, start_line=5, end_line=6),
+                        quote="    function setOwner(address who) external {\n        owner = who;",
+                        reasoning="anyone can take ownership",
+                    ),
+                ),
+            )
+
+        causes: list[str] = []
+        runs = list(
+            run_submission(
+                [Planner()],
+                [a_unit(), a_unit()],
+                model=caller,
+                on_failure=lambda unit, detector, cause: causes.append(cause),
+            )
+        )
+        # Two units, so the second proves the sweep continued.
+        assert [run.invalid_reason for run in runs] == [InvalidReason.TRANSPORT_FAILURE] * 2
+        assert all(not run.findings for run in runs)
+        assert len(causes) == 2
+        assert "no `models`" in causes[0]
+
     @pytest.mark.parametrize("returned", [None, {"findings": []}, "nope", 7])
     def test_a_caller_that_returns_the_wrong_thing_costs_one_unit(self, returned: object) -> None:
         # The likeliest bug in a hand-written adapter, and the one shape this

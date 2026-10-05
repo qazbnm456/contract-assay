@@ -566,9 +566,9 @@ class TestASweepReportsItsLossesAndNotJustItsCount:
 
     A newcomer reads that line and believes it, then finds out from the score
     document that every class is empty -- two steps later, and phrased as a
-    property of the corpus rather than of their own invocation. The reference
-    runner without `--model-caller` produces exactly this: 130 of 140 invalid,
-    and nothing said so.
+    property of the corpus rather than of their own invocation. A detector that
+    asks for a model, run without `--model-caller`, produces exactly this: 130
+    of 140 invalid, and nothing said so.
     """
 
     def a_submission(self, workspace: Path, *, needs_model: bool, name: str) -> Path:
@@ -656,6 +656,114 @@ class TestASweepReportsItsLossesAndNotJustItsCount:
             ],
         )
         assert "--model-caller" in result.output
+
+    def a_caller(self, workspace: Path, *, name: str, body: str) -> str:
+        """A model caller module next to the manifest; returns its `--model-caller` spec.
+
+        Unique per test for the reason `a_submission` gives. It sits beside the
+        manifest, which is where `examples/bring_your_own_harness/` keeps its
+        own, and `load_detector` puts that directory on `sys.path` -- so this
+        is also what pins "a caller next to your manifest resolves".
+        """
+        (workspace / f"{name}.py").write_text(
+            "from contract_assay.harness import ModelReply\n"
+            "from contract_assay.models import Finding, Locator, ModelRole, ModelUse\n"
+            "\n" + body,
+            encoding="utf-8",
+        )
+        return f"{name}:call"
+
+    def run_with(self, workspace: Path, manifest: Path, caller: str):  # type: ignore[no-untyped-def]
+        return runner.invoke(
+            app,
+            [
+                "run",
+                "--manifest",
+                str(manifest),
+                "--records",
+                str(workspace / "records"),
+                "--source-root",
+                str(workspace),
+                "--out",
+                str(workspace / "runs.jsonl"),
+                "--model-caller",
+                caller,
+            ],
+        )
+
+    def test_the_cause_of_a_failed_call_is_printed(self, workspace: Path) -> None:
+        # The run records `transport_failure` and nothing else. A caller that
+        # raised and one with the wrong signature were indistinguishable, and
+        # the first thing anybody does with that cause is go looking for it.
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=True, name="sub_cause")
+        caller = self.a_caller(
+            workspace,
+            name="caller_raises",
+            body="def call(detector, spec, ctx):\n    raise RuntimeError('HTTP 429')\n",
+        )
+        result = self.run_with(workspace, manifest, caller)
+        assert result.exit_code == 0, result.output
+        assert "transport_failure" in result.output
+        assert "RuntimeError: HTTP 429" in result.output
+        assert "was never called" not in result.output
+
+    def test_findings_without_models_are_a_failed_call_and_not_a_traceback(
+        self, workspace: Path
+    ) -> None:
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=True, name="sub_nomodels")
+        caller = self.a_caller(
+            workspace,
+            name="caller_forgets",
+            body=(
+                "def call(detector, spec, ctx):\n"
+                "    finding = Finding(\n"
+                "        detector_id=detector.detector_id,\n"
+                "        locator=Locator(file=ctx.path, start_line=1, end_line=1),\n"
+                "        quote='x',\n"
+                "        reasoning='y',\n"
+                "    )\n"
+                "    return ModelReply(findings=(finding,))\n"
+            ),
+        )
+        result = self.run_with(workspace, manifest, caller)
+        assert result.exit_code == 0, result.output
+        assert "no `models`" in result.output
+
+    def test_a_caller_that_is_never_called_says_so(self, workspace: Path) -> None:
+        # `plan()` returns `None` by default, which means no model. Naming a
+        # caller against such a detector ran it zero times: every run `clean`,
+        # nothing printed, and the figures read as a harness that finds nothing.
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=False, name="sub_never")
+        caller = self.a_caller(
+            workspace,
+            name="caller_unused",
+            body="def call(detector, spec, ctx):\n    raise AssertionError('not reachable')\n",
+        )
+        result = self.run_with(workspace, manifest, caller)
+        assert result.exit_code == 0, result.output
+        assert "was never called" in result.output
+        assert "plan()" in result.output
+
+    def test_a_caller_that_ran_is_not_told_it_did_not(self, workspace: Path) -> None:
+        write_record(workspace, a_record())
+        manifest = self.a_submission(workspace, needs_model=True, name="sub_called")
+        caller = self.a_caller(
+            workspace,
+            name="caller_used",
+            body=(
+                "def call(detector, spec, ctx):\n"
+                "    return ModelReply(\n"
+                "        models=(ModelUse(model_id='m', role=ModelRole.MAIN, calls=1, tokens=5),)\n"
+                "    )\n"
+            ),
+        )
+        result = self.run_with(workspace, manifest, caller)
+        assert result.exit_code == 0, result.output
+        assert "was never called" not in result.output
+        assert "invalid" not in result.output
 
     def test_a_clean_sweep_says_nothing_extra(self, workspace: Path) -> None:
         """The warning has to be absent when there is nothing wrong, or it is

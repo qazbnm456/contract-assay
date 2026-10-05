@@ -25,7 +25,7 @@ from contract_assay.corpus.fetch import (
 from contract_assay.corpus.records import CorpusRecord, SourcePin, load_records
 from contract_assay.corpus.units import read_manifest, unit_manifest
 from contract_assay.corpus.verify import verify_all
-from contract_assay.detectors.base import Detector
+from contract_assay.detectors.base import AnalysisContext, Detector, ModelTaskSpec
 from contract_assay.detectors.loading import (
     MalformedSubmission,
     SubmissionManifest,
@@ -33,6 +33,9 @@ from contract_assay.detectors.loading import (
 )
 from contract_assay.evidence.solidity import index_source
 from contract_assay.harness import (
+    ModelCaller,
+    ModelReply,
+    SourceUnit,
     load_caller,
     run_submission,
     units_from,
@@ -489,13 +492,25 @@ def run_command(
             typer.secho(f"{path}: {bad}", fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from bad
 
-    caller = None
+    caller: ModelCaller | None = None
+    # Counted, because `Detector.plan()` returns `None` by default and `None`
+    # means "no model". A caller named against detectors that never ask for one
+    # is a run in which the caller was never called -- every run `clean`, no
+    # warning, and the figures read as a harness that finds nothing.
+    invocations = 0
     if model_caller is not None:
         try:
-            caller = load_caller(model_caller, search_path=Path.cwd())
+            named = load_caller(model_caller, search_path=Path.cwd())
         except ValueError as bad:
             typer.secho(str(bad), fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from bad
+
+        def counted(detector: Detector, spec: ModelTaskSpec, ctx: AnalysisContext) -> ModelReply:
+            nonlocal invocations
+            invocations += 1
+            return named(detector, spec, ctx)
+
+        caller = counted
 
     # Exactly one. Both would be two answers to "which units", and a caller
     # that passed both has a belief about which wins that this command should
@@ -538,6 +553,13 @@ def run_command(
     written = 0
     outcomes: Counter[Outcome] = Counter()
     causes: Counter[InvalidReason] = Counter()
+    failures: Counter[str] = Counter()
+
+    def note_failure(unit: SourceUnit, detector: Detector, cause: str) -> None:
+        # A run records *that* a call failed and not what the transport did, so
+        # the cause is kept here and printed once the sweep ends.
+        failures[" ".join(cause.split())[:300]] += 1
+
     with out.open("w", encoding="utf-8") as handle:
         for run in run_submission(
             detectors,
@@ -548,6 +570,7 @@ def run_command(
             max_tokens=max_tokens,
             predictions_per_unit=predictions_per_unit,
             on_unit=lambda i, u: typer.echo(f"  [{i + 1}/{len(analysed)}] {u.path}", err=True),
+            on_failure=note_failure,
         ):
             # Flushed per run, so a sweep that dies at unit 90 of 141 leaves 90
             # analysed of runs behind it rather than nothing.
@@ -561,9 +584,10 @@ def run_command(
     typer.echo(f"wrote {out}: {written} run(s) over {len(analysed)} unit(s)")
     # **The losses, not just the count.** A sweep that wrote 140 runs of which
     # 130 were invalid printed the same line as one that worked, and the first
-    # thing a newcomer does is read that line and believe it. Measured: the
-    # reference runner without `--model-caller` produces 130 of 140 invalid,
-    # and nothing said so until the score document reported every class empty.
+    # thing a newcomer does is read that line and believe it. Measured: a
+    # detector that asks for a model, run without `--model-caller`, produces 130
+    # of 140 invalid, and nothing said so until the score document reported
+    # every class empty.
     broken = outcomes[Outcome.INVALID] + outcomes[Outcome.SKIPPED]
     if broken:
         typer.secho(
@@ -574,6 +598,12 @@ def run_command(
         )
         for cause, count in causes.most_common():
             typer.secho(f"    {count:>4}  {cause.value}", fg=typer.colors.YELLOW, err=True)
+        for cause_text, count in failures.most_common(3):
+            typer.secho(
+                f"    model call failed ({count}x): {cause_text}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
         if causes.get(InvalidReason.MODEL_NOT_PERMITTED):
             # The one cause a newcomer hits first and cannot act on from its
             # name alone: the detector asked for a model and none was named.
@@ -584,6 +614,14 @@ def run_command(
                 fg=typer.colors.YELLOW,
                 err=True,
             )
+    if model_caller is not None and invocations == 0:
+        typer.secho(
+            f"  --model-caller {model_caller} was never called: no detector's plan() "
+            "returned a ModelTaskSpec, and the default returns None, which means no "
+            "model. These runs measure the detectors alone.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
     if records is not None:
         typer.echo(
             f"  contract-assay score {out} --records {records} --source-root {source_root} "
