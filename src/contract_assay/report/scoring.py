@@ -1320,8 +1320,8 @@ def recheck_citations(
     So: a figure this package computes over the published corpus is
     **self-reported**. It is a real measurement of an honest submission and it
     is not evidence against a motivated one. A competitive ranking needs records
-    whose locators are not published -- `CorpusSplit.PRIVATE_HOLDOUT` and
-    `assay-arena`'s `docs/operations.md` step 3 -- and that is where the
+    whose locators are not published -- `CorpusSplit.PRIVATE_HOLDOUT`, curated
+    by the host of the ranking -- and that is where the
     guarantee has to live. `docs/api.md` §1 says the same thing where a
     submitter reads it.
 

@@ -375,12 +375,10 @@ class TestFetchsExitCodeMeansSomething:
 class TestDiagnosticsGoToStderr:
     """Data on stdout, diagnostics on stderr — because another program reads them.
 
-    Seventeen of eighteen `typer.secho` calls wrote to stdout, and
-    `assay-arena`'s `RoundRunner._engine` builds its `EngineFailure` from the
-    engine's **stderr** — so every refusal the arena triggers reached the
-    operator as a blank line, under a docstring promising "the engine's own
-    stderr rather than a summary of it… the engine's refusals are written to be
-    read".
+    Seventeen of eighteen `typer.secho` calls wrote to stdout, and a host that
+    runs the engine as a subprocess reports a failure from the engine's
+    **stderr** — so every refusal such a host triggered reached its operator as
+    a blank line, though the refusals are written to be read.
     """
 
     def test_a_refusal_is_on_stderr_and_stdout_stays_empty(self, workspace: Path) -> None:

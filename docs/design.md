@@ -415,7 +415,7 @@ So **291 incidents can support a record**, a third of the archive. But that is t
 
 **Only 149 of the 483 are exact matches, and a line-span locator survives nothing weaker.** The verification repository defines two strengths. An exact match recompiles byte-for-byte including the metadata hash, and because the metadata carries a keccak256 of every source file, the source is guaranteed to be the source that was compiled. A plain match agrees on everything *except* that hash, which in the repository's own words permits "differences in source code comments, variable names, or other metadata fields such as source paths": a source whose lines have moved. A locator here is a line span, so a plain match supports a claim about a file and nothing narrower.
 
-That is not a caveat, it is the yield. `assay-arena` already refuses `strength_floor: "file"` on a ranked round, so a plain-match incident cannot feed one. The number that sizes the route is therefore **125**: exact match, one identified victim, a resolved fork point and a write-up (14% of the archive), and still more than twice the present holdout.
+That is not a caveat, it is the yield. A ranked round should refuse `strength_floor: "file"`, and under that floor a plain-match incident cannot feed one. The number that sizes the route is therefore **125**: exact match, one identified victim, a resolved fork point and a write-up (14% of the archive).
 
 The availability figure stands for what it measured and licenses the route; it never licensed a number of records, and this is that number.
 

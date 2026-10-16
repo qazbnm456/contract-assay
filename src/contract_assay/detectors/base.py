@@ -963,8 +963,8 @@ def cited_lines(
     So: a figure over the published corpus is **self-reported**, and this check
     holds a blind submitter to a *measured* 0.06 rather than to zero. A
     competitive ranking needs records whose locators are not published --
-    `CorpusSplit.PRIVATE_HOLDOUT` and `assay-arena`'s `docs/operations.md` step
-    3 -- and that is where the guarantee has to live. `docs/api.md` §1 says the
+    `CorpusSplit.PRIVATE_HOLDOUT`, curated by the host of the ranking -- and
+    that is where the guarantee has to live. `docs/api.md` §1 says the
     same thing where a submitter reads it.
     """
     # Split on "\n" only, matching `corpus.verify`: str.splitlines() also breaks
