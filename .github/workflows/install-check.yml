@@ -1,0 +1,120 @@
+name: Install check
+
+# Does the published package still do what the README tells a stranger to do?
+#
+# Every other job here installs from the checkout, so a break that exists only
+# outside it reaches a user first: a dependency that resolves differently on the
+# index today, a platform without a wheel, a file the wheel missed. This job
+# installs the RELEASED artifact from PyPI and runs the README's first run with
+# it, over a clone of the tag that release was cut from, so the corpus and the
+# engine are the pair that shipped together.
+#
+# Three triggers, two questions:
+#
+#   * `schedule` and `workflow_dispatch`: is the current release still
+#     installable, now that the world has moved? A break introduced on `main` is
+#     not visible here until it is released.
+#   * `workflow_call`, from `release.yml` after its publish job: does the
+#     version just uploaded work? `expect-version` makes the install wait until
+#     the index serves exactly that version, because right after a publish the
+#     CDN can still hand out the previous one and pass on the wrong artifact.
+#
+# macOS is in the matrix for the reason `ci.yml`'s `clean-install` is: a Python
+# with no CA bundle wired in is where `contract-assay fetch` once failed on
+# every pin, and ubuntu cannot show that.
+#
+# A red run cannot roll anything back: a PyPI version can never be reused. It
+# means fix forward with the next patch release.
+
+on:
+  schedule:
+    - cron: "41 5 * * 1" # Mondays 05:41 UTC, off the hour, when scheduled runs pile up
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      expect-version:
+        description: >-
+          Wait until the index serves exactly this version. Empty means whatever
+          is current.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tags, so the clone can be moved to the one the installed version
+          # was cut from. Never used for the install itself.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the published package, as the README says
+        env:
+          EXPECTED: ${{ inputs.expect-version }}
+        run: |
+          set -uo pipefail
+          python -m venv "$RUNNER_TEMP/venv"
+          py="$RUNNER_TEMP/venv/bin/python"
+          spec="contract-assay"
+          if [ -n "$EXPECTED" ]; then spec="contract-assay==$EXPECTED"; fi
+          for attempt in $(seq 1 8); do
+            # `--no-cache-dir` on every attempt, or a retry is answered from
+            # the index page the too-early attempt cached.
+            if "$py" -m pip install --no-cache-dir --upgrade "$spec"; then
+              got="$("$py" -c 'import contract_assay; print(contract_assay.__version__)')"
+              echo "installed $got on attempt $attempt/8"
+              if [ "$attempt" -gt 1 ]; then
+                echo "::notice::the index lagged: $spec became installable on attempt $attempt of 8"
+              fi
+              echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+              echo "VERSION=$got" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "install of $spec failed, retrying (attempt $attempt/8)"
+            sleep 20
+          done
+          if [ -n "$EXPECTED" ]; then
+            echo "::error::$EXPECTED did not become installable after 8 attempts. The publish already succeeded and a PyPI version can never be reused, so there is nothing to roll back. Fix forward with the next patch release."
+          else
+            echo "::error::contract-assay did not install from PyPI after 8 attempts"
+          fi
+          exit 1
+
+      - name: The clone is the tag that version was cut from
+        run: |
+          set -euo pipefail
+          git checkout --quiet "v$VERSION"
+          contract-assay --version
+          test "$(contract-assay --version)" = "contract-assay $VERSION"
+          # The engine on the path is the wheel, not this checkout's source.
+          python -c 'import contract_assay, sys; p = contract_assay.__file__; print(p); sys.exit("src/" in p)'
+
+      - name: The README's first run, literally
+        run: |
+          set -euo pipefail
+          contract-assay fetch corpus/records --source-root ./checkout
+          contract-assay run --manifest examples/reference_detector/baseline.manifest.json \
+            --records corpus/records --source-root ./checkout --out runs.jsonl
+          contract-assay score runs.jsonl --records corpus/records \
+            --submission-id baseline --source-root ./checkout --out baseline-score.json
+          contract-assay results
+          python - <<'PY'
+          import json, os
+          doc = json.load(open("baseline-score.json"))
+          assert doc["engine_version"] == os.environ["VERSION"], doc["engine_version"]
+          print(f"scored by engine {doc['engine_version']}")
+          PY

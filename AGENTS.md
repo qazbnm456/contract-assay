@@ -20,6 +20,7 @@ A change is done when the local gate and the remote CI run are both green.
 - **An absent figure is a reason, never a number.** Code that cannot compute a figure returns the sentence saying why; it does not return 0 or rank the row last.
 - **No third-party report text in the repository**, including tests and fixtures. A record states its claim in its own words and cites its source by URL.
 - **The version lives only in `__version__`.** A bump also updates `CITATION.cff`. Any change to what `score` or `rank` writes is a bump, because `engine_version` is part of what makes two results comparable.
+- **A release is a published GitHub Release**, from a `vX.Y.Z` tag equal to `__version__`. Pushing a tag alone publishes nothing; the `pypi` environment then waits for the maintainer's approval, and `install-check.yml` runs the README's first run against what was uploaded.
 - **Published figures are tested.** A scoring change that moves a number in the docs must update the checkout tests and the counts CI checks, in the same change.
 - `contract-assay verify` exits 1 on the shipped corpus by design (one record pins a deployed address). The gate is "no new rejection", not exit 0.
 

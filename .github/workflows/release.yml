@@ -1,13 +1,22 @@
 name: Release
 
-# Publishes on a tag, after **the same gate that guards a commit** has run
-# against the artefact that will be uploaded. The first version of this file
-# claimed that and did not do it: it installed `pytest` and never called it,
-# ran three asserts, and `ci.yml` does not trigger on a tag push at all -- so a
-# commit whose tests failed could be tagged and published with a green check.
+# Publishes when a GitHub Release is published, after **the same gate that
+# guards a commit** has run against the artefact that will be uploaded. The
+# first version of this file claimed that and did not do it: it installed
+# `pytest` and never called it, ran three asserts, and `ci.yml` does not trigger
+# on a tag push at all -- so a commit whose tests failed could be tagged and
+# published with a green check.
+#
+# A Release, not a tag push. Pushing a `v*` tag alone publishes nothing: the
+# Release is where the notes a reader of a version needs are written, and
+# publishing it is the one deliberate act that ships. The `pypi` environment
+# then waits for a maintainer's approval and accepts only `v*` refs, so the
+# upload, which cannot be undone, takes two decisions rather than one.
+#
+# `workflow_dispatch` builds and gates from any ref and publishes nothing.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -20,6 +29,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      # For `verify` below, so the install it checks is the version this run
+      # gated rather than whatever the index serves first.
+      version: ${{ steps.version.outputs.version }}
     strategy:
       # As `ci.yml` sets it. Without this the matrix cancels the surviving leg,
       # so a failure on one interpreter hides whether the other would have
@@ -36,6 +49,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: The version in the package must be the version in the tag
+        id: version
         # Nothing tied them before. `report/wire.py` writes `__version__` into
         # every score document as `engine_version`, and `engine_version` is one
         # of the fields two published results must agree on -- so a tag ahead of
@@ -43,14 +57,22 @@ jobs:
         # does not have, grouping with genuine results of that version. PyPI
         # does not allow re-uploading a version, so the only remedy would be
         # burning one.
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release'
+        env:
+          # Through the environment, never interpolated into the script: a
+          # Release's tag name is text somebody typed.
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          tagged="${GITHUB_REF_NAME#v}"
+          tagged="${TAG#v}"
           declared="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/contract_assay/__init__.py)"
-          echo "tag=${tagged} package=${declared}"
+          echo "tag=${TAG} package=${declared}"
           test -n "${declared}"
-          test "${tagged}" = "${declared}"
+          if [ "${TAG}" != "v${declared}" ]; then
+            echo "::error::release tag '${TAG}' does not match __version__ '${declared}' (expected 'v${declared}'). A PyPI version can never be reused; fix the tag or the version before publishing."
+            exit 1
+          fi
+          echo "version=${tagged}" >> "$GITHUB_OUTPUT"
 
       - name: Build the wheel and the sdist
         run: |
@@ -152,10 +174,17 @@ jobs:
 
   publish:
     needs: build
-    # A tag only. `workflow_dispatch` builds and gates from any ref, which is
-    # useful; publishing from one is not, and the header comment said "publishes
-    # on a tag" while the button published from wherever it was pressed.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # A published Release only. `workflow_dispatch` builds and gates from any
+    # ref, which is useful; publishing from one is not, and an earlier header
+    # said "publishes on a tag" while the button published from wherever it was
+    # pressed.
+    #
+    # And this repository only. `release: published` fires in every fork that
+    # cuts a release of its own, and would ask PyPI to publish this project over
+    # OIDC. The trusted-publisher binding rejects that, but a rejected attempt
+    # against this project is still a probe and a red run in somebody else's
+    # repository. `build` is not guarded: a fork gating its own build is fine.
+    if: github.event_name == 'release' && github.repository == 'qazbnm456/contract-assay'
     runs-on: ubuntu-latest
     environment: pypi
     # Trusted publishing: no token is stored in this repository. A long-lived
@@ -168,4 +197,18 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # Pinned by commit, with the version beside it: this is the step that
+      # uploads, so a moved tag upstream is the largest blast radius in the
+      # file. Bump the SHA and the comment together. GitHub's own actions stay
+      # on major tags.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  verify:
+    # Does what was just published install and run the README's first run?
+    # `needs: publish` rather than a second `on: release`, which would start
+    # while the upload is still in flight. Informational: a PyPI version cannot
+    # be withdrawn, so a red here means cut the next patch, not roll back.
+    needs: [build, publish]
+    uses: ./.github/workflows/install-check.yml
+    with:
+      expect-version: ${{ needs.build.outputs.version }}
