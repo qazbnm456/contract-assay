@@ -73,7 +73,7 @@ That is a property of publishing the answers, not a defect in the checking, and 
 
 ## Using it
 
-The corpus lives in this repository, so the flow below starts from a clone. The engine is not on PyPI yet, so install it from the clone; when it is published, `pip install contract-assay` will get you the engine alone: the 478 records under `corpus/records` and the pointers under `results/` are not in the wheel, and a `--records` path is how you point the engine at them (or at your own).
+The corpus lives in this repository, so the flow below starts from a clone and installs the engine from it. `pip install contract-assay` gets you the engine alone: the 478 records under `corpus/records` and the pointers under `results/` are not in the wheel, and a `--records` path is how you point the engine at them (or at your own).
 
 ```console
 $ cd contract-assay          # your clone of this repository
